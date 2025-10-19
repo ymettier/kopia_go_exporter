@@ -46,12 +46,72 @@ func setBuildInfo(reg *prometheus.Registry) {
 	buildInfo.WithLabelValues(version, revision, time).Set(1)
 }
 
+func registerKopiaMetrics(reg *prometheus.Registry) {
+	reg.MustRegister(prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Name:      "total_size",
+			Help:      "Total size of the backup",
+		},
+		[]string{"host", "path", "user"},
+	))
+	reg.MustRegister(prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Name:      "file_count",
+			Help:      "Number of files in the backup",
+		},
+		[]string{"host", "path", "user"},
+	))
+	reg.MustRegister(prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Name:      "dir_count",
+			Help:      "Number of directories in the backup",
+		},
+		[]string{"host", "path", "user"},
+	))
+	reg.MustRegister(prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Name:      "error_count",
+			Help:      "Number of errors in the backup",
+		},
+		[]string{"host", "path", "user"},
+	))
+	reg.MustRegister(prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Name:      "backup_duration",
+			Help:      "Duration of the backup",
+		},
+		[]string{"host", "path", "user"},
+	))
+	reg.MustRegister(prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Name:      "backup_start_time",
+			Help:      "Start time of the backup",
+		},
+		[]string{"host", "path", "user"},
+	))
+	reg.MustRegister(prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Name:      "backup_end_time",
+			Help:      "End time of the backup",
+		},
+		[]string{"host", "path", "user"},
+	))
+}
+
 func (ex Exporter) Run() {
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collectors.NewGoCollector())
 	reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
 	setBuildInfo(reg)
+	registerKopiaMetrics(reg)
 
 	// Start HTTP server exposing /metrics endpoint
 	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
