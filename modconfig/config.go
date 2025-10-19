@@ -1,12 +1,11 @@
-package main
+package modconfig
 
 import (
 	"fmt"
 	"log"
 	"os"
 	"runtime/debug"
-
-	_ "embed"
+	"strings"
 
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/file"
@@ -17,18 +16,17 @@ import (
 
 var k = koanf.New(".")
 
+var givenVersion string
+
 type Config struct {
-	Server struct {
+	Exporter struct {
 		Port int    `koanf:"port"`
 		Name string `koanf:"name"`
-	} `koanf:"server"`
+	} `koanf:"exporter"`
 	LogLevel string `koanf:"log_level"`
 }
 
 var Cfg Config
-
-//go:embed version.txt
-var version string
 
 func usage(f *flag.FlagSet) {
 	fmt.Fprintln(os.Stdout, "Usage:")
@@ -36,14 +34,13 @@ func usage(f *flag.FlagSet) {
 	os.Exit(0)
 }
 
-func print_version() {
-	fmt.Println("Version:", version)
+func GetVersionFull() (version, revision, time string, dirty, ok bool) {
 	buildInfo, ok := debug.ReadBuildInfo()
 	if !ok {
-		fmt.Println("Build info not available")
+		return strings.TrimSpace(givenVersion), "", "", false, false
 	}
 
-	var revision, time, modified string
+	var modified string
 	for _, setting := range buildInfo.Settings {
 		if setting.Key == "vcs.revision" {
 			revision = setting.Value
@@ -54,20 +51,37 @@ func print_version() {
 		}
 	}
 
-	dirty := ""
+	dirty = false
 	if modified == "true" {
-		dirty = " (dirty build)"
+		dirty = true
 	}
-	fmt.Printf("Commit Hash: %s%s\nCommit Time: %s\n", revision, dirty, time)
+
+	return strings.TrimSpace(givenVersion), revision, time, dirty, true
+}
+
+func print_version() {
+	version, revision, time, dirty, ok := GetVersionFull()
+	fmt.Println("Version:", version)
+	if !ok {
+		fmt.Println("Build info not available")
+	}
+
+	dirtyString := ""
+	if dirty {
+		dirtyString = " (dirty build)"
+	}
+	fmt.Printf("Commit Hash: %s%s\nCommit Time: %s\n", revision, dirtyString, time)
 	os.Exit(0)
 }
 
-func new_config() {
+func LoadConfig(version string) {
+	givenVersion = version
+
 	// Configure CLI
 	f := flag.NewFlagSet("kopia-go-exporter", flag.ContinueOnError)
 	f.String("config", "config.yaml", "Path to YAML config file")
-	f.String("server.name", "kopia-go-exporter", "Name of the server")
-	f.Int("server.port", 8080, "Port to run the server on")
+	f.String("exporter.name", "kopia-go-exporter", "Name of the exporter")
+	f.Int("exporter.port", 8080, "Port to run the exporter on")
 	f.String("log_level", "info", "Log level (debug, info, warn, error)")
 	versionFlag := f.Bool("version", false, "Print version information and exit")
 

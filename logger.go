@@ -1,6 +1,7 @@
 package main
 
 import (
+	"kopia-go-exporter/modconfig"
 	"os"
 
 	"github.com/rs/zerolog"
@@ -8,7 +9,7 @@ import (
 
 func new_logger() zerolog.Logger {
 	// Set up zerolog logging level
-	level, err := zerolog.ParseLevel(Cfg.LogLevel)
+	level, err := zerolog.ParseLevel(modconfig.Cfg.LogLevel)
 	if err != nil {
 		level = zerolog.InfoLevel
 	}
@@ -18,9 +19,8 @@ func new_logger() zerolog.Logger {
 	logger := zerolog.New(consoleWriter).With().Timestamp().Logger()
 
 	logger.Info().
-		Str("server", Cfg.Server.Name).
-		Int("port", Cfg.Server.Port).
-		Msg("Server starting with YAML config")
-
+		Str("exporter", modconfig.Cfg.Exporter.Name).
+		Int("port", modconfig.Cfg.Exporter.Port).
+		Msg("Kopia exporter starting with YAML modconfig")
 	return logger
 }

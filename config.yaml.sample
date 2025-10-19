@@ -1,4 +1,4 @@
-server:
+exporter:
   name: "local-server"
   port: 9090
 log_level: "debug"
