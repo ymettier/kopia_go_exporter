@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 )
@@ -17,12 +18,13 @@ type Exporter struct {
 func NewExporter() *Exporter {
 	ex := new(Exporter)
 	ex.Port = modconfig.Cfg.Exporter.Port
+
 	return ex
 }
 
 var Logger zerolog.Logger
 
-func (ex Exporter) SetBuildInfo() {
+func setBuildInfo(reg *prometheus.Registry) {
 	version, revision, time, _, ok := modconfig.GetVersionFull()
 	if !ok {
 		Logger.Error().Str("version", version).Msg("Failed to retrieve full version info; metric build_info will not be available")
@@ -31,19 +33,28 @@ func (ex Exporter) SetBuildInfo() {
 	// Create build_info gauge with labels for version, commit, date
 	buildInfo := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "build_info",
-			Help: "Build information",
+			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Name:      "build_info",
+			Help:      "Build information",
 		},
 		[]string{"version", "commit", "date"},
 	)
-	prometheus.MustRegister(buildInfo)
+
+	reg.MustRegister(buildInfo)
+
 	// Set build info with value 1
 	buildInfo.WithLabelValues(version, revision, time).Set(1)
 }
 
 func (ex Exporter) Run() {
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(collectors.NewGoCollector())
+	reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+
+	setBuildInfo(reg)
+
 	// Start HTTP server exposing /metrics endpoint
-	http.Handle("/metrics", promhttp.Handler())
+	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	http.ListenAndServe(fmt.Sprintf(":%d", ex.Port), nil)
 	Logger.Debug().Int("port", ex.Port).Msg("Started http server")
 }

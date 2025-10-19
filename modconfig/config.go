@@ -20,8 +20,11 @@ var givenVersion string
 
 type Config struct {
 	Exporter struct {
-		Port int    `koanf:"port"`
-		Name string `koanf:"name"`
+		Port    int    `koanf:"port"`
+		Name    string `koanf:"name"`
+		Metrics struct {
+			Prefix string `koanf:"prefix"`
+		} `koanf:"metrics"`
 	} `koanf:"exporter"`
 	LogLevel string `koanf:"log_level"`
 }

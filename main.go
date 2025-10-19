@@ -17,7 +17,6 @@ func main() {
 
 	exporter.Logger = logger
 	ex := exporter.NewExporter()
-	ex.SetBuildInfo()
 
 	go ex.Run()
 	select {} // block forever to keep main alive
