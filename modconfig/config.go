@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/posflag"
 	"github.com/knadh/koanf/v2"
@@ -25,7 +26,16 @@ type Config struct {
 		Metrics struct {
 			Prefix string `koanf:"prefix"`
 		} `koanf:"metrics"`
+		Interval int `koanf:"interval"`
 	} `koanf:"exporter"`
+	Kopia struct {
+		ConfigFile    string `koanf:"configfile"`
+		RepositoryURL string `koanf:"repositoryURL"`
+		Hostname      string `koanf:"hostname"`
+		Username      string `koanf:"username"`
+		Password      string `koanf:"password"`
+		Fingerprint   string `koanf:"fingerprint"`
+	} `koanf:"kopia"`
 	LogLevel string `koanf:"log_level"`
 }
 
@@ -110,6 +120,12 @@ func LoadConfig(version string) {
 	if err := k.Load(posflag.Provider(f, ".", k), nil); err != nil {
 		log.Fatalf("Failed to load command line flags")
 	}
+
+	k.Load(env.Provider("KGE_", ".", func(key string) string {
+		key = strings.ToLower(strings.TrimPrefix(key, "KGE_"))
+		key = strings.ReplaceAll(key, "_", ".")
+		return key
+	}), nil)
 
 	if err := k.Unmarshal("", &Cfg); err != nil {
 		fmt.Printf("Error unmarshalling config: %v\n", err)

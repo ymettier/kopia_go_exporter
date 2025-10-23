@@ -3,4 +3,12 @@ exporter:
   port: 9090
   metrics:
     prefix: "kopia_go_exporter"
+  interval: 300
+kopia:
+  configfile: "/tmp/kopia.cfg"
+  repositoryURL: "https://some.url:port"
+  hostname: "myhostname"
+  username: "mybackup"
+  password: "set me in KGE_KOPIA_PASSWORD env var"
+  fingerprint: "set me in KGE_KOPIA_FINGERPRINT env var"
 log_level: "debug"
