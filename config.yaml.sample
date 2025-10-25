@@ -13,4 +13,6 @@ kopia:
     hostname: "myhostname"
     username: "mybackup"
     fingerprint: "set me in KGE_KOPIA_APISERVER_FINGERPRINT env var"
+  retentionstoextract:
+    - "latest-1"
 log_level: "debug"

@@ -37,6 +37,7 @@ type Config struct {
 			Username      string `koanf:"username"`
 			Fingerprint   string `koanf:"fingerprint"`
 		} `koanf:"apiserver"`
+		Retentions []string `koanf:"retentions"`
 	} `koanf:"kopia"`
 	LogLevel string `koanf:"log_level"`
 }

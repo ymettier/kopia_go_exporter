@@ -6,10 +6,12 @@ import (
 	"kopia-go-exporter/exporter"
 	"kopia-go-exporter/modconfig"
 	"os"
+	"slices"
 
 	"github.com/kopia/kopia/repo"
 	"github.com/kopia/kopia/repo/content"
 	"github.com/kopia/kopia/snapshot"
+	"github.com/kopia/kopia/snapshot/policy"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 )
@@ -73,6 +75,7 @@ func (k *KopiaClient) Connect() {
 }
 
 func (k *KopiaClient) RunOnce() {
+	keepAllRetentions := (0 == len(modconfig.Cfg.Kopia.Retentions))
 	if !k.IsConnected {
 		k.Connect()
 	}
@@ -91,17 +94,34 @@ func (k *KopiaClient) RunOnce() {
 		return
 	}
 
-	for _, m := range manifests {
-		fmt.Printf("ID: %v  Source: %v  Time: %v\n", m.ID, m.Source, m.StartTime)
-		labels := prometheus.Labels{"host": m.Source.Host, "path": m.Source.Path, "user": m.Source.UserName}
-		k.Metrics.BackupStartTime.With(labels).Set(float64(m.StartTime.ToTime().Unix()))
-		// backup_duration
-		// backup_end_time
-		// backup_start_time
-		// dir_count
-		// error_count
-		// file_count
-		// total_size
+	for _, snapshotGroup := range snapshot.GroupBySource(manifests) {
+		snapshotGroup = snapshot.SortByTime(snapshotGroup, true)
+		src := snapshotGroup[0].Source
+
+		// compute retention reason
+		pol, _, _, err := policy.GetEffectivePolicy(k.Ctx, k.Repo, src)
+		if err != nil {
+			Logger.Error().Str("Source", fmt.Sprintf("%v", src)).Msg("Unable to determine effective policy")
+		} else {
+			pol.RetentionPolicy.ComputeRetentionReasons(snapshotGroup)
+		}
+
+		// Iterate over snapshotGroup of manifests
+		for _, m := range snapshotGroup {
+			//fmt.Printf("ID: %v  Source: %v  Time: %v  Retentions: %v\n", m.ID, m.Source, m.StartTime, m.RetentionReasons)
+			for _, rr := range m.RetentionReasons {
+				if slices.Contains(modconfig.Cfg.Kopia.Retentions, rr) || keepAllRetentions {
+					labels := prometheus.Labels{"host": m.Source.Host, "path": m.Source.Path, "user": m.Source.UserName, "retention": rr}
+					k.Metrics.BackupStartTime.With(labels).Set(float64(m.StartTime.ToTime().Unix()))
+					k.Metrics.BackupEndTime.With(labels).Set(float64(m.EndTime.ToTime().Unix()))
+					k.Metrics.BackupDuration.With(labels).Set(float64((m.EndTime - m.StartTime).ToTime().Unix()))
+					k.Metrics.DirCount.With(labels).Set(float64(m.Stats.TotalDirectoryCount))
+					k.Metrics.ErrorCount.With(labels).Set(float64(m.Stats.ErrorCount))
+					k.Metrics.FileCount.With(labels).Set(float64(m.Stats.TotalFileCount))
+					k.Metrics.TotalSize.With(labels).Set(float64(m.Stats.TotalFileSize))
+				}
+			}
+		}
 	}
 }
 

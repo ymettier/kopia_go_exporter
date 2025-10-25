@@ -72,7 +72,7 @@ func (ex *Exporter) RegisterKopiaMetrics() {
 			Name:      "total_size",
 			Help:      "Total size of the backup",
 		},
-		[]string{"host", "path", "user"},
+		[]string{"host", "path", "user", "retention"},
 	)
 	ex.Reg.MustRegister(ex.Metrics.TotalSize)
 	ex.Metrics.FileCount = prometheus.NewGaugeVec(
@@ -81,7 +81,7 @@ func (ex *Exporter) RegisterKopiaMetrics() {
 			Name:      "file_count",
 			Help:      "Number of files in the backup",
 		},
-		[]string{"host", "path", "user"},
+		[]string{"host", "path", "user", "retention"},
 	)
 	ex.Reg.MustRegister(ex.Metrics.FileCount)
 	ex.Metrics.DirCount = prometheus.NewGaugeVec(
@@ -90,7 +90,7 @@ func (ex *Exporter) RegisterKopiaMetrics() {
 			Name:      "dir_count",
 			Help:      "Number of directories in the backup",
 		},
-		[]string{"host", "path", "user"},
+		[]string{"host", "path", "user", "retention"},
 	)
 	ex.Reg.MustRegister(ex.Metrics.DirCount)
 	ex.Metrics.ErrorCount = prometheus.NewGaugeVec(
@@ -99,7 +99,7 @@ func (ex *Exporter) RegisterKopiaMetrics() {
 			Name:      "error_count",
 			Help:      "Number of errors in the backup",
 		},
-		[]string{"host", "path", "user"},
+		[]string{"host", "path", "user", "retention"},
 	)
 	ex.Reg.MustRegister(ex.Metrics.ErrorCount)
 	ex.Metrics.BackupDuration = prometheus.NewGaugeVec(
@@ -108,7 +108,7 @@ func (ex *Exporter) RegisterKopiaMetrics() {
 			Name:      "backup_duration",
 			Help:      "Duration of the backup",
 		},
-		[]string{"host", "path", "user"},
+		[]string{"host", "path", "user", "retention"},
 	)
 	ex.Reg.MustRegister(ex.Metrics.BackupDuration)
 	ex.Metrics.BackupStartTime = prometheus.NewGaugeVec(
@@ -117,7 +117,7 @@ func (ex *Exporter) RegisterKopiaMetrics() {
 			Name:      "backup_start_time",
 			Help:      "Start time of the backup",
 		},
-		[]string{"host", "path", "user"},
+		[]string{"host", "path", "user", "retention"},
 	)
 	ex.Reg.MustRegister(ex.Metrics.BackupStartTime)
 	ex.Metrics.BackupEndTime = prometheus.NewGaugeVec(
@@ -126,7 +126,7 @@ func (ex *Exporter) RegisterKopiaMetrics() {
 			Name:      "backup_end_time",
 			Help:      "End time of the backup",
 		},
-		[]string{"host", "path", "user"},
+		[]string{"host", "path", "user", "retention"},
 	)
 	ex.Reg.MustRegister(ex.Metrics.BackupEndTime)
 }
