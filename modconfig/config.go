@@ -2,7 +2,7 @@ package modconfig
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"runtime/debug"
 	"strings"
@@ -21,20 +21,22 @@ var givenVersion string
 
 type Config struct {
 	Exporter struct {
-		Port    int    `koanf:"port"`
-		Name    string `koanf:"name"`
+		Port    int `koanf:"port"`
 		Metrics struct {
 			Prefix string `koanf:"prefix"`
 		} `koanf:"metrics"`
 		Interval int `koanf:"interval"`
 	} `koanf:"exporter"`
 	Kopia struct {
-		ConfigFile    string `koanf:"configfile"`
-		RepositoryURL string `koanf:"repositoryURL"`
-		Hostname      string `koanf:"hostname"`
-		Username      string `koanf:"username"`
-		Password      string `koanf:"password"`
-		Fingerprint   string `koanf:"fingerprint"`
+		ConfigFile            string `koanf:"configfile"`
+		ConnectWithConfigFile bool   `koanf:"connectwithconfigfile"`
+		Password              string `koanf:"password"`
+		APIServer             struct {
+			RepositoryURL string `koanf:"repositoryURL"`
+			Hostname      string `koanf:"hostname"`
+			Username      string `koanf:"username"`
+			Fingerprint   string `koanf:"fingerprint"`
+		} `koanf:"apiserver"`
 	} `koanf:"kopia"`
 	LogLevel string `koanf:"log_level"`
 }
@@ -87,13 +89,46 @@ func print_version() {
 	os.Exit(0)
 }
 
+func CheckConfig() {
+	// Check Kopia config
+	if Cfg.Kopia.ConfigFile == "" {
+		Cfg.Kopia.ConfigFile = "/tmp/kopia.cfg"
+		slog.Warn("Kopia.configfile was not specified. Using /tmp/kopia.cfg")
+	}
+	if Cfg.Kopia.Password == "" {
+		slog.Error("kopia.password is not set (needed when kopia.configfile is provided)")
+		os.Exit(1)
+	}
+	if !Cfg.Kopia.ConnectWithConfigFile {
+		if Cfg.Kopia.APIServer.RepositoryURL == "" {
+			slog.Error("kopia.repositoryURL is not set (needed when kopia.configfile is not provided)")
+			os.Exit(1)
+		}
+		if Cfg.Kopia.APIServer.Fingerprint == "" {
+			slog.Error("kopia.fingerprint is not set (needed when kopia.configfile is not provided)")
+			os.Exit(1)
+		}
+		if Cfg.Kopia.APIServer.Hostname == "" {
+			slog.Error("kopia.hostname is not set (needed when kopia.configfile is not provided)")
+			os.Exit(1)
+		}
+		if Cfg.Kopia.APIServer.Username == "" {
+			slog.Error("kopia.username is not set (needed when kopia.configfile is not provided)")
+			os.Exit(1)
+		}
+	} else {
+		slog.Error("kopia.connectwithconfigfile is not supported yet")
+		os.Exit(1)
+
+	}
+}
+
 func LoadConfig(version string) {
 	givenVersion = version
 
 	// Configure CLI
 	f := flag.NewFlagSet("kopia-go-exporter", flag.ContinueOnError)
 	f.String("config", "config.yaml", "Path to YAML config file")
-	f.String("exporter.name", "kopia-go-exporter", "Name of the exporter")
 	f.Int("exporter.port", 8080, "Port to run the exporter on")
 	f.String("log_level", "info", "Log level (debug, info, warn, error)")
 	versionFlag := f.Bool("version", false, "Print version information and exit")
@@ -113,12 +148,14 @@ func LoadConfig(version string) {
 	// Load config from YAML file first
 	configPath, _ := f.GetString("config")
 	if err := k.Load(file.Provider(configPath), yaml.Parser()); err != nil {
-		log.Fatalf("Failed to load config file")
+		slog.Error("Failed to load config file")
+		os.Exit(1)
 	}
 
 	// Load CLI flags to override config
 	if err := k.Load(posflag.Provider(f, ".", k), nil); err != nil {
-		log.Fatalf("Failed to load command line flags")
+		slog.Error("Failed to load command line flags")
+		os.Exit(1)
 	}
 
 	k.Load(env.Provider("KGE_", ".", func(key string) string {

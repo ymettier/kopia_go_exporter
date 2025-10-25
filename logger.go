@@ -19,7 +19,6 @@ func new_logger() zerolog.Logger {
 	logger := zerolog.New(consoleWriter).With().Timestamp().Logger()
 
 	logger.Info().
-		Str("exporter", modconfig.Cfg.Exporter.Name).
 		Int("port", modconfig.Cfg.Exporter.Port).
 		Msg("Kopia exporter starting with YAML modconfig")
 	return logger

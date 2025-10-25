@@ -17,6 +17,7 @@ var version string
 
 func main() {
 	modconfig.LoadConfig(version)
+	modconfig.CheckConfig()
 
 	logger := new_logger()
 	logger.Debug().Msg("Debug logging enabled")
@@ -43,16 +44,22 @@ func main() {
 
 	go ex.Run()
 
+	sleepInterval := 0
 	for {
 		select {
 		case <-ctx.Done():
 			k.Disconnect()
 			return
 		default:
-			logger.Debug().Msg("Start a new iteration of main loop...")
-			k.RunOnce()
-			logger.Debug().Int("Duration (sec)", modconfig.Cfg.Exporter.Interval).Msg("Now sleeping")
-			time.Sleep(time.Duration(modconfig.Cfg.Exporter.Interval) * time.Second)
+			if sleepInterval == 0 {
+				logger.Debug().Msg("Start a new iteration of main loop...")
+				k.RunOnce()
+				sleepInterval = modconfig.Cfg.Exporter.Interval
+				logger.Debug().Int("Duration (sec)", modconfig.Cfg.Exporter.Interval).Msg("Now sleeping")
+			} else {
+				sleepInterval--
+			}
+			time.Sleep(time.Second)
 		}
 	}
 }

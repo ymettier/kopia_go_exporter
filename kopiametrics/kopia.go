@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"kopia-go-exporter/exporter"
 	"kopia-go-exporter/modconfig"
+	"os"
 
 	"github.com/kopia/kopia/repo"
 	"github.com/kopia/kopia/repo/content"
@@ -24,61 +25,69 @@ type KopiaClient struct {
 	Metrics     *exporter.KopiaMetrics
 }
 
-func (k *KopiaClient) Connect() {
-	k.Ctx = context.Background()
-
-	// Connect to Kopia Repository API Server
-	err := repo.ConnectAPIServer(k.Ctx, modconfig.Cfg.Kopia.ConfigFile, &k.ServerInfo, modconfig.Cfg.Kopia.Password, &k.Opts)
-	if err != nil {
-		Logger.Error().Err(err).Msg("Failed to connect to Kopia API server")
-		k.IsConnected = false
-		return
-	}
-	k.IsConnected = true
-	Logger.Debug().Str("URL", modconfig.Cfg.Kopia.RepositoryURL).Msg("Connected to Kopia server")
-}
-
 func NewKopiaClient(m *exporter.KopiaMetrics) *KopiaClient {
 	k := new(KopiaClient)
 	k.Metrics = m
-	k.IsConnected = false
-	k.Opts = repo.ConnectOptions{
-		repo.ClientOptions{
-			Username: modconfig.Cfg.Kopia.Username,
-			Hostname: modconfig.Cfg.Kopia.Hostname,
-		},
-		content.CachingOptions{},
-	}
-	k.ServerInfo = repo.APIServerInfo{
-		BaseURL:                             modconfig.Cfg.Kopia.RepositoryURL,
-		TrustedServerCertificateFingerprint: modconfig.Cfg.Kopia.Fingerprint,
-	}
 
 	return k
 }
 
-func (k *KopiaClient) RunOnce() {
-	if !k.IsConnected {
-		Logger.Debug().Str("URL", modconfig.Cfg.Kopia.RepositoryURL).Msg("Try to connect to server")
-		k.Connect()
-		var err error
-		k.Repo, err = repo.Open(k.Ctx, modconfig.Cfg.Kopia.ConfigFile, modconfig.Cfg.Kopia.Password, nil)
-		if err != nil {
-			Logger.Error().Str("URL", modconfig.Cfg.Kopia.RepositoryURL).Err(err).Msg("Failed to open repository")
-			k.IsConnected = false
-			return
-		}
+func (k *KopiaClient) GenerateConfigFile() {
+	k.Ctx = context.Background()
+
+	opts := repo.ConnectOptions{
+		ClientOptions: repo.ClientOptions{
+			Username: modconfig.Cfg.Kopia.APIServer.Username,
+			Hostname: modconfig.Cfg.Kopia.APIServer.Hostname,
+		},
+		CachingOptions: content.CachingOptions{},
+	}
+	serverInfo := repo.APIServerInfo{
+		BaseURL:                             modconfig.Cfg.Kopia.APIServer.RepositoryURL,
+		TrustedServerCertificateFingerprint: modconfig.Cfg.Kopia.APIServer.Fingerprint,
 	}
 
+	// Connect to Kopia Repository API Server
+	Logger.Debug().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Str("URL", modconfig.Cfg.Kopia.APIServer.RepositoryURL).Msg("Generate ConfigFile and try to connect to server")
+	err := repo.ConnectAPIServer(k.Ctx, modconfig.Cfg.Kopia.ConfigFile, &serverInfo, modconfig.Cfg.Kopia.Password, &opts)
+	if err != nil {
+		Logger.Error().Err(err).Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Msg("Failed to generate configFile")
+		os.Exit(1)
+	}
+	Logger.Debug().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Msg("Successfully generated configFile")
+}
+
+func (k *KopiaClient) Connect() {
+	if !modconfig.Cfg.Kopia.ConnectWithConfigFile {
+		k.GenerateConfigFile()
+	}
+	Logger.Debug().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Msg("Try to connect to server")
+	var err error
+	k.Repo, err = repo.Open(k.Ctx, modconfig.Cfg.Kopia.ConfigFile, modconfig.Cfg.Kopia.Password, nil)
+	if err != nil {
+		Logger.Error().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Err(err).Msg("Failed to open repository")
+		k.IsConnected = false
+		return
+	}
+	k.IsConnected = true
+}
+
+func (k *KopiaClient) RunOnce() {
+	if !k.IsConnected {
+		k.Connect()
+	}
+	// FIXME : if IsConnected == false, set error status to 1 (in metrics) and return
+
+	// List all snapshot manifests (nil -> all sources)
 	manifestsIds, err := snapshot.ListSnapshotManifests(k.Ctx, k.Repo, nil, nil)
 	if err != nil {
-		Logger.Error().Str("URL", modconfig.Cfg.Kopia.RepositoryURL).Err(err).Msg("failed to list snapshot manifests")
+		Logger.Error().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Err(err).Msg("failed to list snapshot manifests")
 		return
 	}
 
 	manifests, err := snapshot.LoadSnapshots(k.Ctx, k.Repo, manifestsIds)
 	if err != nil {
-		Logger.Error().Str("URL", modconfig.Cfg.Kopia.RepositoryURL).Err(err).Msg("failed to snapshot manifests")
+		Logger.Error().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Err(err).Msg("failed to snapshot manifests")
 		return
 	}
 
@@ -94,11 +103,12 @@ func (k *KopiaClient) RunOnce() {
 		// file_count
 		// total_size
 	}
-} // List all snapshot manifests (nil -> all sources)
+}
 
 func (k *KopiaClient) Disconnect() {
 	repo.Disconnect(k.Ctx, modconfig.Cfg.Kopia.ConfigFile)
-	Logger.Debug().Str("URL", modconfig.Cfg.Kopia.RepositoryURL).Msg("Disconnected from server")
+	Logger.Debug().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Msg("Disconnected from server")
+	k.IsConnected = false
 }
 
 func main() {
