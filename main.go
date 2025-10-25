@@ -25,8 +25,9 @@ func main() {
 	exporter.Logger = logger
 	ex := exporter.NewExporter()
 
-	k := kopiametrics.NewKopiaClient(&ex.Metrics)
+	k := kopiametrics.NewKopiaClient()
 	kopiametrics.Logger = logger
+	k.RegisterKopiaMetrics(ex.Reg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer func() {

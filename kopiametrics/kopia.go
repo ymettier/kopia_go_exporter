@@ -3,7 +3,6 @@ package kopiametrics
 import (
 	"context"
 	"fmt"
-	"kopia-go-exporter/exporter"
 	"kopia-go-exporter/modconfig"
 	"os"
 	"slices"
@@ -18,20 +17,95 @@ import (
 
 var Logger zerolog.Logger
 
+type KopiaMetrics struct {
+	TotalSize       *prometheus.GaugeVec
+	FileCount       *prometheus.GaugeVec
+	DirCount        *prometheus.GaugeVec
+	ErrorCount      *prometheus.GaugeVec
+	BackupDuration  *prometheus.GaugeVec
+	BackupStartTime *prometheus.GaugeVec
+	BackupEndTime   *prometheus.GaugeVec
+}
+
 type KopiaClient struct {
 	Ctx         context.Context
 	IsConnected bool
 	Opts        repo.ConnectOptions
 	ServerInfo  repo.APIServerInfo
 	Repo        repo.Repository
-	Metrics     *exporter.KopiaMetrics
+	Metrics     KopiaMetrics
 }
 
-func NewKopiaClient(m *exporter.KopiaMetrics) *KopiaClient {
+func NewKopiaClient() *KopiaClient {
 	k := new(KopiaClient)
-	k.Metrics = m
 
 	return k
+}
+
+func (k *KopiaClient) RegisterKopiaMetrics(reg *prometheus.Registry) {
+	k.Metrics.TotalSize = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Name:      "total_size",
+			Help:      "Total size of the backup",
+		},
+		[]string{"host", "path", "user", "retention"},
+	)
+	reg.MustRegister(k.Metrics.TotalSize)
+	k.Metrics.FileCount = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Name:      "file_count",
+			Help:      "Number of files in the backup",
+		},
+		[]string{"host", "path", "user", "retention"},
+	)
+	reg.MustRegister(k.Metrics.FileCount)
+	k.Metrics.DirCount = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Name:      "dir_count",
+			Help:      "Number of directories in the backup",
+		},
+		[]string{"host", "path", "user", "retention"},
+	)
+	reg.MustRegister(k.Metrics.DirCount)
+	k.Metrics.ErrorCount = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Name:      "error_count",
+			Help:      "Number of errors in the backup",
+		},
+		[]string{"host", "path", "user", "retention"},
+	)
+	reg.MustRegister(k.Metrics.ErrorCount)
+	k.Metrics.BackupDuration = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Name:      "backup_duration",
+			Help:      "Duration of the backup",
+		},
+		[]string{"host", "path", "user", "retention"},
+	)
+	reg.MustRegister(k.Metrics.BackupDuration)
+	k.Metrics.BackupStartTime = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Name:      "backup_start_time",
+			Help:      "Start time of the backup",
+		},
+		[]string{"host", "path", "user", "retention"},
+	)
+	reg.MustRegister(k.Metrics.BackupStartTime)
+	k.Metrics.BackupEndTime = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Name:      "backup_end_time",
+			Help:      "End time of the backup",
+		},
+		[]string{"host", "path", "user", "retention"},
+	)
+	reg.MustRegister(k.Metrics.BackupEndTime)
 }
 
 func (k *KopiaClient) GenerateConfigFile() {
@@ -108,7 +182,7 @@ func (k *KopiaClient) RunOnce() {
 
 		// Iterate over snapshotGroup of manifests
 		for _, m := range snapshotGroup {
-			//fmt.Printf("ID: %v  Source: %v  Time: %v  Retentions: %v\n", m.ID, m.Source, m.StartTime, m.RetentionReasons)
+			// fmt.Printf("ID: %v  Source: %v  Time: %v  Retentions: %v\n", m.ID, m.Source, m.StartTime, m.RetentionReasons)
 			for _, rr := range m.RetentionReasons {
 				if slices.Contains(modconfig.Cfg.Kopia.Retentions, rr) || keepAllRetentions {
 					labels := prometheus.Labels{"host": m.Source.Host, "path": m.Source.Path, "user": m.Source.UserName, "retention": rr}
@@ -132,6 +206,6 @@ func (k *KopiaClient) Disconnect() {
 }
 
 func main() {
-	k := NewKopiaClient(nil)
+	k := NewKopiaClient()
 	k.RunOnce()
 }

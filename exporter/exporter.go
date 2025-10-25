@@ -13,20 +13,9 @@ import (
 
 var Logger zerolog.Logger
 
-type KopiaMetrics struct {
-	TotalSize       *prometheus.GaugeVec
-	FileCount       *prometheus.GaugeVec
-	DirCount        *prometheus.GaugeVec
-	ErrorCount      *prometheus.GaugeVec
-	BackupDuration  *prometheus.GaugeVec
-	BackupStartTime *prometheus.GaugeVec
-	BackupEndTime   *prometheus.GaugeVec
-}
-
 type Exporter struct {
-	Port    int
-	Metrics KopiaMetrics
-	Reg     *prometheus.Registry
+	Port int
+	Reg  *prometheus.Registry
 }
 
 func NewExporter() *Exporter {
@@ -38,7 +27,6 @@ func NewExporter() *Exporter {
 	ex.Reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
 	ex.SetBuildInfo()
-	ex.RegisterKopiaMetrics()
 
 	return ex
 }
@@ -63,72 +51,6 @@ func (ex *Exporter) SetBuildInfo() {
 
 	// Set build info with value 1
 	buildInfo.WithLabelValues(version, revision, time).Set(1)
-}
-
-func (ex *Exporter) RegisterKopiaMetrics() {
-	ex.Metrics.TotalSize = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
-			Name:      "total_size",
-			Help:      "Total size of the backup",
-		},
-		[]string{"host", "path", "user", "retention"},
-	)
-	ex.Reg.MustRegister(ex.Metrics.TotalSize)
-	ex.Metrics.FileCount = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
-			Name:      "file_count",
-			Help:      "Number of files in the backup",
-		},
-		[]string{"host", "path", "user", "retention"},
-	)
-	ex.Reg.MustRegister(ex.Metrics.FileCount)
-	ex.Metrics.DirCount = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
-			Name:      "dir_count",
-			Help:      "Number of directories in the backup",
-		},
-		[]string{"host", "path", "user", "retention"},
-	)
-	ex.Reg.MustRegister(ex.Metrics.DirCount)
-	ex.Metrics.ErrorCount = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
-			Name:      "error_count",
-			Help:      "Number of errors in the backup",
-		},
-		[]string{"host", "path", "user", "retention"},
-	)
-	ex.Reg.MustRegister(ex.Metrics.ErrorCount)
-	ex.Metrics.BackupDuration = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
-			Name:      "backup_duration",
-			Help:      "Duration of the backup",
-		},
-		[]string{"host", "path", "user", "retention"},
-	)
-	ex.Reg.MustRegister(ex.Metrics.BackupDuration)
-	ex.Metrics.BackupStartTime = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
-			Name:      "backup_start_time",
-			Help:      "Start time of the backup",
-		},
-		[]string{"host", "path", "user", "retention"},
-	)
-	ex.Reg.MustRegister(ex.Metrics.BackupStartTime)
-	ex.Metrics.BackupEndTime = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
-			Name:      "backup_end_time",
-			Help:      "End time of the backup",
-		},
-		[]string{"host", "path", "user", "retention"},
-	)
-	ex.Reg.MustRegister(ex.Metrics.BackupEndTime)
 }
 
 func (ex Exporter) Run() {
