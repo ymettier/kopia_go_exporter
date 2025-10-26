@@ -2,6 +2,7 @@ package modconfig
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"runtime/debug"
@@ -44,10 +45,9 @@ type Config struct {
 
 var Cfg Config
 
-func usage(f *flag.FlagSet) {
-	fmt.Fprintln(os.Stdout, "Usage:")
+func usage(w io.Writer, f *flag.FlagSet) {
+	fmt.Fprintln(w, "Usage:")
 	f.PrintDefaults()
-	os.Exit(0)
 }
 
 func GetVersionFull() (version, revision, time string, dirty, ok bool) {
@@ -134,7 +134,10 @@ func LoadConfig(version string) {
 	f.String("log_level", "info", "Log level (debug, info, warn, error)")
 	versionFlag := f.Bool("version", false, "Print version information and exit")
 
-	f.Usage = func() { usage(f) }
+	f.Usage = func() {
+		usage(os.Stdout, f)
+		os.Exit(0)
+	}
 
 	// Parse flags from CLI args
 	if err := f.Parse(os.Args[1:]); err != nil {
