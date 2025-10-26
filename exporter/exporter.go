@@ -26,17 +26,17 @@ func NewExporter() *Exporter {
 	ex.Reg.MustRegister(collectors.NewGoCollector())
 	ex.Reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
-	ex.SetBuildInfo()
+	version, revision, time, _, ok := modconfig.GetVersionFull()
+	if !ok {
+		Logger.Error().Str("version", version).Msg("Failed to retrieve full version info; metric build_info will not be available")
+	} else {
+		ex.SetBuildInfo(version, revision, time)
+	}
 
 	return ex
 }
 
-func (ex *Exporter) SetBuildInfo() {
-	version, revision, time, _, ok := modconfig.GetVersionFull()
-	if !ok {
-		Logger.Error().Str("version", version).Msg("Failed to retrieve full version info; metric build_info will not be available")
-	}
-
+func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 	// Create build_info gauge with labels for version, commit, date
 	buildInfo := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
