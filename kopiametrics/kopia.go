@@ -109,8 +109,20 @@ func (k *KopiaClient) RegisterKopiaMetrics(reg *prometheus.Registry) {
 }
 
 func (k *KopiaClient) GenerateConfigFile() {
+	// DEBUG (start)
+	f, err := os.OpenFile("/tmp/aaa", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	// DEBUG (end)
 	k.Ctx = context.Background()
 
+	// DEBUG (start)
+	if _, err = f.WriteString("Initialize vars\n"); err != nil {
+		panic(err)
+	}
+	// DEBUG (end)
 	opts := repo.ConnectOptions{
 		ClientOptions: repo.ClientOptions{
 			Username: modconfig.Cfg.Kopia.APIServer.Username,
@@ -124,21 +136,37 @@ func (k *KopiaClient) GenerateConfigFile() {
 	}
 
 	// Connect to Kopia Repository API Server
+	// DEBUG (start)
+	if _, err = f.WriteString("ConnectApiServer\n"); err != nil {
+		panic(err)
+	}
+	// DEBUG (end)
 	Logger.Debug().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Str("URL", modconfig.Cfg.Kopia.APIServer.RepositoryURL).Msg("Generate ConfigFile and try to connect to server")
-	err := repo.ConnectAPIServer(k.Ctx, modconfig.Cfg.Kopia.ConfigFile, &serverInfo, modconfig.Cfg.Kopia.Password, &opts)
+	err = repo.ConnectAPIServer(k.Ctx, modconfig.Cfg.Kopia.ConfigFile, &serverInfo, modconfig.Cfg.Kopia.Password, &opts)
 	if err != nil {
+		// DEBUG (start)
+		if _, err = f.WriteString("Failed to generate configFile\nconfigfile=" + modconfig.Cfg.Kopia.ConfigFile + "\nfingerprint=" + modconfig.Cfg.Kopia.APIServer.Fingerprint + "\nURL=" + modconfig.Cfg.Kopia.APIServer.RepositoryURL + "\n" + fmt.Sprintf("%v\n", err)); err != nil {
+			panic(err)
+		}
+		// DEBUG (end)
 		Logger.Error().Err(err).Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Msg("Failed to generate configFile")
 		os.Exit(1)
 	}
+	// DEBUG (start)
+	if _, err = f.WriteString("Success\n"); err != nil {
+		panic(err)
+	}
+	// DEBUG (end)
 	Logger.Debug().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Msg("Successfully generated configFile")
 }
 
 func (k *KopiaClient) Connect() {
+	var err error
+
 	if !modconfig.Cfg.Kopia.ConnectWithConfigFile {
 		k.GenerateConfigFile()
 	}
 	Logger.Debug().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Msg("Try to connect to server")
-	var err error
 	k.Repo, err = repo.Open(k.Ctx, modconfig.Cfg.Kopia.ConfigFile, modconfig.Cfg.Kopia.Password, nil)
 	if err != nil {
 		Logger.Error().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Err(err).Msg("Failed to open repository")
