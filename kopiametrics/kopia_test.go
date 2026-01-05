@@ -45,52 +45,31 @@ func hashSHA256(pemContent []byte) (string, error) {
 func setupTestKopia(t *testing.T) (func(), string, string, nat.Port) {
 	ctx := context.Background()
 
-	repositoryConfigContents := `
-{
-  "storage": {
-    "type": "filesystem",
-    "config": {
-      "path": "/tmp/repo",
-      "dirShards": null
-    }
-  },
-  "caching": {
-    "cacheDirectory": "/tmp/cache",
-    "maxCacheSize": 5242880000,
-    "maxMetadataCacheSize": 5242880000,
-    "maxListCacheDuration": 30
-  },
-  "hostname": "localhost",
-  "username": "kopia",
-  "description": "My Repository",
-  "enableActions": false,
-  "formatBlobCacheDuration": 900000000000
-}
-`
-
 	kopiaRunScript := `
 #! /bin/bash
 
-cp /tmp/repo.config /tmp/repo.config.backup
 rm -rf /tmp/repo
 rm -rf /tmp/cache
 
-kopia repository create filesystem --path="/tmp/repo" -c -p kopia --cache-directory="/tmp/cache" --no-check-for-updates
+kopia repository create filesystem --path="/tmp/repo" -c -p kopiapwd --cache-directory="/tmp/cache" --no-check-for-updates --override-hostname=localhost --override-username=kopia
 
-kopia --config-file="/tmp/repo.config" snapshot create -p kopia $(pwd) --start-time="2025-05-01 15:20:01 CET" --end-time="2025-05-01 16:10:02 CET"
+kopia --config-file="/tmp/repo.config" repository connect filesystem --path="/tmp/repo" -p kopiapwd --cache-directory="/tmp/cache" --no-check-for-updates
 
-kopia --config-file="/tmp/repo.config" server start -p kopia \
+kopia --config-file="/tmp/repo.config" snapshot create -p kopiapwd $(pwd) --start-time="2025-05-01 15:20:01 CET" --end-time="2025-05-01 16:10:02 CET"
+
+kopia --config-file="/tmp/repo.config" server user add kopia@localhost --user-password=kopiapwd -p kopiapwd
+
+kopia --config-file="/tmp/repo.config" server start -p kopiapwd \
+  --address="http://0.0.0.0:51515" \
+  --file-log-level=debug \
   --server-username=kopia \
-  --server-password=Kopia \
+  --server-password=kopiapwd \
   --server-control-username=kopia \
   --server-control-password=Kopia \
   --tls-generate-cert \
   --tls-cert-file "/tmp/my.cert" \
   --tls-key-file "/tmp/my.key"
 `
-
-	err := os.WriteFile("/tmp/repo.config", []byte(repositoryConfigContents), 0600)
-	assert.NoError(t, err, "Failed to write /tmp/repo.config")
 
 	nw, err := network.New(ctx)
 	assert.NoError(t, err, "Failed to create new network")
@@ -103,11 +82,6 @@ kopia --config-file="/tmp/repo.config" server start -p kopia \
 			Reader:            strings.NewReader(kopiaRunScript),
 			ContainerFilePath: "/tmp/run.sh",
 			FileMode:          0o755,
-		}),
-		testcontainers.WithFiles(testcontainers.ContainerFile{
-			Reader:            strings.NewReader(repositoryConfigContents),
-			ContainerFilePath: "/tmp/repo.config",
-			FileMode:          0o644,
 		}),
 		testcontainers.WithTmpfs(map[string]string{
 			"/tmp": "rw",
@@ -122,7 +96,6 @@ kopia --config-file="/tmp/repo.config" server start -p kopia \
 	)
 	if err != nil {
 		assert.NoError(t, nw.Remove(ctx), "Failed to remove network")
-		assert.NoError(t, os.Remove("/tmp/repo.config"), "Failed to remove file /tmp/repo.config")
 		assert.NoError(t, err, "Something went wrong when creating a kopia server")
 		return nil, "", "", ""
 	}
@@ -176,9 +149,7 @@ kopia --config-file="/tmp/repo.config" server start -p kopia \
 		)})
 		ctr.Terminate(ctx)
 		assert.NoError(t, nw.Remove(ctx), "Failed to remove network")
-		assert.NoError(t, os.Remove("/tmp/repo.config"), "Failed to remove file /tmp/repo.config")
 	}
-
 	return cleanup, fingerprint, ip, port
 }
 
@@ -291,12 +262,13 @@ func TestKopiaClient_Connect(t *testing.T) {
 		},
 	}
 
+	modconfig.Cfg.LogLevel = "debug"
 	modconfig.Cfg.Kopia.APIServer.RepositoryURL = fmt.Sprintf("https://%s:%s", ip, port.Port())
 	modconfig.Cfg.Kopia.ConfigFile = "/tmp/repo2.config"
 	modconfig.Cfg.Kopia.ConnectWithConfigFile = false
-	modconfig.Cfg.Kopia.Password = "Kopia"
+	modconfig.Cfg.Kopia.Password = "kopiapwd"
 	modconfig.Cfg.Kopia.APIServer.Username = "kopia"
-	modconfig.Cfg.Kopia.APIServer.Hostname = "127.0.0.1"
+	modconfig.Cfg.Kopia.APIServer.Hostname = "localhost"
 	modconfig.Cfg.Kopia.APIServer.Fingerprint = fingerprint
 
 	for _, tt := range tests {
@@ -310,7 +282,8 @@ func TestKopiaClient_Connect(t *testing.T) {
 				Metrics:     tt.fields.Metrics,
 			}
 
-			k.Connect()
+			err := k.Connect()
+			assert.NoError(t, err, "Failed to connect")
 			assert.True(t, k.IsConnected, "After connection, isConnect should be true; found false")
 		})
 	}
