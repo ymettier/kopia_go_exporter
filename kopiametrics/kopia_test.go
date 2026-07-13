@@ -569,6 +569,84 @@ func TestConnect_OpenFails(t *testing.T) {
 	assert.False(t, k2.IsConnected)
 }
 
+func TestRunOnce_ConnectWithConfigFile(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	configFile, _, password := setupTestRepo(t)
+
+	origCfg := config.Cfg
+	t.Cleanup(func() { config.Cfg = origCfg })
+
+	config.Cfg = config.Config{
+		Kopia: config.KopiaConfig{
+			ConfigFile:            configFile,
+			ConnectWithConfigFile: true,
+			Password:              password,
+			Retentions:            []string{},
+		},
+	}
+	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+
+	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	k := NewKopiaClient()
+	k.Ctx = context.Background()
+	reg := prometheus.NewRegistry()
+	k.RegisterKopiaMetrics(reg)
+
+	require.False(t, k.IsConnected, "IsConnected should start false")
+	require.NoError(t, k.RunOnce(), "RunOnce should succeed via ConnectWithConfigFile path")
+	assert.True(t, k.IsConnected, "RunOnce should have connected the client")
+
+	families, err := reg.Gather()
+	require.NoError(t, err)
+	require.NotEmpty(t, families, "metrics should be set after RunOnce")
+}
+
+func TestRunOnce_ConnectsAutomatically(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	cleanup, fingerprint, ip, port := setupTestKopia(t)
+	defer cleanup()
+
+	configFile := filepath.Join(t.TempDir(), "repo.config")
+
+	origCfg := config.Cfg
+	t.Cleanup(func() { config.Cfg = origCfg })
+
+	config.Cfg = config.Config{
+		Kopia: config.KopiaConfig{
+			ConfigFile:            configFile,
+			ConnectWithConfigFile: false,
+			Password:              "kopiapwd",
+			Retentions:            []string{},
+			APIServer: config.APIServerConfig{
+				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
+				Fingerprint:   fingerprint,
+				Hostname:      "localhost",
+				Username:      "kopia",
+			},
+		},
+	}
+	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+
+	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	k := NewKopiaClient()
+	k.Ctx = context.Background()
+	reg := prometheus.NewRegistry()
+	k.RegisterKopiaMetrics(reg)
+
+	require.False(t, k.IsConnected, "IsConnected should start false")
+	require.NoError(t, k.RunOnce(), "RunOnce should succeed with auto-connect")
+	assert.True(t, k.IsConnected, "RunOnce should have connected the client")
+	require.NotNil(t, k.Repo, "Repo should be set after auto-connect")
+}
+
 // setupTestRepo creates a local Kopia filesystem repository and a separate
 // data directory with a known structure (1 subdir, 3 non-empty files), then
 // takes a snapshot of the data directory with explicit start/end times. It
