@@ -9,23 +9,19 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"io"
 	"log/slog"
+	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/docker/go-connections/nat"
 	"github.com/kopia/kopia/repo"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/network"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 func hashSHA256(pemContent []byte) (string, error) {
@@ -43,91 +39,107 @@ func hashSHA256(pemContent []byte) (string, error) {
 	return fmt.Sprintf("%x", fingerprint), nil
 }
 
-func setupTestKopia(t *testing.T) (cleanup func(), fingerprint, ip string, port nat.Port) {
+// setupTestKopia starts a real Kopia API server on the local machine using the
+// downloaded kopia test binary (see kopia_tests_helpers_test.go). It creates a
+// filesystem repository, takes a snapshot, adds a server user, and starts the
+// server listening on 127.0.0.1:51515 with a freshly generated TLS certificate.
+// It returns a cleanup function that shuts the server down, together with the
+// server certificate fingerprint, the bind IP and the listening port.
+//
+// No container runtime (Docker/testcontainers) is used; the server runs as a
+// local subprocess so the tests can run anywhere the binary can be executed.
+func setupTestKopia(t *testing.T) (cleanup func(), fingerprint, ip, port string) {
 	t.Helper()
 	ctx := context.Background()
 
-	kopiaRunScript := `#!/bin/bash
-set -e
-
-rm -rf /tmp/repo /tmp/cache
-
-kopia repository create filesystem --path="/tmp/repo" -c -p kopiapwd \
-  --cache-directory="/tmp/cache" --no-check-for-updates \
-  --override-hostname=localhost --override-username=kopia
-
-kopia --config-file="/tmp/repo.config" repository connect filesystem \
-  --path="/tmp/repo" -p kopiapwd --cache-directory="/tmp/cache" --no-check-for-updates
-
-kopia --config-file="/tmp/repo.config" snapshot create -p kopiapwd $(pwd) \
-  --start-time="2025-05-01 15:20:01 CET" --end-time="2025-05-01 16:10:02 CET"
-
-kopia --config-file="/tmp/repo.config" server user add kopia@localhost \
-  --user-password=kopiapwd -p kopiapwd
-
-kopia --config-file="/tmp/repo.config" server start -p kopiapwd \
-  --address="http://0.0.0.0:51515" \
-  --file-log-level=debug \
-  --server-username=kopia \
-  --server-password=kopiapwd \
-  --server-control-username=kopia \
-  --server-control-password=Kopia \
-  --tls-generate-cert \
-  --tls-cert-file "/tmp/my.cert" \
-  --tls-key-file "/tmp/my.key"
-`
-
-	nw, err := network.New(ctx)
-	require.NoError(t, err, "Failed to create new network")
-
-	ctr, err := testcontainers.Run(
-		ctx,
-		"kopia/kopia:latest",
-		network.WithNetwork([]string{"kopia"}, nw),
-		testcontainers.WithFiles(testcontainers.ContainerFile{
-			Reader:            strings.NewReader(kopiaRunScript),
-			ContainerFilePath: "/tmp/run.sh",
-			FileMode:          0o755,
-		}),
-		testcontainers.WithTmpfs(map[string]string{
-			"/tmp": "rw",
-		}),
-		testcontainers.WithExposedPorts("51515/tcp"),
-		testcontainers.WithEntrypoint("/usr/bin/bash"),
-		testcontainers.WithCmd("/tmp/run.sh"),
-		testcontainers.WithWaitStrategy(wait.ForAll(
-			wait.ForListeningPort("51515/tcp").WithStartupTimeout(30*time.Second),
-			wait.ForFile("/tmp/my.cert").WithPollInterval(500*time.Millisecond).WithStartupTimeout(5*time.Second),
-		)),
-	)
-	if err != nil {
-		assert.NoError(t, nw.Remove(ctx), "Failed to remove network")
-		t.Fatalf("Failed to start Kopia server: %v", err)
+	bin := KopiaTestBinaryPath()
+	if _, err := os.Stat(bin); err != nil {
+		require.NoError(t, downloadKopiaBinary(t), "failed to obtain kopia test binary")
 	}
+
+	bin, err := filepath.Abs(bin)
+	require.NoError(t, err, "failed to resolve kopia binary path")
+
+	baseDir := t.TempDir()
+	repoPath := filepath.Join(baseDir, "repo")
+	cachePath := filepath.Join(baseDir, "cache")
+	configFile := filepath.Join(baseDir, "repo.config")
+	certFile := filepath.Join(baseDir, "my.cert")
+	keyFile := filepath.Join(baseDir, "my.key")
+
+	port = "51515"
+	ip = "127.0.0.1"
+
+	runKopia := func(name string, args ...string) {
+		cmd := exec.CommandContext(ctx, bin, args...)
+		cmd.Dir = baseDir
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "%s failed: %s", name, string(out))
+	}
+
+	runKopia("repository create", "repository", "create", "filesystem",
+		"--path="+repoPath, "-c", "-p", "kopiapwd",
+		"--cache-directory="+cachePath, "--no-check-for-updates",
+		"--override-hostname=localhost", "--override-username=kopia")
+
+	runKopia("repository connect", "--config-file="+configFile, "repository", "connect", "filesystem",
+		"--path="+repoPath, "-p", "kopiapwd", "--cache-directory="+cachePath, "--no-check-for-updates")
+
+	runKopia("snapshot create", "--config-file="+configFile, "snapshot", "create", "-p", "kopiapwd", baseDir,
+		"--start-time=2025-05-01 15:20:01 CET", "--end-time=2025-05-01 16:10:02 CET")
+
+	runKopia("server user add", "--config-file="+configFile, "server", "user", "add", "kopia@localhost",
+		"--user-password=kopiapwd", "-p", "kopiapwd")
+
+	srv := exec.CommandContext(ctx, bin,
+		"--config-file="+configFile, "server", "start", "-p", "kopiapwd",
+		"--address=http://0.0.0.0:"+port,
+		"--file-log-level=debug",
+		"--server-username=kopia",
+		"--server-password=kopiapwd",
+		"--server-control-username=kopia",
+		"--server-control-password=Kopia",
+		"--tls-generate-cert",
+		"--tls-cert-file", certFile,
+		"--tls-key-file", keyFile,
+	)
+	srv.Stdout = os.Stdout
+	srv.Stderr = os.Stderr
+	require.NoError(t, srv.Start(), "failed to start kopia server")
+
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(certFile)
+		return err == nil
+	}, 10*time.Second, 200*time.Millisecond, "kopia server did not generate a TLS certificate")
+
+	require.Eventually(t, func() bool {
+		conn, err := net.Dial("tcp", net.JoinHostPort(ip, port))
+		if err != nil {
+			return false
+		}
+		_ = conn.Close()
+		return true
+	}, 30*time.Second, 500*time.Millisecond, "kopia server is not listening on %s:%s", ip, port)
+
+	certContents, err := os.ReadFile(certFile)
+	require.NoError(t, err, "failed to read certificate")
+	fingerprint, err = hashSHA256(certContents)
+	require.NoError(t, err, "failed to extract fingerprint from certificate")
 
 	cleanup = func() {
-		_, _, _ = ctr.Exec(ctx, []string{"bash", "-c", fmt.Sprintf(
-			"kopia server shutdown --server-cert-fingerprint=%s --address=https://%s:%s --server-control-username=kopia --server-control-password=Kopia",
-			fingerprint, ip, port.Port(),
-		)})
-		_ = ctr.Terminate(ctx)
-		assert.NoError(t, nw.Remove(ctx), "Failed to remove network")
+		shutdown := exec.CommandContext(context.Background(), bin, "server", "shutdown",
+			"--server-cert-fingerprint="+fingerprint,
+			"--address=https://"+net.JoinHostPort(ip, port),
+			"--server-control-username=kopia",
+			"--server-control-password=Kopia",
+		)
+		_ = shutdown.Run()
+
+		if srv.Process != nil {
+			_ = srv.Process.Kill()
+			_, _ = srv.Process.Wait()
+		}
 	}
-
-	certFile, err := ctr.CopyFileFromContainer(ctx, "/tmp/my.cert")
-	require.NoError(t, err, "Failed to read /tmp/my.cert from container")
-
-	certContents, err := io.ReadAll(certFile)
-	require.NoError(t, err, "Failed to read certificate contents")
-
-	fingerprint, err = hashSHA256(certContents)
-	require.NoError(t, err, "Failed to extract fingerprint from certificate")
-
-	ip, err = ctr.Host(ctx)
-	require.NoError(t, err, "Failed to extract host ip")
-
-	port, err = ctr.MappedPort(ctx, "51515/tcp")
-	require.NoError(t, err, "Failed to extract port")
 
 	return cleanup, fingerprint, ip, port
 }
@@ -185,7 +197,7 @@ func TestKopiaClient_Connect(t *testing.T) {
 			},
 		},
 		ServerInfo: repo.APIServerInfo{
-			BaseURL:                             fmt.Sprintf("https://%s:%s", ip, port.Port()),
+			BaseURL:                             fmt.Sprintf("https://%s:%s", ip, port),
 			TrustedServerCertificateFingerprint: fingerprint,
 		},
 	}
@@ -198,7 +210,7 @@ func TestKopiaClient_Connect(t *testing.T) {
 		},
 	}
 	serverInfo := repo.APIServerInfo{
-		BaseURL:                             fmt.Sprintf("https://%s:%s", ip, port.Port()),
+		BaseURL:                             fmt.Sprintf("https://%s:%s", ip, port),
 		TrustedServerCertificateFingerprint: fingerprint,
 	}
 
