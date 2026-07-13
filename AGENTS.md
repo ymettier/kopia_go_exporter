@@ -12,7 +12,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - **CLI parsing**: `github.com/spf13/pflag`
 - **Metrics**: `github.com/prometheus/client_golang`
 - **Kopia client**: `github.com/kopia/kopia` (repo, snapshot, policy APIs)
-- **Logging**: `github.com/rs/zerolog`
+- **Logging**: `log/slog` (stdlib)
 - **Testing**: `testing` + `github.com/stretchr/testify/assert`
 - **Integration testing**: `github.com/testcontainers/testcontainers-go` (Docker-based Kopia server)
 - **Build**: CGO_ENABLED=0, multi-stage Dockerfile (distroless runtime)
@@ -22,7 +22,8 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ```
 .
 ├── main.go                  # Entry point, main loop with periodic RunOnce
-├── logger.go                # Zerolog setup (console writer, level from config)
+├── logger/                  # Structured logging setup (slog, lumberjack rotation)
+│   └── logger.go
 ├── modconfig/
 │   ├── config.go            # CLI flag parsing, Koanf config loading, env vars, validation
 │   └── config_test.go
@@ -70,7 +71,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ## Development Guidelines
 
 ### Code Style
-- Use zerolog structured logging instead of fmt.Printf for application output
+- Use structured logging (slog) instead of fmt.Printf for application output
 - All public functions should have documentation comments
 - Keep functions focused and under 50 lines when possible
 - Use meaningful variable names
@@ -95,7 +96,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 
 ### Patterns
 - Constructors: `New()` returns a pointer for larger structs (e.g., `*KopiaClient`, `*Exporter`).
-- Logger: zerolog instance passed via package-level `var Logger zerolog.Logger`.
+- Logger: slog instance passed via package-level `var Logger *slog.Logger`.
 - Context: pass `context.Context` to operations that may need cancellation.
 - Global config: `modconfig.Cfg` accessed directly from packages.
 
@@ -115,17 +116,18 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Metrics namespace prefix is configurable via `exporter.metrics.prefix`
 
 ### Error Handling
-- Use zerolog for error logging with context
+- Use slog for error logging with context
 - Return errors explicitly, don't panic
 - Log errors with relevant context (config file paths, URLs)
 - Gracefully handle missing or corrupted configuration
 - Configuration errors cause immediate exit with `os.Exit(1)`
 
-### Logging (logger.go)
-- Structured logging using zerolog with console writer
-- Configurable levels: trace, debug, info, warn, error, fatal, panic
-- Default level from config (`log_level` field)
-- Timestamps included via `.With().Timestamp()`
+### Logging (logger/logger.go)
+- Structured logging using log/slog with text or JSON handler
+- File rotation via lumberjack.v2
+- Configurable levels: INFO, DEBUG, ERROR, WARN
+- JSON and text output formats
+- Configuration through config.yaml
 
 ### Testing Conventions
 - Write tests alongside features in `*_test.go` files
@@ -170,7 +172,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - `github.com/knadh/koanf/v2` - Configuration management
 - `github.com/prometheus/client_golang` - Prometheus metrics
 - `github.com/kopia/kopia` - Kopia backup repository client
-- `github.com/rs/zerolog` - Structured logging
+- `gopkg.in/natefinch/lumberjack.v2` - Log rotation
 - `github.com/spf13/pflag` - CLI flag parsing
 - `github.com/stretchr/testify` - Testing utilities
 - `github.com/testcontainers/testcontainers-go` - Integration test containers

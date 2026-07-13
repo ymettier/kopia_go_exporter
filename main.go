@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"kopia-go-exporter/exporter"
 	"kopia-go-exporter/kopiametrics"
+	"kopia-go-exporter/logger"
 	"kopia-go-exporter/modconfig"
 	"os"
 	"os/signal"
@@ -19,14 +20,17 @@ func main() {
 	modconfig.LoadConfig(version)
 	modconfig.CheckConfig()
 
-	logger := new_logger()
-	logger.Debug().Msg("Debug logging enabled")
+	logger.Reset(&logger.LogOptions{
+		Level: modconfig.Cfg.LogLevel,
+	})
+	l := logger.Get()
+	l.Debug("Debug logging enabled")
 
-	exporter.Logger = logger
+	exporter.Logger = l
 	ex := exporter.NewExporter()
 
 	k := kopiametrics.NewKopiaClient()
-	kopiametrics.Logger = logger
+	kopiametrics.Logger = l
 	k.RegisterKopiaMetrics(ex.Reg)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -39,7 +43,7 @@ func main() {
 
 	go func() {
 		<-sigChan
-		logger.Info().Msg("Caught interrupt signal")
+		l.Info("Caught interrupt signal")
 		cancel()
 	}()
 
@@ -53,10 +57,10 @@ func main() {
 			return
 		default:
 			if sleepInterval == 0 {
-				logger.Debug().Msg("Start a new iteration of main loop...")
+				l.Debug("Start a new iteration of main loop...")
 				k.RunOnce()
 				sleepInterval = modconfig.Cfg.Exporter.Interval
-				logger.Debug().Int("Duration (sec)", modconfig.Cfg.Exporter.Interval).Msg("Now sleeping")
+				l.Debug("Now sleeping", "Duration (sec)", modconfig.Cfg.Exporter.Interval)
 			} else {
 				sleepInterval--
 			}

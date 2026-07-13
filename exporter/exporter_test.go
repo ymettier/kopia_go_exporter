@@ -1,6 +1,7 @@
 package exporter
 
 import (
+	"log/slog"
 	"net/http"
 	"os"
 	"reflect"
@@ -8,7 +9,6 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rs/zerolog"
 )
 
 func TestNewExporter(t *testing.T) {
@@ -124,8 +124,7 @@ func TestExporter_Run(t *testing.T) {
 			Port: 12345,
 			Reg:  prometheus.NewRegistry(),
 		}
-		consoleWriter := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "2006-01-02T15:04:05Z07:00"}
-		Logger = zerolog.New(consoleWriter).With().Timestamp().Logger()
+		Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 		go ex.Run()
 

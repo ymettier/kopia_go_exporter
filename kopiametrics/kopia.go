@@ -3,6 +3,7 @@ package kopiametrics
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"kopia-go-exporter/modconfig"
 	"slices"
 
@@ -11,10 +12,9 @@ import (
 	"github.com/kopia/kopia/snapshot"
 	"github.com/kopia/kopia/snapshot/policy"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rs/zerolog"
 )
 
-var Logger zerolog.Logger
+var Logger *slog.Logger
 
 type KopiaMetrics struct {
 	TotalSize       *prometheus.GaugeVec
@@ -123,12 +123,12 @@ func (k *KopiaClient) GenerateConfigFile() error {
 	}
 
 	// Connect to Kopia Repository API Server
-	Logger.Debug().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Str("URL", modconfig.Cfg.Kopia.APIServer.RepositoryURL).Msg("Generate ConfigFile and try to connect to server")
+	Logger.Debug("Generate ConfigFile and try to connect to server", "ConfigFile", modconfig.Cfg.Kopia.ConfigFile, "URL", modconfig.Cfg.Kopia.APIServer.RepositoryURL)
 	if err := repo.ConnectAPIServer(k.Ctx, modconfig.Cfg.Kopia.ConfigFile, &serverInfo, modconfig.Cfg.Kopia.Password, &opts); err != nil {
-		Logger.Error().Err(err).Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Msg("Failed to generate configFile")
+		Logger.Error("Failed to generate configFile", "err", err, "ConfigFile", modconfig.Cfg.Kopia.ConfigFile)
 		return err
 	}
-	Logger.Debug().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Msg("Successfully generated configFile")
+	Logger.Debug("Successfully generated configFile", "ConfigFile", modconfig.Cfg.Kopia.ConfigFile)
 	return nil
 }
 
@@ -137,15 +137,15 @@ func (k *KopiaClient) Connect() error {
 
 	if !modconfig.Cfg.Kopia.ConnectWithConfigFile {
 		if err := k.GenerateConfigFile(); err != nil {
-			Logger.Error().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Err(err).Msg("Failed to launch repository server")
+			Logger.Error("Failed to launch repository server", "err", err, "ConfigFile", modconfig.Cfg.Kopia.ConfigFile)
 			k.IsConnected = false
 			return err
 		}
 	}
-	Logger.Debug().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Msg("Try to connect to server")
+	Logger.Debug("Try to connect to server", "ConfigFile", modconfig.Cfg.Kopia.ConfigFile)
 	k.Repo, err = repo.Open(k.Ctx, modconfig.Cfg.Kopia.ConfigFile, modconfig.Cfg.Kopia.Password, nil)
 	if err != nil {
-		Logger.Error().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Err(err).Msg("Failed to open repository")
+		Logger.Error("Failed to open repository", "err", err, "ConfigFile", modconfig.Cfg.Kopia.ConfigFile)
 		k.IsConnected = false
 		return err
 	}
@@ -165,13 +165,13 @@ func (k *KopiaClient) RunOnce() error {
 	// List all snapshot manifests (nil -> all sources)
 	manifestsIds, err := snapshot.ListSnapshotManifests(k.Ctx, k.Repo, nil, nil)
 	if err != nil {
-		Logger.Error().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Err(err).Msg("failed to list snapshot manifests")
+		Logger.Error("failed to list snapshot manifests", "err", err, "ConfigFile", modconfig.Cfg.Kopia.ConfigFile)
 		return err
 	}
 
 	manifests, err := snapshot.LoadSnapshots(k.Ctx, k.Repo, manifestsIds)
 	if err != nil {
-		Logger.Error().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Err(err).Msg("failed to snapshot manifests")
+		Logger.Error("failed to snapshot manifests", "err", err, "ConfigFile", modconfig.Cfg.Kopia.ConfigFile)
 		return err
 	}
 
@@ -182,7 +182,7 @@ func (k *KopiaClient) RunOnce() error {
 		// compute retention reason
 		pol, _, _, err := policy.GetEffectivePolicy(k.Ctx, k.Repo, src)
 		if err != nil {
-			Logger.Error().Str("Source", fmt.Sprintf("%v", src)).Msg("Unable to determine effective policy")
+			Logger.Error("Unable to determine effective policy", "Source", fmt.Sprintf("%v", src))
 		} else {
 			pol.RetentionPolicy.ComputeRetentionReasons(snapshotGroup)
 		}
@@ -209,7 +209,7 @@ func (k *KopiaClient) RunOnce() error {
 
 func (k *KopiaClient) Disconnect() {
 	repo.Disconnect(k.Ctx, modconfig.Cfg.Kopia.ConfigFile)
-	Logger.Debug().Str("ConfigFile", modconfig.Cfg.Kopia.ConfigFile).Msg("Disconnected from server")
+	Logger.Debug("Disconnected from server", "ConfigFile", modconfig.Cfg.Kopia.ConfigFile)
 	k.IsConnected = false
 }
 
