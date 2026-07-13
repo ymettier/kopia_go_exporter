@@ -54,15 +54,8 @@ func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 }
 
 func (ex Exporter) Run() {
-	// Start HTTP server exposing /metrics endpoint
 	http.Handle("/metrics", promhttp.HandlerFor(ex.Reg, promhttp.HandlerOpts{}))
-	http.ListenAndServe(fmt.Sprintf(":%d", ex.Port), nil)
-	Logger.Debug("Started http server", "port", ex.Port)
-}
-
-func main() {
-	exporter := NewExporter()
-
-	go exporter.Run()
-	select {} // block forever to keep main alive
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", ex.Port), nil); err != nil {
+		Logger.Error("HTTP server error", "port", ex.Port, "err", err)
+	}
 }

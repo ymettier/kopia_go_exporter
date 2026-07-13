@@ -305,11 +305,12 @@ func GetVersionFull() (version, revision, time string, dirty, ok bool) {
 
 	var modified string
 	for _, setting := range buildInfo.Settings {
-		if setting.Key == "vcs.revision" {
+		switch setting.Key {
+		case "vcs.revision":
 			revision = setting.Value
-		} else if setting.Key == "vcs.modified" {
+		case "vcs.modified":
 			modified = setting.Value
-		} else if setting.Key == "vcs.time" {
+		case "vcs.time":
 			time = setting.Value
 		}
 	}

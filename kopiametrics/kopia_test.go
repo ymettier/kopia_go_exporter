@@ -106,11 +106,11 @@ kopia --config-file="/tmp/repo.config" server start -p kopiapwd \
 	}
 
 	cleanup = func() {
-		ctr.Exec(ctx, []string{"bash", "-c", fmt.Sprintf(
+		_, _, _ = ctr.Exec(ctx, []string{"bash", "-c", fmt.Sprintf(
 			"kopia server shutdown --server-cert-fingerprint=%s --address=https://%s:%s --server-control-username=kopia --server-control-password=Kopia",
 			fingerprint, ip, port.Port(),
 		)})
-		ctr.Terminate(ctx)
+		_ = ctr.Terminate(ctx)
 		assert.NoError(t, nw.Remove(ctx), "Failed to remove network")
 	}
 

@@ -71,7 +71,9 @@ func main() {
 		default:
 			if sleepInterval == 0 {
 				l.Debug("Start a new iteration of main loop...")
-				k.RunOnce()
+				if err := k.RunOnce(); err != nil {
+					l.Error("RunOnce failed", "err", err)
+				}
 				sleepInterval = config.Cfg.Exporter.Interval
 				l.Debug("Now sleeping", "Duration (sec)", config.Cfg.Exporter.Interval)
 			} else {

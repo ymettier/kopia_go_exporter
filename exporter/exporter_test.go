@@ -135,23 +135,10 @@ func TestExporter_Run(t *testing.T) {
 		if err != nil {
 			t.Fatalf("could not connect to exporter: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("unexpected status code: got %v, want %v", resp.StatusCode, http.StatusOK)
 		}
 	})
-}
-
-func Test_main(t *testing.T) {
-	tests := []struct {
-		name string
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			main()
-		})
-	}
 }

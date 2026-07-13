@@ -154,7 +154,7 @@ func (k *KopiaClient) Connect() error {
 }
 
 func (k *KopiaClient) RunOnce() error {
-	keepAllRetentions := (0 == len(config.Cfg.Kopia.Retentions))
+	keepAllRetentions := len(config.Cfg.Kopia.Retentions) == 0
 	if !k.IsConnected {
 		if err := k.Connect(); err != nil {
 			return err
@@ -208,12 +208,9 @@ func (k *KopiaClient) RunOnce() error {
 }
 
 func (k *KopiaClient) Disconnect() {
-	repo.Disconnect(k.Ctx, config.Cfg.Kopia.ConfigFile)
+	if err := repo.Disconnect(k.Ctx, config.Cfg.Kopia.ConfigFile); err != nil {
+		Logger.Error("Failed to disconnect from Kopia repository", "ConfigFile", config.Cfg.Kopia.ConfigFile, "err", err)
+	}
 	Logger.Debug("Disconnected from server", "ConfigFile", config.Cfg.Kopia.ConfigFile)
 	k.IsConnected = false
-}
-
-func main() {
-	k := NewKopiaClient()
-	k.RunOnce()
 }
