@@ -222,3 +222,45 @@ func TestKopiaClient_Disconnect(t *testing.T) {
 	k.Disconnect()
 	assert.False(t, k.IsConnected)
 }
+
+// TestKopiaBinaryPresent verifies that the kopia test executable already exists
+// in the kopiametrics/ directory. When it is missing, the test downloads the
+// configured kopia release instead of failing the suite, so the binary is only
+// fetched once and reused on later runs.
+func TestKopiaBinaryPresent(t *testing.T) {
+	if _, err := os.Stat(kopiaTestBinaryPath); err == nil {
+		t.Logf("kopia test binary already present at %s", kopiaTestBinaryPath)
+		return
+	}
+
+	t.Logf("kopia test binary not present at %s, downloading %s", kopiaTestBinaryPath, kopiaTestVersion)
+	require.NoError(t, downloadKopiaBinary(t), "failed to download kopia binary")
+}
+
+// TestKopiaVersion ensures the downloaded kopia executable runs at the expected
+// version. If the version does not match (for example an outdated binary was
+// left behind), the test re-downloads the configured kopia release rather than
+// failing outright. The test only fails when the binary cannot be obtained or
+// is still incorrect after the download.
+func TestKopiaVersion(t *testing.T) {
+	if _, err := os.Stat(kopiaTestBinaryPath); err != nil {
+		t.Logf("kopia test binary missing at %s, downloading %s", kopiaTestBinaryPath, kopiaTestVersion)
+		require.NoError(t, downloadKopiaBinary(t), "failed to download kopia binary")
+	}
+
+	want := strings.TrimPrefix(kopiaTestVersion, "v")
+
+	got, err := kopiaBinaryVersion(t, kopiaTestBinaryPath)
+	require.NoError(t, err, "failed to read kopia version")
+
+	if got != want {
+		t.Logf("kopia version mismatch: got %q want %q, re-downloading %s", got, want, kopiaTestVersion)
+		require.NoError(t, downloadKopiaBinary(t), "failed to re-download kopia binary")
+
+		got, err = kopiaBinaryVersion(t, kopiaTestBinaryPath)
+		require.NoError(t, err, "failed to read kopia version after re-download")
+		require.Equal(t, want, got, "kopia version still incorrect after re-download")
+	}
+
+	t.Logf("kopia test binary is at expected version %s", kopiaTestVersion)
+}
