@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +38,30 @@ func hashSHA256(pemContent []byte) (string, error) {
 
 	fingerprint := sha256.Sum256(cert.Raw)
 	return fmt.Sprintf("%x", fingerprint), nil
+}
+
+// freeTestPort returns an available TCP port on the loopback interface. It asks
+// the operating system to assign a free port (by binding to :0), confirms the
+// chosen port is not already in use, and returns it as a string. There is a
+// small window between releasing the probe listener and the test binding it,
+// but this avoids the hardcoded port colliding with other local services.
+func freeTestPort(t *testing.T) string {
+	t.Helper()
+
+	l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", "0"))
+	require.NoError(t, err, "failed to allocate a free port")
+
+	port := strconv.Itoa(l.Addr().(*net.TCPAddr).Port)
+
+	require.NoError(t, l.Close(), "failed to release the probe listener")
+
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", port), 200*time.Millisecond)
+	if err == nil {
+		_ = conn.Close()
+		t.Fatalf("expected port %s to be free but something is already listening", port)
+	}
+
+	return port
 }
 
 // setupTestKopia starts a real Kopia API server on the local machine using the
@@ -67,8 +92,8 @@ func setupTestKopia(t *testing.T) (cleanup func(), fingerprint, ip, port string)
 	certFile := filepath.Join(baseDir, "my.cert")
 	keyFile := filepath.Join(baseDir, "my.key")
 
-	port = "51515"
 	ip = "127.0.0.1"
+	port = freeTestPort(t)
 
 	runKopia := func(name string, args ...string) {
 		cmd := exec.CommandContext(ctx, bin, args...)
