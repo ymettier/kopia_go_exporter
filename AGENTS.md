@@ -14,7 +14,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - **Kopia client**: `github.com/kopia/kopia` (repo, snapshot, policy APIs)
 - **Logging**: `log/slog` (stdlib)
 - **Testing**: `testing` + `github.com/stretchr/testify/assert`
-- **Integration testing**: `github.com/testcontainers/testcontainers-go` (Docker-based Kopia server)
+- **Integration testing**: a real Kopia API server started locally via the downloaded `kopia_test` binary
 - **Test kopia binary version**: Version is `v0.23.1`.
 - **Test kopia binary**: `kopiametrics/kopia_tests_helpers_test.go` downloads the kopia CLI (`kopia_test`) directly from GitHub releases so tests do not depend on a system-installed `kopia`. The binary is kept in `kopiametrics/test_assets/` between runs (name contains `test`). The version is **hardcoded** in `kopia_tests_helpers_test.go` (constant `kopiaTestVersion`) and must stay in sync with this document. The host OS/arch is detected at runtime to pick the correct release asset.
 - **Build**: CGO_ENABLED=0, multi-stage Dockerfile (distroless runtime)
@@ -34,7 +34,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 │   └── exporter_test.go
 ├── kopiametrics/
 │   ├── kopia.go                  # Kopia API client, snapshot listing, metric registration
-│   ├── kopia_test.go             # Integration tests using testcontainers
+│   ├── kopia_test.go             # Integration tests
 │   ├── kopia_tests_helpers_test.go  # Helpers to download/verify the kopia CLI binary for tests
 │   └── test_assets/
 │       └── kopia_test           # Downloaded kopia executable.
@@ -140,7 +140,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ### Testing Conventions
 - Write tests alongside features in `*_test.go` files
 - Use testify assertions (`assert.NoError`, `assert.True`, `assert.Equal`)
-- Integration tests in `kopiametrics/kopia_test.go` use testcontainers to spin up a real Kopia server
+- Integration tests in `kopiametrics/kopia_test.go` start a real Kopia API server locally via the downloaded `kopia_test` binary
 - The downloaded kopia CLI binary is kept in `kopiametrics/test_assets/` between runs
 - Unused test data files must be removed
 - Table-driven tests with struct-based test cases
@@ -183,7 +183,6 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - `gopkg.in/natefinch/lumberjack.v2` - Log rotation
 - `github.com/spf13/pflag` - CLI flag parsing
 - `github.com/stretchr/testify` - Testing utilities
-- `github.com/testcontainers/testcontainers-go` - Integration test containers
 
 ## Commits
 - Never commit, never stage (`git add`), never run `git commit` — even if explicitly asked. Always suggest the command for the user to run.
