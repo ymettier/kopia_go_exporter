@@ -297,28 +297,33 @@ func New(version string, args []string) error {
 	return nil
 }
 
-func GetVersionFull() (version, revision, time string, dirty, ok bool) {
-	bInfo, bOk := readBuildInfo()
-	if !bOk {
-		return strings.TrimSpace(givenVersion), "", "", false, false
+type VersionInfo struct {
+	Version  string
+	Revision string
+	Time     string
+	Dirty    bool
+	GoVersion string
+}
+
+func GetVersionInfo() VersionInfo {
+	info := VersionInfo{Version: givenVersion}
+
+	bInfo, ok := readBuildInfo()
+	if !ok {
+		return info
 	}
 
-	var modified string
 	for _, setting := range bInfo.Settings {
 		switch setting.Key {
 		case "vcs.revision":
-			revision = setting.Value
-		case "vcs.modified":
-			modified = setting.Value
+			info.Revision = setting.Value
 		case "vcs.time":
-			time = setting.Value
+			info.Time = setting.Value
+		case "vcs.modified":
+			info.Dirty = setting.Value == "true"
 		}
 	}
 
-	dirty = false
-	if modified == "true" {
-		dirty = true
-	}
-
-	return strings.TrimSpace(givenVersion), revision, time, dirty, true
+	info.GoVersion = bInfo.GoVersion
+	return info
 }

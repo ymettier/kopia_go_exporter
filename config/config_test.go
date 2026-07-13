@@ -91,35 +91,17 @@ func TestParseFlags_CustomValues(t *testing.T) {
 	assert.Equal(t, "warn", flags.LogLevel)
 }
 
-func TestGetVersionFull(t *testing.T) {
+func TestGetVersionInfo(t *testing.T) {
 	givenVersion = "testVersion"
-	tests := []struct {
-		name        string
-		wantVersion string
-	}{
-		{
-			name:        "check VCS data",
-			wantVersion: givenVersion,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotVersion, _, _, _, gotOk := GetVersionFull()
-			if gotVersion != tt.wantVersion {
-				t.Errorf("GetVersionFull() gotVersion = %v, want %v", gotVersion, tt.wantVersion)
-			}
-			if !gotOk {
-				t.Errorf("GetVersionFull() ok should be true")
-			}
-		})
-	}
+	vi := GetVersionInfo()
+	assert.Equal(t, "testVersion", vi.Version)
+	assert.NotEmpty(t, vi.GoVersion)
 }
 
-func TestGetVersionFull_ReturnsVCSData(t *testing.T) {
+func TestGetVersionInfo_ReturnsVCSData(t *testing.T) {
 	givenVersion = "1.0.0"
-	version, _, _, _, ok := GetVersionFull()
-	assert.True(t, ok)
-	assert.Equal(t, "1.0.0", version)
+	vi := GetVersionInfo()
+	assert.Equal(t, "1.0.0", vi.Version)
 }
 
 func writeTestConfig(t *testing.T, content string) string {
@@ -580,7 +562,7 @@ func TestVersionInfo_WithVCSSettings(t *testing.T) {
 	assert.Contains(t, output, "go1.25.0")
 }
 
-func TestGetVersionFull_BuildInfoUnavailable(t *testing.T) {
+func TestGetVersionInfo_BuildInfoUnavailable(t *testing.T) {
 	origReadBuildInfo := readBuildInfo
 	defer func() { readBuildInfo = origReadBuildInfo }()
 
@@ -589,15 +571,14 @@ func TestGetVersionFull_BuildInfoUnavailable(t *testing.T) {
 		return nil, false
 	}
 
-	version, revision, vcsTime, dirty, ok := GetVersionFull()
-	assert.False(t, ok)
-	assert.Equal(t, "2.0.0", version)
-	assert.Empty(t, revision)
-	assert.Empty(t, vcsTime)
-	assert.False(t, dirty)
+	vi := GetVersionInfo()
+	assert.Equal(t, "2.0.0", vi.Version)
+	assert.Empty(t, vi.Revision)
+	assert.Empty(t, vi.Time)
+	assert.False(t, vi.Dirty)
 }
 
-func TestGetVersionFull_WithVCSSettings_Dirty(t *testing.T) {
+func TestGetVersionInfo_WithVCSSettings_Dirty(t *testing.T) {
 	origReadBuildInfo := readBuildInfo
 	defer func() { readBuildInfo = origReadBuildInfo }()
 
@@ -612,15 +593,14 @@ func TestGetVersionFull_WithVCSSettings_Dirty(t *testing.T) {
 		}, true
 	}
 
-	version, revision, vcsTime, dirty, ok := GetVersionFull()
-	assert.True(t, ok)
-	assert.Equal(t, "3.0.0", version)
-	assert.Equal(t, "deadbeef", revision)
-	assert.Equal(t, "2025-06-01T12:00:00Z", vcsTime)
-	assert.True(t, dirty)
+	vi := GetVersionInfo()
+	assert.Equal(t, "3.0.0", vi.Version)
+	assert.Equal(t, "deadbeef", vi.Revision)
+	assert.Equal(t, "2025-06-01T12:00:00Z", vi.Time)
+	assert.True(t, vi.Dirty)
 }
 
-func TestGetVersionFull_WithVCSSettings_Clean(t *testing.T) {
+func TestGetVersionInfo_WithVCSSettings_Clean(t *testing.T) {
 	origReadBuildInfo := readBuildInfo
 	defer func() { readBuildInfo = origReadBuildInfo }()
 
@@ -635,12 +615,11 @@ func TestGetVersionFull_WithVCSSettings_Clean(t *testing.T) {
 		}, true
 	}
 
-	version, revision, vcsTime, dirty, ok := GetVersionFull()
-	assert.True(t, ok)
-	assert.Equal(t, "4.0.0", version)
-	assert.Equal(t, "face0ff", revision)
-	assert.Equal(t, "2025-07-01T08:00:00Z", vcsTime)
-	assert.False(t, dirty)
+	vi := GetVersionInfo()
+	assert.Equal(t, "4.0.0", vi.Version)
+	assert.Equal(t, "face0ff", vi.Revision)
+	assert.Equal(t, "2025-07-01T08:00:00Z", vi.Time)
+	assert.False(t, vi.Dirty)
 }
 
 func TestReadKopiaConfig_InvalidRetentions(t *testing.T) {

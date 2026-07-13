@@ -26,11 +26,11 @@ func NewExporter() *Exporter {
 	ex.Reg.MustRegister(collectors.NewGoCollector())
 	ex.Reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
-	version, revision, time, _, ok := config.GetVersionFull()
-	if !ok {
-		Logger.Error("Failed to retrieve full version info; metric build_info will not be available", "version", version)
+	vi := config.GetVersionInfo()
+	if vi.Revision == "" {
+		Logger.Error("Failed to retrieve full version info; metric build_info will not be available", "version", vi.Version)
 	} else {
-		ex.SetBuildInfo(version, revision, time)
+		ex.SetBuildInfo(vi.Version, vi.Revision, vi.Time)
 	}
 
 	return ex
