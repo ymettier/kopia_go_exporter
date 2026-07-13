@@ -305,11 +305,12 @@ func TestKopiaVersion(t *testing.T) {
 	t.Logf("kopia test binary is at expected version %s", kopiaTestVersion)
 }
 
-// setupTestRepo creates a local Kopia filesystem repository, takes a snapshot
-// of the base directory with explicit start/end times, and returns the config
-// file path, the snapshot source directory, and the repository password. This
-// helper does NOT start a Kopia API server — it is intended for tests that
-// connect directly to the repository via the Go API.
+// setupTestRepo creates a local Kopia filesystem repository and a separate
+// data directory with a known structure (1 subdir, 3 non-empty files), then
+// takes a snapshot of the data directory with explicit start/end times. It
+// returns the config file path, the data directory path, and the repository
+// password. This helper does NOT start a Kopia API server — it is intended
+// for tests that connect directly to the repository via the Go API.
 func setupTestRepo(t *testing.T) (configFile, sourceDir, password string) {
 	t.Helper()
 	ctx := context.Background()
@@ -328,6 +329,15 @@ func setupTestRepo(t *testing.T) (configFile, sourceDir, password string) {
 	configFile = filepath.Join(baseDir, "repo.config")
 	password = "kopiapwd"
 
+	// Create a data directory with a known structure, separate from the repo.
+	sourceDir = t.TempDir()
+	subDir := filepath.Join(sourceDir, "subdir")
+	require.NoError(t, os.MkdirAll(subDir, 0o755))
+
+	for _, name := range []string{"file1.txt", "file2.txt", "file3.txt"} {
+		require.NoError(t, os.WriteFile(filepath.Join(sourceDir, name), []byte("dummy content for "+name), 0o644))
+	}
+
 	runKopia := func(name string, args ...string) {
 		cmd := exec.CommandContext(ctx, bin, args...)
 		cmd.Dir = baseDir
@@ -343,10 +353,10 @@ func setupTestRepo(t *testing.T) (configFile, sourceDir, password string) {
 	runKopia("repository connect", "--config-file="+configFile, "repository", "connect", "filesystem",
 		"--path="+repoPath, "-p", password, "--cache-directory="+cachePath, "--no-check-for-updates")
 
-	runKopia("snapshot create", "--config-file="+configFile, "snapshot", "create", "-p", password, baseDir,
+	runKopia("snapshot create", "--config-file="+configFile, "snapshot", "create", "-p", password, sourceDir,
 		"--start-time=2025-05-01 15:20:01 CET", "--end-time=2025-05-01 16:10:02 CET")
 
-	return configFile, baseDir, password
+	return configFile, sourceDir, password
 }
 
 func TestRunOnceMetrics(t *testing.T) {
@@ -433,11 +443,14 @@ func TestRunOnceMetrics(t *testing.T) {
 	duration := familyMap["kopia_go_exporter_backup_duration"].GetMetric()[0].GetGauge().GetValue()
 	assert.Greater(t, duration, float64(0), "backup_duration should be positive")
 
+	fileCount := familyMap["kopia_go_exporter_file_count"].GetMetric()[0].GetGauge().GetValue()
+	assert.Equal(t, float64(3), fileCount, "file_count should be 3 (file1.txt, file2.txt, file3.txt)")
+
 	dirCount := familyMap["kopia_go_exporter_dir_count"].GetMetric()[0].GetGauge().GetValue()
-	assert.GreaterOrEqual(t, dirCount, float64(1), "dir_count should be at least 1")
+	assert.Equal(t, float64(2), dirCount, "dir_count should be 2 (root + subdir)")
 
 	totalSize := familyMap["kopia_go_exporter_total_size"].GetMetric()[0].GetGauge().GetValue()
-	assert.GreaterOrEqual(t, totalSize, float64(0), "total_size should be non-negative")
+	assert.Equal(t, float64(81), totalSize, "total_size should be 81 bytes")
 
 	errorCount := familyMap["kopia_go_exporter_error_count"].GetMetric()[0].GetGauge().GetValue()
 	assert.Equal(t, float64(0), errorCount, "error_count should be 0")
