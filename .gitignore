@@ -3,3 +3,5 @@ config.yaml
 .envrc
 coverage*.out
 coverage.html
+kopiametrics/kopia_test
+kopiametrics/kopia_test.download
