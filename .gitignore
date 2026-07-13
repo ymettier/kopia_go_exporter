@@ -1,3 +1,5 @@
 kopia-go-exporter
 config.yaml
 .envrc
+coverage*.out
+coverage.html

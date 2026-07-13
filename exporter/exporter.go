@@ -1,17 +1,21 @@
+// Copyright 2025-2026 The kopia-go-exporter Authors. All rights reserved.
+// SPDX-License-Identifier: MIT
+
 package exporter
 
 import (
 	"fmt"
-	"kopia-go-exporter/modconfig"
+	"log/slog"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/rs/zerolog"
+
+	"kopia-go-exporter/config"
 )
 
-var Logger zerolog.Logger
+var Logger *slog.Logger
 
 type Exporter struct {
 	Port int
@@ -20,17 +24,17 @@ type Exporter struct {
 
 func NewExporter() *Exporter {
 	ex := new(Exporter)
-	ex.Port = modconfig.Cfg.Exporter.Port
+	ex.Port = config.Cfg.Exporter.Port
 
 	ex.Reg = prometheus.NewRegistry()
 	ex.Reg.MustRegister(collectors.NewGoCollector())
 	ex.Reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
-	version, revision, time, _, ok := modconfig.GetVersionFull()
-	if !ok {
-		Logger.Error().Str("version", version).Msg("Failed to retrieve full version info; metric build_info will not be available")
+	vi := config.GetVersionInfo()
+	if vi.Revision == "" {
+		Logger.Error("Failed to retrieve full version info; metric build_info will not be available", "version", vi.Version)
 	} else {
-		ex.SetBuildInfo(version, revision, time)
+		ex.SetBuildInfo(vi.Version, vi.Revision, vi.Time)
 	}
 
 	return ex
@@ -40,7 +44,7 @@ func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 	// Create build_info gauge with labels for version, commit, date
 	buildInfo := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Namespace: config.Cfg.Exporter.Metrics.Prefix,
 			Name:      "build_info",
 			Help:      "Build information",
 		},
@@ -54,15 +58,9 @@ func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 }
 
 func (ex Exporter) Run() {
-	// Start HTTP server exposing /metrics endpoint
-	http.Handle("/metrics", promhttp.HandlerFor(ex.Reg, promhttp.HandlerOpts{}))
-	http.ListenAndServe(fmt.Sprintf(":%d", ex.Port), nil)
-	Logger.Debug().Int("port", ex.Port).Msg("Started http server")
-}
-
-func main() {
-	exporter := NewExporter()
-
-	go exporter.Run()
-	select {} // block forever to keep main alive
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.HandlerFor(ex.Reg, promhttp.HandlerOpts{}))
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", ex.Port), mux); err != nil {
+		Logger.Error("HTTP server error", "port", ex.Port, "err", err)
+	}
 }

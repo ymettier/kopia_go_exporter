@@ -1,11 +1,17 @@
+// Copyright 2025-2026 The kopia-go-exporter Authors. All rights reserved.
+// SPDX-License-Identifier: MIT
+
 package main
 
 import (
 	"context"
 	_ "embed"
+	"flag"
+	"kopia-go-exporter/config"
 	"kopia-go-exporter/exporter"
 	"kopia-go-exporter/kopiametrics"
-	"kopia-go-exporter/modconfig"
+	"kopia-go-exporter/logger"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -16,17 +22,28 @@ import (
 var version string
 
 func main() {
-	modconfig.LoadConfig(version)
-	modconfig.CheckConfig()
+	if err := config.New(version, os.Args[1:]); err != nil {
+		if err == flag.ErrHelp {
+			os.Exit(0)
+		}
+		os.Exit(1)
+	}
+	if err := config.CheckConfig(); err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
+	}
 
-	logger := new_logger()
-	logger.Debug().Msg("Debug logging enabled")
+	logger.Reset(&logger.LogOptions{
+		Level: config.Cfg.LogLevel,
+	})
+	l := logger.Get()
+	l.Debug("Debug logging enabled")
 
-	exporter.Logger = logger
+	exporter.Logger = l
 	ex := exporter.NewExporter()
 
 	k := kopiametrics.NewKopiaClient()
-	kopiametrics.Logger = logger
+	kopiametrics.Logger = l
 	k.RegisterKopiaMetrics(ex.Reg)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -39,7 +56,7 @@ func main() {
 
 	go func() {
 		<-sigChan
-		logger.Info().Msg("Caught interrupt signal")
+		l.Info("Caught interrupt signal")
 		cancel()
 	}()
 
@@ -53,10 +70,12 @@ func main() {
 			return
 		default:
 			if sleepInterval == 0 {
-				logger.Debug().Msg("Start a new iteration of main loop...")
-				k.RunOnce()
-				sleepInterval = modconfig.Cfg.Exporter.Interval
-				logger.Debug().Int("Duration (sec)", modconfig.Cfg.Exporter.Interval).Msg("Now sleeping")
+				l.Debug("Start a new iteration of main loop...")
+				if err := k.RunOnce(); err != nil {
+					l.Error("RunOnce failed", "err", err)
+				}
+				sleepInterval = config.Cfg.Exporter.Interval
+				l.Debug("Now sleeping", "Duration (sec)", config.Cfg.Exporter.Interval)
 			} else {
 				sleepInterval--
 			}

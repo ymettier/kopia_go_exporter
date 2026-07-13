@@ -1,0 +1,317 @@
+// Copyright 2025-2026 The kopia-go-exporter Authors. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+package config
+
+import (
+	"flag"
+	"fmt"
+	"log/slog"
+	"runtime/debug"
+	"strings"
+	"time"
+
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
+	"github.com/spf13/pflag"
+)
+
+var k = koanf.New(".")
+
+var givenVersion string
+
+var ReadBuildInfo = debug.ReadBuildInfo
+
+type CLIFlags struct {
+	ConfigFile   string
+	ExporterPort int
+	LogLevel     string
+	ShowVersion  bool
+}
+
+type ExporterConfig struct {
+	Port    int
+	Metrics struct {
+		Prefix string
+	}
+	Interval int
+}
+
+type APIServerConfig struct {
+	RepositoryURL string
+	Hostname      string
+	Username      string
+	Fingerprint   string
+}
+
+type KopiaConfig struct {
+	ConfigFile            string
+	ConnectWithConfigFile bool
+	Password              string
+	APIServer             APIServerConfig
+	Retentions            []string
+}
+
+type Config struct {
+	Exporter ExporterConfig
+	Kopia    KopiaConfig
+	LogLevel string
+}
+
+var Cfg Config
+
+func versionInfo(version string) string {
+	output := fmt.Sprintf("%-15s: %s\n", "Version", version)
+
+	var lastCommit time.Time
+	revision := "unknown"
+	dirtyBuild := true
+
+	info, ok := ReadBuildInfo()
+	if !ok {
+		return output
+	}
+
+	for _, kv := range info.Settings {
+		if kv.Value == "" {
+			continue
+		}
+		switch kv.Key {
+		case "vcs.revision":
+			revision = kv.Value
+		case "vcs.time":
+			lastCommit, _ = time.Parse(time.RFC3339, kv.Value)
+		case "vcs.modified":
+			dirtyBuild = kv.Value == "true"
+		}
+	}
+
+	output += fmt.Sprintf("%-15s: %s\n", "Revision", revision)
+	output += fmt.Sprintf("%-15s: %v\n", "Dirty Build", dirtyBuild)
+	output += fmt.Sprintf("%-15s: %s\n", "Last Commit", lastCommit)
+	output += fmt.Sprintf("%-15s: %s\n", "Go Version", info.GoVersion)
+	return output
+}
+
+func ParseFlags(version string, args []string) (CLIFlags, error) {
+	givenVersion = version
+
+	fs := pflag.NewFlagSet("kopia-go-exporter", pflag.ContinueOnError)
+
+	configFile := fs.StringP("config", "c", "config.yaml", "Path to YAML config file")
+	exporterPort := fs.Int("exporter-port", 9090, "Exporter HTTP server port")
+	logLevel := fs.StringP("log_level", "l", "info", "Log level (debug, info, warn, error)")
+	showVersion := fs.BoolP("version", "V", false, "Print version information and exit")
+	showHelp := fs.BoolP("help", "h", false, "Print help")
+
+	if err := fs.Parse(args); err != nil {
+		return CLIFlags{}, err
+	}
+
+	if *showHelp {
+		fs.PrintDefaults()
+		return CLIFlags{}, flag.ErrHelp
+	}
+
+	if *showVersion {
+		output := versionInfo(version)
+		fmt.Print(output)
+		return CLIFlags{}, flag.ErrHelp
+	}
+
+	return CLIFlags{
+		ConfigFile:   *configFile,
+		ExporterPort: *exporterPort,
+		LogLevel:     *logLevel,
+		ShowVersion:  *showVersion,
+	}, nil
+}
+
+func lookupConfigKey(koanfInstance *koanf.Koanf, camelKey string) (string, bool) {
+	envKey := strings.ToLower(camelKey)
+	if koanfInstance.Exists(envKey) {
+		return koanfInstance.String(envKey), true
+	}
+	if koanfInstance.Exists(camelKey) {
+		return koanfInstance.String(camelKey), true
+	}
+	underscoreKey := strings.ReplaceAll(strings.ToLower(camelKey), ".", "_")
+	if koanfInstance.Exists(underscoreKey) {
+		return koanfInstance.String(underscoreKey), true
+	}
+	return "", false
+}
+
+func getConfigString(koanfInstance *koanf.Koanf, camelKey, defaultValue string) string {
+	if val, ok := lookupConfigKey(koanfInstance, camelKey); ok {
+		return val
+	}
+	return defaultValue
+}
+
+func getConfigInt(koanfInstance *koanf.Koanf, camelKey string, defaultValue int) int {
+	if val, ok := lookupConfigKey(koanfInstance, camelKey); ok {
+		var i int
+		if _, err := fmt.Sscanf(val, "%d", &i); err == nil {
+			return i
+		}
+	}
+	return defaultValue
+}
+
+func getConfigBool(koanfInstance *koanf.Koanf, camelKey string, defaultValue bool) bool {
+	if val, ok := lookupConfigKey(koanfInstance, camelKey); ok {
+		return strings.ToLower(val) == "true" || val == "1"
+	}
+	return defaultValue
+}
+
+func readExporterConfig(koanfInstance *koanf.Koanf, l *slog.Logger, flags CLIFlags) ExporterConfig {
+	var cfg ExporterConfig
+
+	cfg.Port = getConfigInt(koanfInstance, "exporter.port", 9090)
+	if flags.ExporterPort != 9090 {
+		cfg.Port = flags.ExporterPort
+	}
+	l.Info("Config: exporter.port", "port", cfg.Port)
+
+	cfg.Metrics.Prefix = getConfigString(koanfInstance, "exporter.metrics.prefix", "kopia_go_exporter")
+	l.Info("Config: exporter.metrics.prefix", "prefix", cfg.Metrics.Prefix)
+
+	cfg.Interval = getConfigInt(koanfInstance, "exporter.interval", 300)
+	l.Info("Config: exporter.interval", "interval", cfg.Interval)
+
+	return cfg
+}
+
+func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
+	var cfg KopiaConfig
+
+	cfg.ConfigFile = getConfigString(koanfInstance, "kopia.configfile", "/tmp/kopia.cfg")
+	l.Info("Config: kopia.configfile", "configfile", cfg.ConfigFile)
+
+	cfg.ConnectWithConfigFile = getConfigBool(koanfInstance, "kopia.connectwithconfigfile", false)
+	l.Info("Config: kopia.connectwithconfigfile", "connectwithconfigfile", cfg.ConnectWithConfigFile)
+
+	cfg.Password = getConfigString(koanfInstance, "kopia.password", "")
+	l.Info("Config: kopia.password", "password", "****")
+
+	cfg.APIServer.RepositoryURL = getConfigString(koanfInstance, "kopia.apiserver.repositoryURL", "")
+	l.Info("Config: kopia.apiserver.repositoryURL", "repositoryURL", cfg.APIServer.RepositoryURL)
+
+	cfg.APIServer.Hostname = getConfigString(koanfInstance, "kopia.apiserver.hostname", "")
+	l.Info("Config: kopia.apiserver.hostname", "hostname", cfg.APIServer.Hostname)
+
+	cfg.APIServer.Username = getConfigString(koanfInstance, "kopia.apiserver.username", "")
+	l.Info("Config: kopia.apiserver.username", "username", cfg.APIServer.Username)
+
+	cfg.APIServer.Fingerprint = getConfigString(koanfInstance, "kopia.apiserver.fingerprint", "")
+	l.Info("Config: kopia.apiserver.fingerprint", "fingerprint", "****")
+
+	// Read retentions list
+	cfg.Retentions = make([]string, 0)
+	if koanfInstance.Exists("kopia.retentionstoextract") {
+		if err := koanfInstance.Unmarshal("kopia.retentionstoextract", &cfg.Retentions); err != nil {
+			l.Warn("Failed to unmarshal retentions", "err", err)
+		}
+	}
+	l.Info("Config: kopia.retentionstoextract", "retentions", cfg.Retentions)
+
+	return cfg
+}
+
+func readConfig(filename string, flags CLIFlags) error {
+	l := slog.Default()
+
+	if err := k.Load(file.Provider(filename), yaml.Parser()); err != nil {
+		return fmt.Errorf("failed to read configuration file %s: %w", filename, err)
+	}
+
+	// Load environment variables with KGE_ prefix (overrides YAML values)
+	_ = k.Load(env.Provider("KGE_", ".", func(s string) string {
+		s = strings.TrimPrefix(s, "KGE_")
+		s = strings.ToLower(s)
+		s = strings.ReplaceAll(s, "_", ".")
+		return s
+	}), nil)
+
+	Cfg.Exporter = readExporterConfig(k, l, flags)
+	Cfg.Kopia = readKopiaConfig(k, l)
+	Cfg.LogLevel = getConfigString(k, "log_level", flags.LogLevel)
+	l.Info("Config: log_level", "log_level", Cfg.LogLevel)
+
+	return nil
+}
+
+func CheckConfig() error {
+	if Cfg.Kopia.ConfigFile == "" {
+		Cfg.Kopia.ConfigFile = "/tmp/kopia.cfg"
+		slog.Warn("Kopia.configfile was not specified. Using /tmp/kopia.cfg")
+	}
+	if Cfg.Kopia.Password == "" {
+		return fmt.Errorf("kopia.password is not set (needed when kopia.configfile is provided)")
+	}
+	if !Cfg.Kopia.ConnectWithConfigFile {
+		if Cfg.Kopia.APIServer.RepositoryURL == "" {
+			return fmt.Errorf("kopia.repositoryURL is not set (needed when kopia.configfile is not provided)")
+		}
+		if Cfg.Kopia.APIServer.Fingerprint == "" {
+			return fmt.Errorf("kopia.fingerprint is not set (needed when kopia.configfile is not provided)")
+		}
+		if Cfg.Kopia.APIServer.Hostname == "" {
+			return fmt.Errorf("kopia.hostname is not set (needed when kopia.configfile is not provided)")
+		}
+		if Cfg.Kopia.APIServer.Username == "" {
+			return fmt.Errorf("kopia.username is not set (needed when kopia.configfile is not provided)")
+		}
+	} else {
+		return fmt.Errorf("kopia.connectwithconfigfile is not supported yet")
+	}
+	return nil
+}
+
+func New(version string, args []string) error {
+	flags, err := ParseFlags(version, args)
+	if err != nil {
+		return err
+	}
+
+	if err := readConfig(flags.ConfigFile, flags); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type VersionInfo struct {
+	Version   string
+	Revision  string
+	Time      string
+	Dirty     bool
+	GoVersion string
+}
+
+func GetVersionInfo() VersionInfo {
+	info := VersionInfo{Version: givenVersion}
+
+	bInfo, ok := ReadBuildInfo()
+	if !ok {
+		return info
+	}
+
+	for _, setting := range bInfo.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			info.Revision = setting.Value
+		case "vcs.time":
+			info.Time = setting.Value
+		case "vcs.modified":
+			info.Dirty = setting.Value == "true"
+		}
+	}
+
+	info.GoVersion = bInfo.GoVersion
+	return info
+}
