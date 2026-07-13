@@ -421,11 +421,14 @@ func TestRunOnceMetrics(t *testing.T) {
 		assert.NotEmpty(t, labels["retention"], "%s: retention label should not be empty", name)
 	}
 
+	cet := time.FixedZone("CET", 3600)
+	expectedStart := time.Date(2025, 5, 1, 15, 20, 1, 0, cet).Unix()
+	expectedEnd := time.Date(2025, 5, 1, 16, 10, 2, 0, cet).Unix()
+
 	startTime := familyMap["kopia_go_exporter_backup_start_time"].GetMetric()[0].GetGauge().GetValue()
 	endTime := familyMap["kopia_go_exporter_backup_end_time"].GetMetric()[0].GetGauge().GetValue()
-	assert.Greater(t, startTime, float64(0), "backup_start_time should be positive")
-	assert.Greater(t, endTime, float64(0), "backup_end_time should be positive")
-	assert.Greater(t, endTime, startTime, "backup_end_time should be after backup_start_time")
+	assert.InDelta(t, float64(expectedStart), startTime, 1, "backup_start_time should match hardcoded start time")
+	assert.InDelta(t, float64(expectedEnd), endTime, 1, "backup_end_time should match hardcoded end time")
 
 	duration := familyMap["kopia_go_exporter_backup_duration"].GetMetric()[0].GetGauge().GetValue()
 	assert.Greater(t, duration, float64(0), "backup_duration should be positive")
