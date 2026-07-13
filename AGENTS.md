@@ -24,7 +24,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ├── main.go                  # Entry point, main loop with periodic RunOnce
 ├── logger/                  # Structured logging setup (slog, lumberjack rotation)
 │   └── logger.go
-├── modconfig/
+├── config/
 │   ├── config.go            # CLI flag parsing, Koanf config loading, env vars, validation
 │   └── config_test.go
 ├── exporter/
@@ -43,12 +43,14 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 
 ## Key Components
 
-### Configuration (modconfig/config.go)
-- CLI flag parsing: `--config` (default `config.yaml`), `--exporter.port` (default 8080), `--log_level` (default info), `--version`
-- Koanf layered loading: YAML file → CLI flags → environment variables (KGE_ prefix)
+### Configuration (config/config.go)
+- CLI flag parsing via `ParseFlags()`: `--config`/`-c`, `--port`/`-p`, `--log_level`/`-l`, `--version`/`-V`
+- `New()` constructor: parses flags, loads YAML via Koanf, overlays env vars, returns error
+- Koanf layered loading: YAML file → environment variables (KGE_ prefix)
 - Environment variable mapping: `KGE_KOPIA_PASSWORD` → `kopia.password` (uppercase, underscores → dots)
 - Config validation in `CheckConfig()`: required fields cause `os.Exit(1)` on missing
-- Config struct: `modconfig.Cfg` (global, populated at startup)
+- Config struct: `config.Cfg` (global, populated at startup)
+- Helper functions: `lookupConfigKey`, `getConfigString`, `getConfigInt`, `getConfigBool`, `getConfigDuration`
 
 ### Exporter (exporter/exporter.go)
 - Creates a `prometheus.Registry` with Go and process collectors
@@ -98,7 +100,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Constructors: `New()` returns a pointer for larger structs (e.g., `*KopiaClient`, `*Exporter`).
 - Logger: slog instance passed via package-level `var Logger *slog.Logger`.
 - Context: pass `context.Context` to operations that may need cancellation.
-- Global config: `modconfig.Cfg` accessed directly from packages.
+- Global config: `config.Cfg` accessed directly from packages.
 
 ### Environment Variables
 - Use optional environment variables for configuration (e.g., `KGE_KOPIA_PASSWORD`...)
@@ -140,9 +142,9 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ## Common Tasks
 
 ### Adding a New Configuration Option
-1. Add field to `Config` struct in `modconfig/config.go`
-2. Add parsing logic in `LoadConfig()` or `CheckConfig()`
-3. Add test case in `modconfig/config_test.go`
+1. Add field to `Config` struct in `config/config.go`
+2. Add parsing logic in `readConfig()` or `CheckConfig()`
+3. Add test case in `config/config_test.go`
 4. Update `config.yaml.sample` with example value
 
 ### Adding a New Metric
@@ -152,7 +154,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 4. Update metrics documentation comments
 
 ### Modifying CLI Flags
-1. Update flag definitions in `LoadConfig()` in `modconfig/config.go`
+1. Update flag definitions in `ParseFlags()` in `config/config.go`
 2. Add both short and long form support
 3. Update help text
 4. Test with `--help` flag
@@ -189,7 +191,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Test: `echo build > version.txt && go test ./...`
 - Docker: `docker build -t kopia-go-exporter .`
 - Run: `./kopia-go-exporter --config config.yaml`
-- CLI flags: `--config` (config file), `--exporter.port` (port), `--log_level` (log level), `--version` (print version).
+- CLI flags: `--config` (config file), `--port` (port), `--log_level` (log level), `--version` (print version).
 
 ## Linting
 - Run: `golangci-lint run ./...`

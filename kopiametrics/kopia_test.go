@@ -7,7 +7,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
-	"kopia-go-exporter/modconfig"
+	"kopia-go-exporter/config"
 	"os"
 	"reflect"
 	"strings"
@@ -262,14 +262,14 @@ func TestKopiaClient_Connect(t *testing.T) {
 		},
 	}
 
-	modconfig.Cfg.LogLevel = "debug"
-	modconfig.Cfg.Kopia.APIServer.RepositoryURL = fmt.Sprintf("https://%s:%s", ip, port.Port())
-	modconfig.Cfg.Kopia.ConfigFile = "/tmp/repo2.config"
-	modconfig.Cfg.Kopia.ConnectWithConfigFile = false
-	modconfig.Cfg.Kopia.Password = "kopiapwd"
-	modconfig.Cfg.Kopia.APIServer.Username = "kopia"
-	modconfig.Cfg.Kopia.APIServer.Hostname = "localhost"
-	modconfig.Cfg.Kopia.APIServer.Fingerprint = fingerprint
+	config.Cfg.LogLevel = "debug"
+	config.Cfg.Kopia.APIServer.RepositoryURL = fmt.Sprintf("https://%s:%s", ip, port.Port())
+	config.Cfg.Kopia.ConfigFile = "/tmp/repo2.config"
+	config.Cfg.Kopia.ConnectWithConfigFile = false
+	config.Cfg.Kopia.Password = "kopiapwd"
+	config.Cfg.Kopia.APIServer.Username = "kopia"
+	config.Cfg.Kopia.APIServer.Hostname = "localhost"
+	config.Cfg.Kopia.APIServer.Fingerprint = fingerprint
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

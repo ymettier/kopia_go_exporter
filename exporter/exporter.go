@@ -3,7 +3,7 @@ package exporter
 import (
 	"fmt"
 	"log/slog"
-	"kopia-go-exporter/modconfig"
+	"kopia-go-exporter/config"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,13 +20,13 @@ type Exporter struct {
 
 func NewExporter() *Exporter {
 	ex := new(Exporter)
-	ex.Port = modconfig.Cfg.Exporter.Port
+	ex.Port = config.Cfg.Exporter.Port
 
 	ex.Reg = prometheus.NewRegistry()
 	ex.Reg.MustRegister(collectors.NewGoCollector())
 	ex.Reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
-	version, revision, time, _, ok := modconfig.GetVersionFull()
+	version, revision, time, _, ok := config.GetVersionFull()
 	if !ok {
 		Logger.Error("Failed to retrieve full version info; metric build_info will not be available", "version", version)
 	} else {
@@ -40,7 +40,7 @@ func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 	// Create build_info gauge with labels for version, commit, date
 	buildInfo := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace: modconfig.Cfg.Exporter.Metrics.Prefix,
+			Namespace: config.Cfg.Exporter.Metrics.Prefix,
 			Name:      "build_info",
 			Help:      "Build information",
 		},

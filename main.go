@@ -1,12 +1,16 @@
+// Copyright 2025-2026 The kopia-go-exporter Authors. All rights reserved.
+// SPDX-License-Identifier: MIT
+
 package main
 
 import (
 	"context"
 	_ "embed"
+	"flag"
+	"kopia-go-exporter/config"
 	"kopia-go-exporter/exporter"
 	"kopia-go-exporter/kopiametrics"
 	"kopia-go-exporter/logger"
-	"kopia-go-exporter/modconfig"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,11 +21,16 @@ import (
 var version string
 
 func main() {
-	modconfig.LoadConfig(version)
-	modconfig.CheckConfig()
+	if err := config.New(version, os.Args[1:]); err != nil {
+		if err == flag.ErrHelp {
+			os.Exit(0)
+		}
+		os.Exit(1)
+	}
+	config.CheckConfig()
 
 	logger.Reset(&logger.LogOptions{
-		Level: modconfig.Cfg.LogLevel,
+		Level: config.Cfg.LogLevel,
 	})
 	l := logger.Get()
 	l.Debug("Debug logging enabled")
@@ -59,8 +68,8 @@ func main() {
 			if sleepInterval == 0 {
 				l.Debug("Start a new iteration of main loop...")
 				k.RunOnce()
-				sleepInterval = modconfig.Cfg.Exporter.Interval
-				l.Debug("Now sleeping", "Duration (sec)", modconfig.Cfg.Exporter.Interval)
+				sleepInterval = config.Cfg.Exporter.Interval
+				l.Debug("Now sleeping", "Duration (sec)", config.Cfg.Exporter.Interval)
 			} else {
 				sleepInterval--
 			}
