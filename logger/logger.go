@@ -57,7 +57,7 @@ func getWriter(opts *LogOptions) (io.Writer, bool) {
 	return l, true
 }
 
-func newLogger(opts *LogOptions) *slog.Logger {
+func parseLogLevel(opts *LogOptions) slog.Level {
 	level := slog.LevelInfo
 	var levelStr string
 	if opts != nil && opts.Level != "" {
@@ -65,7 +65,6 @@ func newLogger(opts *LogOptions) *slog.Logger {
 	} else {
 		levelStr = os.Getenv("KGE_LOG_LEVEL")
 	}
-
 	if levelStr != "" {
 		var l slog.Level
 		if err := l.UnmarshalText([]byte(strings.ToUpper(levelStr))); err != nil {
@@ -74,37 +73,43 @@ func newLogger(opts *LogOptions) *slog.Logger {
 			level = l
 		}
 	}
+	return level
+}
 
-	handlerOpts := &slog.HandlerOptions{
-		Level: level,
+func logConfig(l *slog.Logger, opts *LogOptions, usingLumberjack bool) {
+	if opts == nil {
+		return
 	}
+	attrs := []any{
+		slog.String("level", opts.Level),
+		slog.String("filename", opts.Filename),
+		slog.Bool("json", opts.JSON),
+	}
+	if usingLumberjack {
+		attrs = append(attrs,
+			slog.Int("maxSize", opts.MaxSize),
+			slog.Int("maxBackups", opts.MaxBackups),
+			slog.Int("maxAge", opts.MaxAge),
+			slog.Bool("compress", opts.Compress),
+		)
+	}
+	l.Info("Logger configuration", attrs...)
+}
+
+func newLogger(opts *LogOptions) *slog.Logger {
+	level := parseLogLevel(opts)
 
 	w, usingLumberjack := getWriter(opts)
 
 	var handler slog.Handler
 	if opts != nil && opts.JSON {
-		handler = slog.NewJSONHandler(w, handlerOpts)
+		handler = slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level})
 	} else {
-		handler = slog.NewTextHandler(w, handlerOpts)
+		handler = slog.NewTextHandler(w, &slog.HandlerOptions{Level: level})
 	}
 	l := slog.New(handler)
 
-	if opts != nil {
-		attrs := []any{
-			slog.String("level", opts.Level),
-			slog.String("filename", opts.Filename),
-			slog.Bool("json", opts.JSON),
-		}
-		if usingLumberjack {
-			attrs = append(attrs,
-				slog.Int("maxSize", opts.MaxSize),
-				slog.Int("maxBackups", opts.MaxBackups),
-				slog.Int("maxAge", opts.MaxAge),
-				slog.Bool("compress", opts.Compress),
-			)
-		}
-		l.Info("Logger configuration", attrs...)
-	}
+	logConfig(l, opts, usingLumberjack)
 
 	return l
 }

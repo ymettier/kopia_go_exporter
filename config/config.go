@@ -25,10 +25,10 @@ var givenVersion string
 var ReadBuildInfo = debug.ReadBuildInfo
 
 type CLIFlags struct {
-	ConfigFile  string
+	ConfigFile   string
 	ExporterPort int
-	LogLevel    string
-	ShowVersion bool
+	LogLevel     string
+	ShowVersion  bool
 }
 
 type ExporterConfig struct {
@@ -286,10 +286,10 @@ func New(version string, args []string) error {
 }
 
 type VersionInfo struct {
-	Version  string
-	Revision string
-	Time     string
-	Dirty    bool
+	Version   string
+	Revision  string
+	Time      string
+	Dirty     bool
 	GoVersion string
 }
 

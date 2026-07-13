@@ -1,10 +1,12 @@
+// Copyright 2025-2026 The kopia-go-exporter Authors. All rights reserved.
+// SPDX-License-Identifier: MIT
+
 package kopiametrics
 
 import (
 	"context"
 	"fmt"
 	"log/slog"
-	"kopia-go-exporter/config"
 	"slices"
 
 	"github.com/kopia/kopia/repo"
@@ -12,6 +14,8 @@ import (
 	"github.com/kopia/kopia/snapshot"
 	"github.com/kopia/kopia/snapshot/policy"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"kopia-go-exporter/config"
 )
 
 var Logger *slog.Logger
@@ -41,70 +45,27 @@ func NewKopiaClient() *KopiaClient {
 	return k
 }
 
+func newGaugeVec(reg *prometheus.Registry, name, help string) *prometheus.GaugeVec {
+	gv := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: config.Cfg.Exporter.Metrics.Prefix,
+			Name:      name,
+			Help:      help,
+		},
+		[]string{"host", "path", "user", "retention"},
+	)
+	reg.MustRegister(gv)
+	return gv
+}
+
 func (k *KopiaClient) RegisterKopiaMetrics(reg *prometheus.Registry) {
-	k.Metrics.TotalSize = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: config.Cfg.Exporter.Metrics.Prefix,
-			Name:      "total_size",
-			Help:      "Total size of the backup",
-		},
-		[]string{"host", "path", "user", "retention"},
-	)
-	reg.MustRegister(k.Metrics.TotalSize)
-	k.Metrics.FileCount = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: config.Cfg.Exporter.Metrics.Prefix,
-			Name:      "file_count",
-			Help:      "Number of files in the backup",
-		},
-		[]string{"host", "path", "user", "retention"},
-	)
-	reg.MustRegister(k.Metrics.FileCount)
-	k.Metrics.DirCount = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: config.Cfg.Exporter.Metrics.Prefix,
-			Name:      "dir_count",
-			Help:      "Number of directories in the backup",
-		},
-		[]string{"host", "path", "user", "retention"},
-	)
-	reg.MustRegister(k.Metrics.DirCount)
-	k.Metrics.ErrorCount = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: config.Cfg.Exporter.Metrics.Prefix,
-			Name:      "error_count",
-			Help:      "Number of errors in the backup",
-		},
-		[]string{"host", "path", "user", "retention"},
-	)
-	reg.MustRegister(k.Metrics.ErrorCount)
-	k.Metrics.BackupDuration = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: config.Cfg.Exporter.Metrics.Prefix,
-			Name:      "backup_duration",
-			Help:      "Duration of the backup",
-		},
-		[]string{"host", "path", "user", "retention"},
-	)
-	reg.MustRegister(k.Metrics.BackupDuration)
-	k.Metrics.BackupStartTime = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: config.Cfg.Exporter.Metrics.Prefix,
-			Name:      "backup_start_time",
-			Help:      "Start time of the backup",
-		},
-		[]string{"host", "path", "user", "retention"},
-	)
-	reg.MustRegister(k.Metrics.BackupStartTime)
-	k.Metrics.BackupEndTime = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: config.Cfg.Exporter.Metrics.Prefix,
-			Name:      "backup_end_time",
-			Help:      "End time of the backup",
-		},
-		[]string{"host", "path", "user", "retention"},
-	)
-	reg.MustRegister(k.Metrics.BackupEndTime)
+	k.Metrics.TotalSize = newGaugeVec(reg, "total_size", "Total size of the backup")
+	k.Metrics.FileCount = newGaugeVec(reg, "file_count", "Number of files in the backup")
+	k.Metrics.DirCount = newGaugeVec(reg, "dir_count", "Number of directories in the backup")
+	k.Metrics.ErrorCount = newGaugeVec(reg, "error_count", "Number of errors in the backup")
+	k.Metrics.BackupDuration = newGaugeVec(reg, "backup_duration", "Duration of the backup")
+	k.Metrics.BackupStartTime = newGaugeVec(reg, "backup_start_time", "Start time of the backup")
+	k.Metrics.BackupEndTime = newGaugeVec(reg, "backup_end_time", "End time of the backup")
 }
 
 func (k *KopiaClient) GenerateConfigFile() error {
@@ -153,6 +114,22 @@ func (k *KopiaClient) Connect() error {
 	return nil
 }
 
+func (k *KopiaClient) setSnapshotMetrics(m *snapshot.Manifest, keepAllRetentions bool) {
+	for _, rr := range m.RetentionReasons {
+		if !slices.Contains(config.Cfg.Kopia.Retentions, rr) && !keepAllRetentions {
+			continue
+		}
+		labels := prometheus.Labels{"host": m.Source.Host, "path": m.Source.Path, "user": m.Source.UserName, "retention": rr}
+		k.Metrics.BackupStartTime.With(labels).Set(float64(m.StartTime.ToTime().Unix()))
+		k.Metrics.BackupEndTime.With(labels).Set(float64(m.EndTime.ToTime().Unix()))
+		k.Metrics.BackupDuration.With(labels).Set(float64((m.EndTime - m.StartTime).ToTime().Unix()))
+		k.Metrics.DirCount.With(labels).Set(float64(m.Stats.TotalDirectoryCount))
+		k.Metrics.ErrorCount.With(labels).Set(float64(m.Stats.ErrorCount))
+		k.Metrics.FileCount.With(labels).Set(float64(m.Stats.TotalFileCount))
+		k.Metrics.TotalSize.With(labels).Set(float64(m.Stats.TotalFileSize))
+	}
+}
+
 func (k *KopiaClient) RunOnce() error {
 	keepAllRetentions := len(config.Cfg.Kopia.Retentions) == 0
 	if !k.IsConnected {
@@ -179,7 +156,6 @@ func (k *KopiaClient) RunOnce() error {
 		snapshotGroup = snapshot.SortByTime(snapshotGroup, true)
 		src := snapshotGroup[0].Source
 
-		// compute retention reason
 		pol, _, _, err := policy.GetEffectivePolicy(k.Ctx, k.Repo, src)
 		if err != nil {
 			Logger.Error("Unable to determine effective policy", "Source", fmt.Sprintf("%v", src))
@@ -187,21 +163,8 @@ func (k *KopiaClient) RunOnce() error {
 			pol.RetentionPolicy.ComputeRetentionReasons(snapshotGroup)
 		}
 
-		// Iterate over snapshotGroup of manifests
 		for _, m := range snapshotGroup {
-			// fmt.Printf("ID: %v  Source: %v  Time: %v  Retentions: %v\n", m.ID, m.Source, m.StartTime, m.RetentionReasons)
-			for _, rr := range m.RetentionReasons {
-				if slices.Contains(config.Cfg.Kopia.Retentions, rr) || keepAllRetentions {
-					labels := prometheus.Labels{"host": m.Source.Host, "path": m.Source.Path, "user": m.Source.UserName, "retention": rr}
-					k.Metrics.BackupStartTime.With(labels).Set(float64(m.StartTime.ToTime().Unix()))
-					k.Metrics.BackupEndTime.With(labels).Set(float64(m.EndTime.ToTime().Unix()))
-					k.Metrics.BackupDuration.With(labels).Set(float64((m.EndTime - m.StartTime).ToTime().Unix()))
-					k.Metrics.DirCount.With(labels).Set(float64(m.Stats.TotalDirectoryCount))
-					k.Metrics.ErrorCount.With(labels).Set(float64(m.Stats.ErrorCount))
-					k.Metrics.FileCount.With(labels).Set(float64(m.Stats.TotalFileCount))
-					k.Metrics.TotalSize.With(labels).Set(float64(m.Stats.TotalFileSize))
-				}
-			}
+			k.setSnapshotMetrics(m, keepAllRetentions)
 		}
 	}
 	return nil

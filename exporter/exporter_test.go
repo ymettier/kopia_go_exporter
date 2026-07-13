@@ -1,3 +1,6 @@
+// Copyright 2025-2026 The kopia-go-exporter Authors. All rights reserved.
+// SPDX-License-Identifier: MIT
+
 package exporter
 
 import (

@@ -1,14 +1,18 @@
+// Copyright 2025-2026 The kopia-go-exporter Authors. All rights reserved.
+// SPDX-License-Identifier: MIT
+
 package exporter
 
 import (
 	"fmt"
 	"log/slog"
-	"kopia-go-exporter/config"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"kopia-go-exporter/config"
 )
 
 var Logger *slog.Logger
