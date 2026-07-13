@@ -24,9 +24,9 @@ var k = koanf.New(".")
 var givenVersion string
 
 type CLIFlags struct {
-	ConfigFile string
-	Port       int
-	LogLevel   string
+	ConfigFile  string
+	ExporterPort int
+	LogLevel    string
 	ShowVersion bool
 }
 
@@ -100,7 +100,7 @@ func ParseFlags(version string, args []string) (CLIFlags, error) {
 	fs := pflag.NewFlagSet("kopia-go-exporter", pflag.ContinueOnError)
 
 	configFile := fs.StringP("config", "c", "config.yaml", "Path to YAML config file")
-	port := fs.IntP("port", "p", 8080, "Port to run the exporter on")
+	exporterPort := fs.Int("exporter-port", 9090, "Exporter HTTP server port")
 	logLevel := fs.StringP("log_level", "l", "info", "Log level (debug, info, warn, error)")
 	showVersion := fs.BoolP("version", "V", false, "Print version information and exit")
 	showHelp := fs.BoolP("help", "h", false, "Print help")
@@ -121,10 +121,10 @@ func ParseFlags(version string, args []string) (CLIFlags, error) {
 	}
 
 	return CLIFlags{
-		ConfigFile:  *configFile,
-		Port:        *port,
-		LogLevel:    *logLevel,
-		ShowVersion: *showVersion,
+		ConfigFile:   *configFile,
+		ExporterPort: *exporterPort,
+		LogLevel:     *logLevel,
+		ShowVersion:  *showVersion,
 	}, nil
 }
 
@@ -179,10 +179,13 @@ func getConfigDuration(koanfInstance *koanf.Koanf, camelKey, defaultDuration str
 	return duration, nil
 }
 
-func readExporterConfig(koanfInstance *koanf.Koanf, l *slog.Logger) ExporterConfig {
+func readExporterConfig(koanfInstance *koanf.Koanf, l *slog.Logger, flags CLIFlags) ExporterConfig {
 	var cfg ExporterConfig
 
-	cfg.Port = getConfigInt(koanfInstance, "exporter.port", 8080)
+	cfg.Port = getConfigInt(koanfInstance, "exporter.port", 9090)
+	if flags.ExporterPort != 9090 {
+		cfg.Port = flags.ExporterPort
+	}
 	l.Info("Config: exporter.port", "port", cfg.Port)
 
 	cfg.Metrics.Prefix = getConfigString(koanfInstance, "exporter.metrics.prefix", "kopia_go_exporter")
@@ -247,7 +250,7 @@ func readConfig(filename string, flags CLIFlags) error {
 		return fmt.Errorf("failed to load environment variables: %w", err)
 	}
 
-	Cfg.Exporter = readExporterConfig(k, l)
+	Cfg.Exporter = readExporterConfig(k, l, flags)
 	Cfg.Kopia = readKopiaConfig(k, l)
 	Cfg.LogLevel = getConfigString(k, "log_level", flags.LogLevel)
 	l.Info("Config: log_level", "log_level", Cfg.LogLevel)

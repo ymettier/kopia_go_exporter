@@ -38,8 +38,8 @@ func TestParseFlags(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "custom port",
-			args:    []string{"--port", "9090"},
+			name:    "custom exporter port",
+			args:    []string{"--exporter-port", "9090"},
 			wantErr: false,
 		},
 	}
