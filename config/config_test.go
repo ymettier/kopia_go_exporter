@@ -529,10 +529,10 @@ func koanfNew(t *testing.T, cfgFile string) *koanf.Koanf {
 }
 
 func TestVersionInfo_BuildInfoUnavailable(t *testing.T) {
-	origReadBuildInfo := readBuildInfo
-	defer func() { readBuildInfo = origReadBuildInfo }()
+	origReadBuildInfo := ReadBuildInfo
+	defer func() { ReadBuildInfo = origReadBuildInfo }()
 
-	readBuildInfo = func() (*debug.BuildInfo, bool) {
+	ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return nil, false
 	}
 
@@ -542,10 +542,10 @@ func TestVersionInfo_BuildInfoUnavailable(t *testing.T) {
 }
 
 func TestVersionInfo_WithVCSSettings(t *testing.T) {
-	origReadBuildInfo := readBuildInfo
-	defer func() { readBuildInfo = origReadBuildInfo }()
+	origReadBuildInfo := ReadBuildInfo
+	defer func() { ReadBuildInfo = origReadBuildInfo }()
 
-	readBuildInfo = func() (*debug.BuildInfo, bool) {
+	ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return &debug.BuildInfo{
 			GoVersion: "go1.25.0",
 			Settings: []debug.BuildSetting{
@@ -563,11 +563,11 @@ func TestVersionInfo_WithVCSSettings(t *testing.T) {
 }
 
 func TestGetVersionInfo_BuildInfoUnavailable(t *testing.T) {
-	origReadBuildInfo := readBuildInfo
-	defer func() { readBuildInfo = origReadBuildInfo }()
+	origReadBuildInfo := ReadBuildInfo
+	defer func() { ReadBuildInfo = origReadBuildInfo }()
 
 	givenVersion = "2.0.0"
-	readBuildInfo = func() (*debug.BuildInfo, bool) {
+	ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return nil, false
 	}
 
@@ -579,11 +579,11 @@ func TestGetVersionInfo_BuildInfoUnavailable(t *testing.T) {
 }
 
 func TestGetVersionInfo_WithVCSSettings_Dirty(t *testing.T) {
-	origReadBuildInfo := readBuildInfo
-	defer func() { readBuildInfo = origReadBuildInfo }()
+	origReadBuildInfo := ReadBuildInfo
+	defer func() { ReadBuildInfo = origReadBuildInfo }()
 
 	givenVersion = "3.0.0"
-	readBuildInfo = func() (*debug.BuildInfo, bool) {
+	ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return &debug.BuildInfo{
 			Settings: []debug.BuildSetting{
 				{Key: "vcs.revision", Value: "deadbeef"},
@@ -601,11 +601,11 @@ func TestGetVersionInfo_WithVCSSettings_Dirty(t *testing.T) {
 }
 
 func TestGetVersionInfo_WithVCSSettings_Clean(t *testing.T) {
-	origReadBuildInfo := readBuildInfo
-	defer func() { readBuildInfo = origReadBuildInfo }()
+	origReadBuildInfo := ReadBuildInfo
+	defer func() { ReadBuildInfo = origReadBuildInfo }()
 
 	givenVersion = "4.0.0"
-	readBuildInfo = func() (*debug.BuildInfo, bool) {
+	ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return &debug.BuildInfo{
 			Settings: []debug.BuildSetting{
 				{Key: "vcs.revision", Value: "face0ff"},

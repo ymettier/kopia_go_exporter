@@ -54,8 +54,9 @@ func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 }
 
 func (ex Exporter) Run() {
-	http.Handle("/metrics", promhttp.HandlerFor(ex.Reg, promhttp.HandlerOpts{}))
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", ex.Port), nil); err != nil {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.HandlerFor(ex.Reg, promhttp.HandlerOpts{}))
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", ex.Port), mux); err != nil {
 		Logger.Error("HTTP server error", "port", ex.Port, "err", err)
 	}
 }

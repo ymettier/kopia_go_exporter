@@ -22,7 +22,7 @@ var k = koanf.New(".")
 
 var givenVersion string
 
-var readBuildInfo = debug.ReadBuildInfo
+var ReadBuildInfo = debug.ReadBuildInfo
 
 type CLIFlags struct {
 	ConfigFile  string
@@ -69,7 +69,7 @@ func versionInfo(version string) string {
 	revision := "unknown"
 	dirtyBuild := true
 
-	info, ok := readBuildInfo()
+	info, ok := ReadBuildInfo()
 	if !ok {
 		return output
 	}
@@ -308,7 +308,7 @@ type VersionInfo struct {
 func GetVersionInfo() VersionInfo {
 	info := VersionInfo{Version: givenVersion}
 
-	bInfo, ok := readBuildInfo()
+	bInfo, ok := ReadBuildInfo()
 	if !ok {
 		return info
 	}

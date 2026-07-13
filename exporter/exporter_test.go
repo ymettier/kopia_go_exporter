@@ -2,28 +2,71 @@ package exporter
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
-	"reflect"
+	"runtime/debug"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+
+	"kopia-go-exporter/config"
 )
 
 func TestNewExporter(t *testing.T) {
-	tests := []struct {
-		name string
-		want *Exporter
-	}{
-		// TODO: Add test cases.
+	origCfg := config.Cfg
+	origReadBuildInfo := config.ReadBuildInfo
+	defer func() {
+		config.Cfg = origCfg
+		config.ReadBuildInfo = origReadBuildInfo
+	}()
+
+	config.Cfg.Exporter.Port = 12346
+	config.Cfg.Exporter.Metrics.Prefix = "test_prefix"
+	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	config.ReadBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{
+			GoVersion: "go1.25.0",
+			Settings: []debug.BuildSetting{
+				{Key: "vcs.revision", Value: "abc123"},
+				{Key: "vcs.time", Value: "2025-01-15T10:00:00Z"},
+			},
+		}, true
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewExporter(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewExporter() = %v, want %v", got, tt.want)
-			}
-		})
+
+	ex := NewExporter()
+	if ex == nil {
+		t.Fatal("NewExporter() returned nil")
+	}
+	if ex.Port != 12346 {
+		t.Errorf("NewExporter() Port = %v, want %v", ex.Port, 12346)
+	}
+	if ex.Reg == nil {
+		t.Error("NewExporter() Reg is nil")
+	}
+}
+
+func TestNewExporter_BuildInfoUnavailable(t *testing.T) {
+	origCfg := config.Cfg
+	origReadBuildInfo := config.ReadBuildInfo
+	defer func() {
+		config.Cfg = origCfg
+		config.ReadBuildInfo = origReadBuildInfo
+	}()
+
+	config.Cfg.Exporter.Port = 12347
+	config.Cfg.Exporter.Metrics.Prefix = "test_prefix"
+	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	config.ReadBuildInfo = func() (*debug.BuildInfo, bool) {
+		return nil, false
+	}
+
+	ex := NewExporter()
+	if ex == nil {
+		t.Fatal("NewExporter() returned nil")
 	}
 }
 
@@ -141,4 +184,32 @@ func TestExporter_Run(t *testing.T) {
 			t.Fatalf("unexpected status code: got %v, want %v", resp.StatusCode, http.StatusOK)
 		}
 	})
+}
+
+func TestExporter_Run_AlreadyInUse(t *testing.T) {
+	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	// Block the port first
+	blocker, err := net.Listen("tcp", ":12399")
+	if err != nil {
+		t.Fatalf("could not bind port: %v", err)
+	}
+	defer func() { _ = blocker.Close() }()
+
+	ex := Exporter{
+		Port: 12399,
+		Reg:  prometheus.NewRegistry(),
+	}
+
+	done := make(chan struct{})
+	go func() {
+		ex.Run()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run() did not return after server error")
+	}
 }
