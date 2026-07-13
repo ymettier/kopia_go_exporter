@@ -1,3 +1,6 @@
+// Copyright 2025-2026 The kopia-go-exporter Authors. All rights reserved.
+// SPDX-License-Identifier: MIT
+
 package kopiametrics
 
 import (
@@ -7,7 +10,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
-	"kopia-go-exporter/config"
+	"log/slog"
 	"os"
 	"reflect"
 	"strings"
@@ -156,13 +159,52 @@ kopia --config-file="/tmp/repo.config" server start -p kopiapwd \
 func TestNewKopiaClient(t *testing.T) {
 	tests := []struct {
 		name string
+		cfg  KopiaClientConfig
 		want *KopiaClient
 	}{
-		// TODO: Add test cases.
+		{
+			name: "default config",
+			cfg:  KopiaClientConfig{},
+			want: &KopiaClient{
+				Config: KopiaClientConfig{},
+			},
+		},
+		{
+			name: "custom config",
+			cfg: KopiaClientConfig{
+				MetricsPrefix:         "test_prefix",
+				ConfigFile:            "/tmp/test.config",
+				Password:              "testpass",
+				ConnectWithConfigFile: true,
+				Retentions:            []string{"daily", "weekly"},
+				APIServer: APIServerConfig{
+					Username:    "testuser",
+					Hostname:    "localhost",
+					BaseURL:     "https://localhost:51515",
+					Fingerprint: "abc123",
+				},
+			},
+			want: &KopiaClient{
+				Config: KopiaClientConfig{
+					MetricsPrefix:         "test_prefix",
+					ConfigFile:            "/tmp/test.config",
+					Password:              "testpass",
+					ConnectWithConfigFile: true,
+					Retentions:            []string{"daily", "weekly"},
+					APIServer: APIServerConfig{
+						Username:    "testuser",
+						Hostname:    "localhost",
+						BaseURL:     "https://localhost:51515",
+						Fingerprint: "abc123",
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NewKopiaClient(); !reflect.DeepEqual(got, tt.want) {
+			got := NewKopiaClient(tt.cfg)
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewKopiaClient() = %v, want %v", got, tt.want)
 			}
 		})
@@ -180,7 +222,11 @@ func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 		"backup_end_time",
 	}
 	t.Run("All metrics are registered", func(t *testing.T) {
-		k := &KopiaClient{}
+		k := &KopiaClient{
+			Config: KopiaClientConfig{
+				MetricsPrefix: "test_prefix",
+			},
+		}
 		reg := prometheus.NewRegistry()
 		k.RegisterKopiaMetrics(reg)
 
@@ -203,6 +249,7 @@ func TestKopiaClient_GenerateConfigFile(t *testing.T) {
 		ServerInfo  repo.APIServerInfo
 		Repo        repo.Repository
 		Metrics     KopiaMetrics
+		Config      KopiaClientConfig
 	}
 	tests := []struct {
 		name   string
@@ -219,6 +266,7 @@ func TestKopiaClient_GenerateConfigFile(t *testing.T) {
 				ServerInfo:  tt.fields.ServerInfo,
 				Repo:        tt.fields.Repo,
 				Metrics:     tt.fields.Metrics,
+				Config:      tt.fields.Config,
 			}
 			k.GenerateConfigFile()
 		})
@@ -233,6 +281,7 @@ func TestKopiaClient_Connect(t *testing.T) {
 		ServerInfo  repo.APIServerInfo
 		Repo        repo.Repository
 		Metrics     KopiaMetrics
+		Config      KopiaClientConfig
 	}
 
 	cleanup, fingerprint, ip, port := setupTestKopia(t)
@@ -258,18 +307,22 @@ func TestKopiaClient_Connect(t *testing.T) {
 					BaseURL:                             fmt.Sprintf("https://%s:%s", ip, port.Port()),
 					TrustedServerCertificateFingerprint: fingerprint,
 				},
+				Config: KopiaClientConfig{
+					ConfigFile:            "/tmp/repo2.config",
+					Password:              "kopiapwd",
+					ConnectWithConfigFile: false,
+					APIServer: APIServerConfig{
+						Username:    "kopia",
+						Hostname:    "localhost",
+						BaseURL:     fmt.Sprintf("https://%s:%s", ip, port.Port()),
+						Fingerprint: fingerprint,
+					},
+				},
 			},
 		},
 	}
 
-	config.Cfg.LogLevel = "debug"
-	config.Cfg.Kopia.APIServer.RepositoryURL = fmt.Sprintf("https://%s:%s", ip, port.Port())
-	config.Cfg.Kopia.ConfigFile = "/tmp/repo2.config"
-	config.Cfg.Kopia.ConnectWithConfigFile = false
-	config.Cfg.Kopia.Password = "kopiapwd"
-	config.Cfg.Kopia.APIServer.Username = "kopia"
-	config.Cfg.Kopia.APIServer.Hostname = "localhost"
-	config.Cfg.Kopia.APIServer.Fingerprint = fingerprint
+	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -280,6 +333,7 @@ func TestKopiaClient_Connect(t *testing.T) {
 				ServerInfo:  tt.fields.ServerInfo,
 				Repo:        tt.fields.Repo,
 				Metrics:     tt.fields.Metrics,
+				Config:      tt.fields.Config,
 			}
 
 			err := k.Connect()
@@ -297,6 +351,7 @@ func TestKopiaClient_RunOnce(t *testing.T) {
 		ServerInfo  repo.APIServerInfo
 		Repo        repo.Repository
 		Metrics     KopiaMetrics
+		Config      KopiaClientConfig
 	}
 	tests := []struct {
 		name   string
@@ -313,6 +368,7 @@ func TestKopiaClient_RunOnce(t *testing.T) {
 				ServerInfo:  tt.fields.ServerInfo,
 				Repo:        tt.fields.Repo,
 				Metrics:     tt.fields.Metrics,
+				Config:      tt.fields.Config,
 			}
 			k.RunOnce()
 		})
@@ -327,6 +383,7 @@ func TestKopiaClient_Disconnect(t *testing.T) {
 		ServerInfo  repo.APIServerInfo
 		Repo        repo.Repository
 		Metrics     KopiaMetrics
+		Config      KopiaClientConfig
 	}
 	tests := []struct {
 		name   string
@@ -343,6 +400,7 @@ func TestKopiaClient_Disconnect(t *testing.T) {
 				ServerInfo:  tt.fields.ServerInfo,
 				Repo:        tt.fields.Repo,
 				Metrics:     tt.fields.Metrics,
+				Config:      tt.fields.Config,
 			}
 			k.Disconnect()
 		})

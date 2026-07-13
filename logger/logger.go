@@ -54,17 +54,10 @@ func getWriter(opts *LogOptions) (io.Writer, bool) {
 	l := &lumberjack.Logger{
 		Filename: filename,
 	}
-	if opts != nil {
-		l.MaxSize = opts.MaxSize
-		l.MaxBackups = opts.MaxBackups
-		l.MaxAge = opts.MaxAge
-		l.Compress = opts.Compress
-	} else {
-		l.MaxSize = 5
-		l.MaxBackups = 10
-		l.MaxAge = 14
-		l.Compress = true
-	}
+	l.MaxSize = opts.MaxSize
+	l.MaxBackups = opts.MaxBackups
+	l.MaxAge = opts.MaxAge
+	l.Compress = opts.Compress
 	return l, true
 }
 

@@ -122,6 +122,11 @@ func TestRedactURL_FullURL(t *testing.T) {
 			url:  "http://admin:secret@localhost:51515/api",
 			want: "http://localhost:51515/api",
 		},
+		{
+			name: "invalid url returns raw",
+			url:  "://missing-scheme",
+			want: "://missing-scheme",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -216,6 +221,21 @@ func TestNewLogger_EnvFallback(t *testing.T) {
 	Reset(&LogOptions{})
 	l := Get()
 	require.NotNil(t, l)
+}
+
+func TestNewLogger_LumberjackFile(t *testing.T) {
+	tmpFile := t.TempDir() + "/test_lumberjack.log"
+	Reset(&LogOptions{
+		Level:      "info",
+		Filename:   tmpFile,
+		MaxSize:    10,
+		MaxBackups: 3,
+		MaxAge:     7,
+		Compress:   true,
+	})
+	l := Get()
+	require.NotNil(t, l)
+	l.Info("test lumberjack output")
 }
 
 func TestReset_Concurrent(t *testing.T) {
