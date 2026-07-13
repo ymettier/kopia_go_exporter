@@ -1,4 +1,6 @@
-FROM golang:1.25 AS builder
+FROM golang:1.26 AS builder
+
+ARG VERSION=build
 
 WORKDIR /go
 
@@ -6,9 +8,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -v -o kopia-go-exporter .
+RUN echo "${VERSION}" > version.txt \
+    && CGO_ENABLED=0 go build -o kopia-go-exporter .
 
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian13:nonroot
 
 COPY --from=builder /go/kopia-go-exporter /kopia-go-exporter
 
