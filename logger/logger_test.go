@@ -58,32 +58,32 @@ func TestReset_JSON(t *testing.T) {
 }
 
 func TestGetWriter_NilOptions(t *testing.T) {
-	w, ok := getWriter(nil)
+	w, ok := getLogWriter(nil)
 	assert.Equal(t, os.Stderr, w)
 	assert.False(t, ok)
 }
 
 func TestGetWriter_EmptyFilename(t *testing.T) {
-	w, ok := getWriter(&LogOptions{Filename: ""})
+	w, ok := getLogWriter(&LogOptions{Filename: ""})
 	assert.Equal(t, os.Stderr, w)
 	assert.False(t, ok)
 }
 
 func TestGetWriter_Stdout(t *testing.T) {
-	w, ok := getWriter(&LogOptions{Filename: "stdout"})
+	w, ok := getLogWriter(&LogOptions{Filename: "stdout"})
 	assert.Equal(t, os.Stdout, w)
 	assert.False(t, ok)
 }
 
 func TestGetWriter_Stderr(t *testing.T) {
-	w, ok := getWriter(&LogOptions{Filename: "stderr"})
+	w, ok := getLogWriter(&LogOptions{Filename: "stderr"})
 	assert.Equal(t, os.Stderr, w)
 	assert.False(t, ok)
 }
 
 func TestGetWriter_Lumberjack(t *testing.T) {
 	tmpFile := t.TempDir() + "/test.log"
-	w, ok := getWriter(&LogOptions{
+	w, ok := getLogWriter(&LogOptions{
 		Filename:   tmpFile,
 		MaxSize:    10,
 		MaxBackups: 5,
@@ -96,7 +96,7 @@ func TestGetWriter_Lumberjack(t *testing.T) {
 
 func TestGetWriter_LumberjackDefaults(t *testing.T) {
 	tmpFile := t.TempDir() + "/test_defaults.log"
-	w, ok := getWriter(&LogOptions{
+	w, ok := getLogWriter(&LogOptions{
 		Filename: tmpFile,
 	})
 	require.NotNil(t, w)

@@ -30,7 +30,7 @@ type LogOptions struct {
 	Compress   bool
 }
 
-func getWriter(opts *LogOptions) (io.Writer, bool) {
+func getLogWriter(opts *LogOptions) (io.Writer, bool) {
 	filename := ""
 	if opts != nil && opts.Filename != "" {
 		filename = opts.Filename
@@ -99,7 +99,7 @@ func logConfig(l *slog.Logger, opts *LogOptions, usingLumberjack bool) {
 func newLogger(opts *LogOptions) *slog.Logger {
 	level := parseLogLevel(opts)
 
-	w, usingLumberjack := getWriter(opts)
+	w, usingLumberjack := getLogWriter(opts)
 
 	var handler slog.Handler
 	if opts != nil && opts.JSON {
