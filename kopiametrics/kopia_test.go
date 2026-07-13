@@ -21,8 +21,11 @@ import (
 
 	"github.com/kopia/kopia/repo"
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"kopia-go-exporter/config"
 )
 
 func hashSHA256(pemContent []byte) (string, error) {
@@ -300,4 +303,139 @@ func TestKopiaVersion(t *testing.T) {
 	}
 
 	t.Logf("kopia test binary is at expected version %s", kopiaTestVersion)
+}
+
+// setupTestRepo creates a local Kopia filesystem repository, takes a snapshot
+// of the base directory with explicit start/end times, and returns the config
+// file path, the snapshot source directory, and the repository password. This
+// helper does NOT start a Kopia API server — it is intended for tests that
+// connect directly to the repository via the Go API.
+func setupTestRepo(t *testing.T) (configFile, sourceDir, password string) {
+	t.Helper()
+	ctx := context.Background()
+
+	bin := KopiaTestBinaryPath()
+	if _, err := os.Stat(bin); err != nil {
+		require.NoError(t, downloadKopiaBinary(t), "failed to obtain kopia test binary")
+	}
+
+	bin, err := filepath.Abs(bin)
+	require.NoError(t, err, "failed to resolve kopia binary path")
+
+	baseDir := t.TempDir()
+	repoPath := filepath.Join(baseDir, "repo")
+	cachePath := filepath.Join(baseDir, "cache")
+	configFile = filepath.Join(baseDir, "repo.config")
+	password = "kopiapwd"
+
+	runKopia := func(name string, args ...string) {
+		cmd := exec.CommandContext(ctx, bin, args...)
+		cmd.Dir = baseDir
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "%s failed: %s", name, string(out))
+	}
+
+	runKopia("repository create", "repository", "create", "filesystem",
+		"--path="+repoPath, "-c", "-p", password,
+		"--cache-directory="+cachePath, "--no-check-for-updates",
+		"--override-hostname=localhost", "--override-username=kopia")
+
+	runKopia("repository connect", "--config-file="+configFile, "repository", "connect", "filesystem",
+		"--path="+repoPath, "-p", password, "--cache-directory="+cachePath, "--no-check-for-updates")
+
+	runKopia("snapshot create", "--config-file="+configFile, "snapshot", "create", "-p", password, baseDir,
+		"--start-time=2025-05-01 15:20:01 CET", "--end-time=2025-05-01 16:10:02 CET")
+
+	return configFile, baseDir, password
+}
+
+func TestRunOnceMetrics(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	configFile, sourceDir, password := setupTestRepo(t)
+
+	origCfg := config.Cfg
+	t.Cleanup(func() { config.Cfg = origCfg })
+
+	config.Cfg = config.Config{
+		Exporter: config.ExporterConfig{
+			Port: 9090,
+		},
+		Kopia: config.KopiaConfig{
+			Password:   password,
+			Retentions: []string{},
+		},
+	}
+	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+
+	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	k := &KopiaClient{
+		Ctx:         context.Background(),
+		IsConnected: false,
+	}
+
+	var err error
+	k.Repo, err = repo.Open(k.Ctx, configFile, password, nil)
+	require.NoError(t, err, "Failed to open repository")
+	k.IsConnected = true
+
+	reg := prometheus.NewRegistry()
+	k.RegisterKopiaMetrics(reg)
+
+	require.NoError(t, k.RunOnce(), "RunOnce failed")
+
+	families, err := reg.Gather()
+	require.NoError(t, err, "Failed to gather metrics")
+
+	familyMap := make(map[string]*dto.MetricFamily)
+	for _, f := range families {
+		familyMap[f.GetName()] = f
+	}
+
+	expectedMetrics := []string{
+		"kopia_go_exporter_total_size",
+		"kopia_go_exporter_file_count",
+		"kopia_go_exporter_dir_count",
+		"kopia_go_exporter_error_count",
+		"kopia_go_exporter_backup_duration",
+		"kopia_go_exporter_backup_start_time",
+		"kopia_go_exporter_backup_end_time",
+	}
+
+	for _, name := range expectedMetrics {
+		fam, ok := familyMap[name]
+		require.True(t, ok, "metric %s not found in registry", name)
+		require.NotEmpty(t, fam.GetMetric(), "metric %s has no samples", name)
+
+		m := fam.GetMetric()[0]
+		labels := make(map[string]string)
+		for _, lp := range m.GetLabel() {
+			labels[lp.GetName()] = lp.GetValue()
+		}
+		assert.NotEmpty(t, labels["host"], "%s: host label should not be empty", name)
+		assert.NotEmpty(t, labels["user"], "%s: user label should not be empty", name)
+		assert.Equal(t, sourceDir, labels["path"], "%s: unexpected path label", name)
+		assert.NotEmpty(t, labels["retention"], "%s: retention label should not be empty", name)
+	}
+
+	startTime := familyMap["kopia_go_exporter_backup_start_time"].GetMetric()[0].GetGauge().GetValue()
+	endTime := familyMap["kopia_go_exporter_backup_end_time"].GetMetric()[0].GetGauge().GetValue()
+	assert.Greater(t, startTime, float64(0), "backup_start_time should be positive")
+	assert.Greater(t, endTime, float64(0), "backup_end_time should be positive")
+	assert.Greater(t, endTime, startTime, "backup_end_time should be after backup_start_time")
+
+	duration := familyMap["kopia_go_exporter_backup_duration"].GetMetric()[0].GetGauge().GetValue()
+	assert.Greater(t, duration, float64(0), "backup_duration should be positive")
+
+	dirCount := familyMap["kopia_go_exporter_dir_count"].GetMetric()[0].GetGauge().GetValue()
+	assert.GreaterOrEqual(t, dirCount, float64(1), "dir_count should be at least 1")
+
+	totalSize := familyMap["kopia_go_exporter_total_size"].GetMetric()[0].GetGauge().GetValue()
+	assert.GreaterOrEqual(t, totalSize, float64(0), "total_size should be non-negative")
+
+	errorCount := familyMap["kopia_go_exporter_error_count"].GetMetric()[0].GetGauge().GetValue()
+	assert.Equal(t, float64(0), errorCount, "error_count should be 0")
 }
