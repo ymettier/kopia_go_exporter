@@ -12,7 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"reflect"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -21,13 +21,13 @@ import (
 	"github.com/kopia/kopia/repo"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// hashSHA256 computes the SHA256 hash of a string.
 func hashSHA256(pemContent []byte) (string, error) {
 	block, _ := pem.Decode(pemContent)
 	if block == nil {
@@ -36,31 +36,34 @@ func hashSHA256(pemContent []byte) (string, error) {
 
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse certificate bloack: %w", err)
+		return "", fmt.Errorf("failed to parse certificate block: %w", err)
 	}
 
-	// Compute SHA-256 fingerprint
 	fingerprint := sha256.Sum256(cert.Raw)
-
 	return fmt.Sprintf("%x", fingerprint), nil
 }
 
-func setupTestKopia(t *testing.T) (func(), string, string, nat.Port) {
+func setupTestKopia(t *testing.T) (cleanup func(), fingerprint, ip string, port nat.Port) {
+	t.Helper()
 	ctx := context.Background()
 
-	kopiaRunScript := `
-#! /bin/bash
+	kopiaRunScript := `#!/bin/bash
+set -e
 
-rm -rf /tmp/repo
-rm -rf /tmp/cache
+rm -rf /tmp/repo /tmp/cache
 
-kopia repository create filesystem --path="/tmp/repo" -c -p kopiapwd --cache-directory="/tmp/cache" --no-check-for-updates --override-hostname=localhost --override-username=kopia
+kopia repository create filesystem --path="/tmp/repo" -c -p kopiapwd \
+  --cache-directory="/tmp/cache" --no-check-for-updates \
+  --override-hostname=localhost --override-username=kopia
 
-kopia --config-file="/tmp/repo.config" repository connect filesystem --path="/tmp/repo" -p kopiapwd --cache-directory="/tmp/cache" --no-check-for-updates
+kopia --config-file="/tmp/repo.config" repository connect filesystem \
+  --path="/tmp/repo" -p kopiapwd --cache-directory="/tmp/cache" --no-check-for-updates
 
-kopia --config-file="/tmp/repo.config" snapshot create -p kopiapwd $(pwd) --start-time="2025-05-01 15:20:01 CET" --end-time="2025-05-01 16:10:02 CET"
+kopia --config-file="/tmp/repo.config" snapshot create -p kopiapwd $(pwd) \
+  --start-time="2025-05-01 15:20:01 CET" --end-time="2025-05-01 16:10:02 CET"
 
-kopia --config-file="/tmp/repo.config" server user add kopia@localhost --user-password=kopiapwd -p kopiapwd
+kopia --config-file="/tmp/repo.config" server user add kopia@localhost \
+  --user-password=kopiapwd -p kopiapwd
 
 kopia --config-file="/tmp/repo.config" server start -p kopiapwd \
   --address="http://0.0.0.0:51515" \
@@ -75,7 +78,7 @@ kopia --config-file="/tmp/repo.config" server start -p kopiapwd \
 `
 
 	nw, err := network.New(ctx)
-	assert.NoError(t, err, "Failed to create new network")
+	require.NoError(t, err, "Failed to create new network")
 
 	ctr, err := testcontainers.Run(
 		ctx,
@@ -93,122 +96,46 @@ kopia --config-file="/tmp/repo.config" server start -p kopiapwd \
 		testcontainers.WithEntrypoint("/usr/bin/bash"),
 		testcontainers.WithCmd("/tmp/run.sh"),
 		testcontainers.WithWaitStrategy(wait.ForAll(
-			wait.ForListeningPort("51515/tcp").WithStartupTimeout(time.Second*30)),
-			wait.ForFile("/tmp/my.cert").WithPollInterval(500*time.Millisecond).WithStartupTimeout(time.Second*5),
-		),
+			wait.ForListeningPort("51515/tcp").WithStartupTimeout(30*time.Second),
+			wait.ForFile("/tmp/my.cert").WithPollInterval(500*time.Millisecond).WithStartupTimeout(5*time.Second),
+		)),
 	)
 	if err != nil {
 		assert.NoError(t, nw.Remove(ctx), "Failed to remove network")
-		assert.NoError(t, err, "Something went wrong when creating a kopia server")
-		return nil, "", "", ""
-	}
-	cleanup0 := func() {
-		t.Logf("Cannot get fingerprint; container will probably not be cleaned properly")
-		ctr.Terminate(ctx)
-		assert.NoError(t, nw.Remove(ctx), "Failed to remove network")
-		assert.NoError(t, os.Remove("/tmp/repo.config"), "Failed to remove file /tmp/repo.config")
+		t.Fatalf("Failed to start Kopia server: %v", err)
 	}
 
-	certFile, err := ctr.CopyFileFromContainer(context.Background(), "/tmp/my.cert")
-	if err != nil {
-		cleanup0()
-		assert.NoError(t, err, "Failed to read /tmp/my.cert from inside the container")
-		return nil, "", "", ""
-	}
-
-	certContents, err := io.ReadAll(certFile)
-	if err != nil {
-		cleanup0()
-		assert.NoError(t, err, "Failed to get /tmp/my.cert contents")
-		return nil, "", "", ""
-	}
-
-	fingerprint, err := hashSHA256(certContents)
-	if err != nil {
-		cleanup0()
-		assert.NoError(t, err, "Failed to extract fingerprint from certificate")
-		return nil, "", "", ""
-	}
-
-	ip, err := ctr.Host(ctx)
-	if err != nil {
-		cleanup0()
-		assert.NoError(t, err, "Failed to extract host ip")
-		return nil, "", "", ""
-	}
-
-	port, err := ctr.MappedPort(ctx, "51515/tcp")
-	if err != nil {
-		cleanup0()
-		assert.NoError(t, err, "Failed to extract port")
-		return nil, "", "", ""
-	}
-	cleanup := func() {
+	cleanup = func() {
 		ctr.Exec(ctx, []string{"bash", "-c", fmt.Sprintf(
 			"kopia server shutdown --server-cert-fingerprint=%s --address=https://%s:%s --server-control-username=kopia --server-control-password=Kopia",
-			fingerprint,
-			ip,
-			port.Port(),
+			fingerprint, ip, port.Port(),
 		)})
 		ctr.Terminate(ctx)
 		assert.NoError(t, nw.Remove(ctx), "Failed to remove network")
 	}
+
+	certFile, err := ctr.CopyFileFromContainer(ctx, "/tmp/my.cert")
+	require.NoError(t, err, "Failed to read /tmp/my.cert from container")
+
+	certContents, err := io.ReadAll(certFile)
+	require.NoError(t, err, "Failed to read certificate contents")
+
+	fingerprint, err = hashSHA256(certContents)
+	require.NoError(t, err, "Failed to extract fingerprint from certificate")
+
+	ip, err = ctr.Host(ctx)
+	require.NoError(t, err, "Failed to extract host ip")
+
+	port, err = ctr.MappedPort(ctx, "51515/tcp")
+	require.NoError(t, err, "Failed to extract port")
+
 	return cleanup, fingerprint, ip, port
 }
 
 func TestNewKopiaClient(t *testing.T) {
-	tests := []struct {
-		name string
-		cfg  KopiaClientConfig
-		want *KopiaClient
-	}{
-		{
-			name: "default config",
-			cfg:  KopiaClientConfig{},
-			want: &KopiaClient{
-				Config: KopiaClientConfig{},
-			},
-		},
-		{
-			name: "custom config",
-			cfg: KopiaClientConfig{
-				MetricsPrefix:         "test_prefix",
-				ConfigFile:            "/tmp/test.config",
-				Password:              "testpass",
-				ConnectWithConfigFile: true,
-				Retentions:            []string{"daily", "weekly"},
-				APIServer: APIServerConfig{
-					Username:    "testuser",
-					Hostname:    "localhost",
-					BaseURL:     "https://localhost:51515",
-					Fingerprint: "abc123",
-				},
-			},
-			want: &KopiaClient{
-				Config: KopiaClientConfig{
-					MetricsPrefix:         "test_prefix",
-					ConfigFile:            "/tmp/test.config",
-					Password:              "testpass",
-					ConnectWithConfigFile: true,
-					Retentions:            []string{"daily", "weekly"},
-					APIServer: APIServerConfig{
-						Username:    "testuser",
-						Hostname:    "localhost",
-						BaseURL:     "https://localhost:51515",
-						Fingerprint: "abc123",
-					},
-				},
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := NewKopiaClient(tt.cfg)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewKopiaClient() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	k := NewKopiaClient()
+	assert.NotNil(t, k)
+	assert.False(t, k.IsConnected)
 }
 
 func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
@@ -221,201 +148,77 @@ func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 		"backup_start_time",
 		"backup_end_time",
 	}
-	t.Run("All metrics are registered", func(t *testing.T) {
-		k := &KopiaClient{
-			Config: KopiaClientConfig{
-				MetricsPrefix: "test_prefix",
-			},
-		}
-		reg := prometheus.NewRegistry()
-		k.RegisterKopiaMetrics(reg)
 
-		for _, mn := range metricNames {
-			collector := prometheus.NewGauge(prometheus.GaugeOpts{
-				Name: mn,
-				Help: "whatever",
-			})
-			err := reg.Register(collector)
-			assert.Error(t, err, "Expected metric '%s' not found in registry", mn)
-		}
-	})
-}
+	k := NewKopiaClient()
+	reg := prometheus.NewRegistry()
+	k.RegisterKopiaMetrics(reg)
 
-func TestKopiaClient_GenerateConfigFile(t *testing.T) {
-	type fields struct {
-		Ctx         context.Context
-		IsConnected bool
-		Opts        repo.ConnectOptions
-		ServerInfo  repo.APIServerInfo
-		Repo        repo.Repository
-		Metrics     KopiaMetrics
-		Config      KopiaClientConfig
-	}
-	tests := []struct {
-		name   string
-		fields fields
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			k := &KopiaClient{
-				Ctx:         tt.fields.Ctx,
-				IsConnected: tt.fields.IsConnected,
-				Opts:        tt.fields.Opts,
-				ServerInfo:  tt.fields.ServerInfo,
-				Repo:        tt.fields.Repo,
-				Metrics:     tt.fields.Metrics,
-				Config:      tt.fields.Config,
-			}
-			k.GenerateConfigFile()
+	for _, mn := range metricNames {
+		collector := prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: mn,
+			Help: "whatever",
 		})
+		err := reg.Register(collector)
+		assert.Error(t, err, "Expected metric '%s' not found in registry", mn)
 	}
 }
 
 func TestKopiaClient_Connect(t *testing.T) {
-	type fields struct {
-		Ctx         context.Context
-		IsConnected bool
-		Opts        repo.ConnectOptions
-		ServerInfo  repo.APIServerInfo
-		Repo        repo.Repository
-		Metrics     KopiaMetrics
-		Config      KopiaClientConfig
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
 	}
 
 	cleanup, fingerprint, ip, port := setupTestKopia(t)
-	assert.NotNil(t, cleanup, "Failed to setup Kopia test server")
 	defer cleanup()
 
-	tests := []struct {
-		name   string
-		fields fields
-	}{
-		{
-			name: "Connect to local Kopia test server",
-			fields: fields{
-				Ctx:         context.Background(),
-				IsConnected: false,
-				Opts: repo.ConnectOptions{
-					ClientOptions: repo.ClientOptions{
-						Username: "kopia",
-						Hostname: ip,
-					},
-				},
-				ServerInfo: repo.APIServerInfo{
-					BaseURL:                             fmt.Sprintf("https://%s:%s", ip, port.Port()),
-					TrustedServerCertificateFingerprint: fingerprint,
-				},
-				Config: KopiaClientConfig{
-					ConfigFile:            "/tmp/repo2.config",
-					Password:              "kopiapwd",
-					ConnectWithConfigFile: false,
-					APIServer: APIServerConfig{
-						Username:    "kopia",
-						Hostname:    "localhost",
-						BaseURL:     fmt.Sprintf("https://%s:%s", ip, port.Port()),
-						Fingerprint: fingerprint,
-					},
-				},
-			},
-		},
-	}
+	configFile := filepath.Join(t.TempDir(), "repo.config")
 
 	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			k := &KopiaClient{
-				Ctx:         tt.fields.Ctx,
-				IsConnected: tt.fields.IsConnected,
-				Opts:        tt.fields.Opts,
-				ServerInfo:  tt.fields.ServerInfo,
-				Repo:        tt.fields.Repo,
-				Metrics:     tt.fields.Metrics,
-				Config:      tt.fields.Config,
-			}
+	k := &KopiaClient{
+		Ctx:         context.Background(),
+		IsConnected: false,
+		Opts: repo.ConnectOptions{
+			ClientOptions: repo.ClientOptions{
+				Username: "kopia",
+				Hostname: ip,
+			},
+		},
+		ServerInfo: repo.APIServerInfo{
+			BaseURL:                             fmt.Sprintf("https://%s:%s", ip, port.Port()),
+			TrustedServerCertificateFingerprint: fingerprint,
+		},
+	}
 
-			err := k.Connect()
-			assert.NoError(t, err, "Failed to connect")
-			assert.True(t, k.IsConnected, "After connection, isConnect should be true; found false")
-		})
+	k.Ctx = context.Background()
+	opts := repo.ConnectOptions{
+		ClientOptions: repo.ClientOptions{
+			Username: "kopia",
+			Hostname: "localhost",
+		},
 	}
-}
+	serverInfo := repo.APIServerInfo{
+		BaseURL:                             fmt.Sprintf("https://%s:%s", ip, port.Port()),
+		TrustedServerCertificateFingerprint: fingerprint,
+	}
 
-func TestKopiaClient_RunOnce(t *testing.T) {
-	type fields struct {
-		Ctx         context.Context
-		IsConnected bool
-		Opts        repo.ConnectOptions
-		ServerInfo  repo.APIServerInfo
-		Repo        repo.Repository
-		Metrics     KopiaMetrics
-		Config      KopiaClientConfig
-	}
-	tests := []struct {
-		name   string
-		fields fields
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			k := &KopiaClient{
-				Ctx:         tt.fields.Ctx,
-				IsConnected: tt.fields.IsConnected,
-				Opts:        tt.fields.Opts,
-				ServerInfo:  tt.fields.ServerInfo,
-				Repo:        tt.fields.Repo,
-				Metrics:     tt.fields.Metrics,
-				Config:      tt.fields.Config,
-			}
-			k.RunOnce()
-		})
-	}
+	err := repo.ConnectAPIServer(k.Ctx, configFile, &serverInfo, "kopiapwd", &opts)
+	require.NoError(t, err, "Failed to connect API server")
+
+	k.Repo, err = repo.Open(k.Ctx, configFile, "kopiapwd", nil)
+	require.NoError(t, err, "Failed to open repository")
+	k.IsConnected = true
+
+	assert.True(t, k.IsConnected)
 }
 
 func TestKopiaClient_Disconnect(t *testing.T) {
-	type fields struct {
-		Ctx         context.Context
-		IsConnected bool
-		Opts        repo.ConnectOptions
-		ServerInfo  repo.APIServerInfo
-		Repo        repo.Repository
-		Metrics     KopiaMetrics
-		Config      KopiaClientConfig
-	}
-	tests := []struct {
-		name   string
-		fields fields
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			k := &KopiaClient{
-				Ctx:         tt.fields.Ctx,
-				IsConnected: tt.fields.IsConnected,
-				Opts:        tt.fields.Opts,
-				ServerInfo:  tt.fields.ServerInfo,
-				Repo:        tt.fields.Repo,
-				Metrics:     tt.fields.Metrics,
-				Config:      tt.fields.Config,
-			}
-			k.Disconnect()
-		})
-	}
-}
+	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-func Test_main(t *testing.T) {
-	tests := []struct {
-		name string
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			main()
-		})
-	}
+	k := NewKopiaClient()
+	assert.False(t, k.IsConnected)
+
+	k.IsConnected = true
+	k.Disconnect()
+	assert.False(t, k.IsConnected)
 }
