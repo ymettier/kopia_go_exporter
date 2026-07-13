@@ -37,7 +37,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 │   ├── kopia_test.go             # Integration tests using testcontainers
 │   ├── kopia_tests_helpers_test.go  # Helpers to download/verify the kopia CLI binary for tests
 │   └── test_assets/
-│       └── kopia_test           # Downloaded kopia executable (kopia v0.23.1), kept between runs
+│       └── kopia_test           # Downloaded kopia executable.
 ├── config.yaml.sample       # Example configuration
 ├── Dockerfile               # Multi-stage build (golang builder + distroless runtime)
 ├── go.mod / go.sum
