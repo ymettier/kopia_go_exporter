@@ -174,6 +174,30 @@ func setupTestKopia(t *testing.T) (cleanup func(), fingerprint, ip, port string)
 	return cleanup, fingerprint, ip, port
 }
 
+func logGatheredMetrics(t *testing.T, families []*dto.MetricFamily) {
+	t.Helper()
+	if len(families) == 0 {
+		t.Log("gathered metrics: (empty)")
+		return
+	}
+	for _, f := range families {
+		for _, m := range f.GetMetric() {
+			labels := make(map[string]string)
+			for _, lp := range m.GetLabel() {
+				labels[lp.GetName()] = lp.GetValue()
+			}
+			switch {
+			case m.GetGauge() != nil:
+				t.Logf("metric %s %v = %v", f.GetName(), labels, m.GetGauge().GetValue())
+			case m.GetCounter() != nil:
+				t.Logf("metric %s %v = %v", f.GetName(), labels, m.GetCounter().GetValue())
+			default:
+				t.Logf("metric %s %v (unknown type)", f.GetName(), labels)
+			}
+		}
+	}
+}
+
 func TestNewKopiaClient(t *testing.T) {
 	k := NewKopiaClient()
 	assert.NotNil(t, k)
@@ -341,6 +365,7 @@ func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 
 	families, err := reg.Gather()
 	require.NoError(t, err)
+	logGatheredMetrics(t, families)
 	assert.Empty(t, families, "no metrics should be set when retention is filtered out")
 }
 
@@ -378,6 +403,7 @@ func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
 
 	families, err := reg.Gather()
 	require.NoError(t, err)
+	logGatheredMetrics(t, families)
 	require.NotEmpty(t, families, "metrics should be set when keepAllRetentions is true")
 
 	familyMap := make(map[string]*dto.MetricFamily)
@@ -481,6 +507,7 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 
 	families, err := reg.Gather()
 	require.NoError(t, err)
+	logGatheredMetrics(t, families)
 	assert.Empty(t, families, "no metrics should be set for an empty repo")
 }
 
@@ -602,6 +629,7 @@ func TestRunOnce_ConnectWithConfigFile(t *testing.T) {
 
 	families, err := reg.Gather()
 	require.NoError(t, err)
+	logGatheredMetrics(t, families)
 	require.NotEmpty(t, families, "metrics should be set after RunOnce")
 }
 
@@ -742,6 +770,7 @@ func TestRunOnceMetrics(t *testing.T) {
 
 	families, err := reg.Gather()
 	require.NoError(t, err, "Failed to gather metrics")
+	logGatheredMetrics(t, families)
 
 	familyMap := make(map[string]*dto.MetricFamily)
 	for _, f := range families {
