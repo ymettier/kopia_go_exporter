@@ -48,9 +48,11 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - `New()` constructor: parses flags, loads YAML via Koanf, overlays env vars, returns error
 - Koanf layered loading: YAML file → environment variables (KGE_ prefix)
 - Environment variable mapping: `KGE_KOPIA_PASSWORD` → `kopia.password` (uppercase, underscores → dots)
-- Config validation in `CheckConfig()`: required fields cause `os.Exit(1)` on missing
+- Config validation in `CheckConfig()`: returns error on missing required fields
 - Config struct: `config.Cfg` (global, populated at startup)
-- Helper functions: `lookupConfigKey`, `getConfigString`, `getConfigInt`, `getConfigBool`, `getConfigDuration`
+- `GetVersionInfo()` returns `VersionInfo` struct with version, revision, time, dirty, goVersion from build info
+- `ReadBuildInfo` is an exported variable holding `debug.ReadBuildInfo`, mockable for testing
+- Helper functions: `lookupConfigKey`, `getConfigString`, `getConfigInt`, `getConfigBool`
 
 ### Exporter (exporter/exporter.go)
 - Creates a `prometheus.Registry` with Go and process collectors
@@ -122,7 +124,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Return errors explicitly, don't panic
 - Log errors with relevant context (config file paths, URLs)
 - Gracefully handle missing or corrupted configuration
-- Configuration errors cause immediate exit with `os.Exit(1)`
+- Exit with `os.Exit(1)` happens only in `main.go`
 
 ### Logging (logger/logger.go)
 - Structured logging using log/slog with text or JSON handler
