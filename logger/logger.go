@@ -4,20 +4,16 @@
 package logger
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log"
 	"log/slog"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
 
 	"gopkg.in/natefinch/lumberjack.v2"
 )
-
-type ctxKey struct{}
 
 var (
 	mu     sync.RWMutex
@@ -136,29 +132,4 @@ func Reset(opts *LogOptions) {
 	mu.Lock()
 	defer mu.Unlock()
 	global = newLogger(opts)
-}
-
-// FromCtx returns the Logger associated with the ctx. If no logger
-// is associated, the default logger is returned.
-func FromCtx(ctx context.Context) *slog.Logger {
-	if l, ok := ctx.Value(ctxKey{}).(*slog.Logger); ok {
-		return l
-	}
-	return Get()
-}
-
-// WithCtx returns a copy of ctx with the Logger attached.
-func WithCtx(ctx context.Context, l *slog.Logger) context.Context {
-	return context.WithValue(ctx, ctxKey{}, l)
-}
-
-// RedactURL returns rawURL with any userinfo (username/password) stripped,
-// so it can be logged without leaking credentials.
-func RedactURL(rawURL string) string {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return rawURL
-	}
-	u.User = nil
-	return u.String()
 }

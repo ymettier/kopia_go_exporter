@@ -168,18 +168,6 @@ func getConfigBool(koanfInstance *koanf.Koanf, camelKey string, defaultValue boo
 	return defaultValue
 }
 
-func getConfigDuration(koanfInstance *koanf.Koanf, camelKey, defaultDuration string) (time.Duration, error) {
-	durationStr := defaultDuration
-	if val, ok := lookupConfigKey(koanfInstance, camelKey); ok {
-		durationStr = val
-	}
-	duration, err := time.ParseDuration(durationStr)
-	if err != nil {
-		return 0, err
-	}
-	return duration, nil
-}
-
 func readExporterConfig(koanfInstance *koanf.Koanf, l *slog.Logger, flags CLIFlags) ExporterConfig {
 	var cfg ExporterConfig
 

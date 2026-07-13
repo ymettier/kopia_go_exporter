@@ -4,7 +4,6 @@
 package logger
 
 import (
-	"context"
 	"log/slog"
 	"os"
 	"testing"
@@ -56,84 +55,6 @@ func TestReset_JSON(t *testing.T) {
 	})
 	l := Get()
 	assert.NotNil(t, l)
-}
-
-func TestFromCtx_WithLoggerInContext(t *testing.T) {
-	expected := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	ctx := WithCtx(context.Background(), expected)
-
-	l := FromCtx(ctx)
-	assert.Equal(t, expected, l)
-}
-
-func TestFromCtx_WithoutLoggerInContext(t *testing.T) {
-	Reset(&LogOptions{Level: "info"})
-	l := FromCtx(context.Background())
-	assert.NotNil(t, l)
-	assert.Equal(t, global, l)
-}
-
-func TestWithCtx_And_FromCtx_RoundTrip(t *testing.T) {
-	Reset(&LogOptions{Level: "warn"})
-	custom := slog.New(slog.NewTextHandler(os.Stderr, nil))
-
-	ctx := WithCtx(context.Background(), custom)
-	got := FromCtx(ctx)
-	assert.Equal(t, custom, got)
-
-	// Different context should fall back to global
-	got2 := FromCtx(context.Background())
-	assert.Equal(t, global, got2)
-}
-
-func TestRedactURL_FullURL(t *testing.T) {
-	tests := []struct {
-		name string
-		url  string
-		want string
-	}{
-		{
-			name: "with userinfo",
-			url:  "https://user:pass@example.com/path",
-			want: "https://example.com/path",
-		},
-		{
-			name: "without userinfo",
-			url:  "https://example.com/path",
-			want: "https://example.com/path",
-		},
-		{
-			name: "empty string",
-			url:  "",
-			want: "",
-		},
-		{
-			name: "with port",
-			url:  "https://user:pass@example.com:8443/path",
-			want: "https://example.com:8443/path",
-		},
-		{
-			name: "only username",
-			url:  "https://user@example.com/path",
-			want: "https://example.com/path",
-		},
-		{
-			name: "http scheme",
-			url:  "http://admin:secret@localhost:51515/api",
-			want: "http://localhost:51515/api",
-		},
-		{
-			name: "invalid url returns raw",
-			url:  "://missing-scheme",
-			want: "://missing-scheme",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := RedactURL(tt.url)
-			assert.Equal(t, tt.want, got)
-		})
-	}
 }
 
 func TestGetWriter_NilOptions(t *testing.T) {

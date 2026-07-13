@@ -9,7 +9,6 @@ import (
 	"os"
 	"runtime/debug"
 	"testing"
-	"time"
 
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/file"
@@ -207,33 +206,6 @@ func TestGetConfigBool(t *testing.T) {
 	t.Run("invalid bool returns default", func(t *testing.T) {
 		val := getConfigBool(k, "invalid_bool", false)
 		assert.False(t, val)
-	})
-}
-
-func TestGetConfigDuration(t *testing.T) {
-	cfgFile := writeTestConfig(t, "timeout: 30s\ninvalid_dur: not_a_duration\n")
-	k = koanfNew(t, cfgFile)
-
-	t.Run("valid duration", func(t *testing.T) {
-		val, err := getConfigDuration(k, "timeout", "10s")
-		require.NoError(t, err)
-		assert.Equal(t, 30*time.Second, val)
-	})
-
-	t.Run("missing key uses default", func(t *testing.T) {
-		val, err := getConfigDuration(k, "missing.key", "15s")
-		require.NoError(t, err)
-		assert.Equal(t, 15*time.Second, val)
-	})
-
-	t.Run("invalid duration returns error", func(t *testing.T) {
-		_, err := getConfigDuration(k, "invalid_dur", "10s")
-		assert.Error(t, err)
-	})
-
-	t.Run("invalid default duration returns error", func(t *testing.T) {
-		_, err := getConfigDuration(k, "missing.key", "bad")
-		assert.Error(t, err)
 	})
 }
 
