@@ -7,6 +7,7 @@ import (
 	"flag"
 	"log/slog"
 	"os"
+	"runtime/debug"
 	"testing"
 	"time"
 
@@ -543,4 +544,111 @@ func koanfNew(t *testing.T, cfgFile string) *koanf.Koanf {
 	err := k.Load(file.Provider(cfgFile), yaml.Parser())
 	require.NoError(t, err)
 	return k
+}
+
+func TestVersionInfo_BuildInfoUnavailable(t *testing.T) {
+	origReadBuildInfo := readBuildInfo
+	defer func() { readBuildInfo = origReadBuildInfo }()
+
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return nil, false
+	}
+
+	output := versionInfo("1.0.0")
+	assert.Contains(t, output, "1.0.0")
+	assert.NotContains(t, output, "Revision")
+}
+
+func TestVersionInfo_WithVCSSettings(t *testing.T) {
+	origReadBuildInfo := readBuildInfo
+	defer func() { readBuildInfo = origReadBuildInfo }()
+
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{
+			GoVersion: "go1.25.0",
+			Settings: []debug.BuildSetting{
+				{Key: "vcs.revision", Value: "abc123"},
+				{Key: "vcs.time", Value: "2025-01-15T10:00:00Z"},
+				{Key: "vcs.modified", Value: "true"},
+			},
+		}, true
+	}
+
+	output := versionInfo("1.0.0")
+	assert.Contains(t, output, "abc123")
+	assert.Contains(t, output, "true")
+	assert.Contains(t, output, "go1.25.0")
+}
+
+func TestGetVersionFull_BuildInfoUnavailable(t *testing.T) {
+	origReadBuildInfo := readBuildInfo
+	defer func() { readBuildInfo = origReadBuildInfo }()
+
+	givenVersion = "2.0.0"
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return nil, false
+	}
+
+	version, revision, vcsTime, dirty, ok := GetVersionFull()
+	assert.False(t, ok)
+	assert.Equal(t, "2.0.0", version)
+	assert.Empty(t, revision)
+	assert.Empty(t, vcsTime)
+	assert.False(t, dirty)
+}
+
+func TestGetVersionFull_WithVCSSettings_Dirty(t *testing.T) {
+	origReadBuildInfo := readBuildInfo
+	defer func() { readBuildInfo = origReadBuildInfo }()
+
+	givenVersion = "3.0.0"
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{
+			Settings: []debug.BuildSetting{
+				{Key: "vcs.revision", Value: "deadbeef"},
+				{Key: "vcs.time", Value: "2025-06-01T12:00:00Z"},
+				{Key: "vcs.modified", Value: "true"},
+			},
+		}, true
+	}
+
+	version, revision, vcsTime, dirty, ok := GetVersionFull()
+	assert.True(t, ok)
+	assert.Equal(t, "3.0.0", version)
+	assert.Equal(t, "deadbeef", revision)
+	assert.Equal(t, "2025-06-01T12:00:00Z", vcsTime)
+	assert.True(t, dirty)
+}
+
+func TestGetVersionFull_WithVCSSettings_Clean(t *testing.T) {
+	origReadBuildInfo := readBuildInfo
+	defer func() { readBuildInfo = origReadBuildInfo }()
+
+	givenVersion = "4.0.0"
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{
+			Settings: []debug.BuildSetting{
+				{Key: "vcs.revision", Value: "face0ff"},
+				{Key: "vcs.time", Value: "2025-07-01T08:00:00Z"},
+				{Key: "vcs.modified", Value: "false"},
+			},
+		}, true
+	}
+
+	version, revision, vcsTime, dirty, ok := GetVersionFull()
+	assert.True(t, ok)
+	assert.Equal(t, "4.0.0", version)
+	assert.Equal(t, "face0ff", revision)
+	assert.Equal(t, "2025-07-01T08:00:00Z", vcsTime)
+	assert.False(t, dirty)
+}
+
+func TestReadKopiaConfig_InvalidRetentions(t *testing.T) {
+	cfgFile := writeTestConfig(t, "kopia:\n  retentionstoextract:\n    a:\n      b: c\n")
+	k = koanfNew(t, cfgFile)
+
+	l := slog.Default()
+	cfg := readKopiaConfig(k, l)
+	assert.Len(t, cfg.Retentions, 1)
+	assert.Empty(t, cfg.Retentions[0])
 }

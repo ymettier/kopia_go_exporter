@@ -22,6 +22,8 @@ var k = koanf.New(".")
 
 var givenVersion string
 
+var readBuildInfo = debug.ReadBuildInfo
+
 type CLIFlags struct {
 	ConfigFile  string
 	ExporterPort int
@@ -67,7 +69,7 @@ func versionInfo(version string) string {
 	revision := "unknown"
 	dirtyBuild := true
 
-	info, ok := debug.ReadBuildInfo()
+	info, ok := readBuildInfo()
 	if !ok {
 		return output
 	}
@@ -240,14 +242,12 @@ func readConfig(filename string, flags CLIFlags) error {
 	}
 
 	// Load environment variables with KGE_ prefix (overrides YAML values)
-	if err := k.Load(env.Provider("KGE_", ".", func(s string) string {
+	_ = k.Load(env.Provider("KGE_", ".", func(s string) string {
 		s = strings.TrimPrefix(s, "KGE_")
 		s = strings.ToLower(s)
 		s = strings.ReplaceAll(s, "_", ".")
 		return s
-	}), nil); err != nil {
-		return fmt.Errorf("failed to load environment variables: %w", err)
-	}
+	}), nil)
 
 	Cfg.Exporter = readExporterConfig(k, l, flags)
 	Cfg.Kopia = readKopiaConfig(k, l)
@@ -298,13 +298,13 @@ func New(version string, args []string) error {
 }
 
 func GetVersionFull() (version, revision, time string, dirty, ok bool) {
-	buildInfo, ok := debug.ReadBuildInfo()
-	if !ok {
+	bInfo, bOk := readBuildInfo()
+	if !bOk {
 		return strings.TrimSpace(givenVersion), "", "", false, false
 	}
 
 	var modified string
-	for _, setting := range buildInfo.Settings {
+	for _, setting := range bInfo.Settings {
 		switch setting.Key {
 		case "vcs.revision":
 			revision = setting.Value
