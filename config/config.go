@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"os"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -258,36 +257,31 @@ func readConfig(filename string, flags CLIFlags) error {
 	return nil
 }
 
-func CheckConfig() {
+func CheckConfig() error {
 	if Cfg.Kopia.ConfigFile == "" {
 		Cfg.Kopia.ConfigFile = "/tmp/kopia.cfg"
 		slog.Warn("Kopia.configfile was not specified. Using /tmp/kopia.cfg")
 	}
 	if Cfg.Kopia.Password == "" {
-		slog.Error("kopia.password is not set (needed when kopia.configfile is provided)")
-		os.Exit(1)
+		return fmt.Errorf("kopia.password is not set (needed when kopia.configfile is provided)")
 	}
 	if !Cfg.Kopia.ConnectWithConfigFile {
 		if Cfg.Kopia.APIServer.RepositoryURL == "" {
-			slog.Error("kopia.repositoryURL is not set (needed when kopia.configfile is not provided)")
-			os.Exit(1)
+			return fmt.Errorf("kopia.repositoryURL is not set (needed when kopia.configfile is not provided)")
 		}
 		if Cfg.Kopia.APIServer.Fingerprint == "" {
-			slog.Error("kopia.fingerprint is not set (needed when kopia.configfile is not provided)")
-			os.Exit(1)
+			return fmt.Errorf("kopia.fingerprint is not set (needed when kopia.configfile is not provided)")
 		}
 		if Cfg.Kopia.APIServer.Hostname == "" {
-			slog.Error("kopia.hostname is not set (needed when kopia.configfile is not provided)")
-			os.Exit(1)
+			return fmt.Errorf("kopia.hostname is not set (needed when kopia.configfile is not provided)")
 		}
 		if Cfg.Kopia.APIServer.Username == "" {
-			slog.Error("kopia.username is not set (needed when kopia.configfile is not provided)")
-			os.Exit(1)
+			return fmt.Errorf("kopia.username is not set (needed when kopia.configfile is not provided)")
 		}
 	} else {
-		slog.Error("kopia.connectwithconfigfile is not supported yet")
-		os.Exit(1)
+		return fmt.Errorf("kopia.connectwithconfigfile is not supported yet")
 	}
+	return nil
 }
 
 func New(version string, args []string) error {

@@ -11,6 +11,7 @@ import (
 	"kopia-go-exporter/exporter"
 	"kopia-go-exporter/kopiametrics"
 	"kopia-go-exporter/logger"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -27,7 +28,10 @@ func main() {
 		}
 		os.Exit(1)
 	}
-	config.CheckConfig()
+	if err := config.CheckConfig(); err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
+	}
 
 	logger.Reset(&logger.LogOptions{
 		Level: config.Cfg.LogLevel,

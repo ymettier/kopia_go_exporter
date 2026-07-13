@@ -5,7 +5,16 @@ package config
 
 import (
 	"flag"
+	"log/slog"
+	"os"
 	"testing"
+	"time"
+
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseFlags(t *testing.T) {
@@ -42,6 +51,17 @@ func TestParseFlags(t *testing.T) {
 			args:    []string{"--exporter-port", "9090"},
 			wantErr: false,
 		},
+		{
+			name:        "invalid flag",
+			args:        []string{"--nonexistent"},
+			wantErr:     true,
+			wantErrHelp: false,
+		},
+		{
+			name:    "custom log level",
+			args:    []string{"--log_level", "debug"},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -60,6 +80,14 @@ func TestParseFlags(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseFlags_CustomValues(t *testing.T) {
+	flags, err := ParseFlags("test", []string{"--config", "/tmp/custom.yaml", "--exporter-port", "8080", "--log_level", "warn"})
+	require.NoError(t, err)
+	assert.Equal(t, "/tmp/custom.yaml", flags.ConfigFile)
+	assert.Equal(t, 8080, flags.ExporterPort)
+	assert.Equal(t, "warn", flags.LogLevel)
 }
 
 func TestGetVersionFull(t *testing.T) {
@@ -86,62 +114,433 @@ func TestGetVersionFull(t *testing.T) {
 	}
 }
 
-func TestCheckConfig(t *testing.T) {
-	// Save original config
+func TestGetVersionFull_ReturnsVCSData(t *testing.T) {
+	givenVersion = "1.0.0"
+	version, _, _, _, ok := GetVersionFull()
+	assert.True(t, ok)
+	assert.Equal(t, "1.0.0", version)
+}
+
+func writeTestConfig(t *testing.T, content string) string {
+	t.Helper()
+	tmpFile := t.TempDir() + "/test.yaml"
+	err := os.WriteFile(tmpFile, []byte(content), 0o644)
+	require.NoError(t, err)
+	return tmpFile
+}
+
+func TestLookupConfigKey(t *testing.T) {
+	cfgFile := writeTestConfig(t, "exporter:\n  port: 9090\n  metrics:\n    prefix: test_prefix\n")
+	k = koanf.New(".")
+	err := k.Load(file.Provider(cfgFile), yaml.Parser())
+	require.NoError(t, err)
+
+	t.Run("lowercase key", func(t *testing.T) {
+		val, ok := lookupConfigKey(k, "exporter.port")
+		assert.True(t, ok)
+		assert.Equal(t, "9090", val)
+	})
+
+	t.Run("camelCase key", func(t *testing.T) {
+		val, ok := lookupConfigKey(k, "exporter.metrics.prefix")
+		assert.True(t, ok)
+		assert.Equal(t, "test_prefix", val)
+	})
+
+	t.Run("nonexistent key", func(t *testing.T) {
+		_, ok := lookupConfigKey(k, "nonexistent.key")
+		assert.False(t, ok)
+	})
+}
+
+func TestLookupConfigKey_UnderscoreFormat(t *testing.T) {
+	cfgFile := writeTestConfig(t, "exporter_metrics_prefix: underscore_prefix\n")
+	k = koanfNew(t, cfgFile)
+
+	val, ok := lookupConfigKey(k, "exporter.metrics.prefix")
+	assert.True(t, ok)
+	assert.Equal(t, "underscore_prefix", val)
+}
+
+func TestGetConfigString(t *testing.T) {
+	cfgFile := writeTestConfig(t, "existing:\n  key: value\n")
+	k = koanfNew(t, cfgFile)
+
+	t.Run("existing key", func(t *testing.T) {
+		val := getConfigString(k, "existing.key", "default")
+		assert.Equal(t, "value", val)
+	})
+
+	t.Run("missing key returns default", func(t *testing.T) {
+		val := getConfigString(k, "missing.key", "default_value")
+		assert.Equal(t, "default_value", val)
+	})
+}
+
+func TestGetConfigInt(t *testing.T) {
+	cfgFile := writeTestConfig(t, "port: 8080\ninvalid: not_a_number\n")
+	k = koanfNew(t, cfgFile)
+
+	t.Run("valid int", func(t *testing.T) {
+		val := getConfigInt(k, "port", 9090)
+		assert.Equal(t, 8080, val)
+	})
+
+	t.Run("missing key returns default", func(t *testing.T) {
+		val := getConfigInt(k, "missing.port", 9090)
+		assert.Equal(t, 9090, val)
+	})
+
+	t.Run("invalid int returns default", func(t *testing.T) {
+		val := getConfigInt(k, "invalid", 9090)
+		assert.Equal(t, 9090, val)
+	})
+}
+
+func TestGetConfigBool(t *testing.T) {
+	cfgFile := writeTestConfig(t, "enabled: true\ndisabled: \"false\"\none: \"1\"\ninvalid_bool: maybe\n")
+	k = koanfNew(t, cfgFile)
+
+	t.Run("true string", func(t *testing.T) {
+		val := getConfigBool(k, "enabled", false)
+		assert.True(t, val)
+	})
+
+	t.Run("false string", func(t *testing.T) {
+		val := getConfigBool(k, "disabled", true)
+		assert.False(t, val)
+	})
+
+	t.Run("1 string", func(t *testing.T) {
+		val := getConfigBool(k, "one", false)
+		assert.True(t, val)
+	})
+
+	t.Run("missing key returns default", func(t *testing.T) {
+		val := getConfigBool(k, "missing.key", true)
+		assert.True(t, val)
+	})
+
+	t.Run("invalid bool returns default", func(t *testing.T) {
+		val := getConfigBool(k, "invalid_bool", false)
+		assert.False(t, val)
+	})
+}
+
+func TestGetConfigDuration(t *testing.T) {
+	cfgFile := writeTestConfig(t, "timeout: 30s\ninvalid_dur: not_a_duration\n")
+	k = koanfNew(t, cfgFile)
+
+	t.Run("valid duration", func(t *testing.T) {
+		val, err := getConfigDuration(k, "timeout", "10s")
+		require.NoError(t, err)
+		assert.Equal(t, 30*time.Second, val)
+	})
+
+	t.Run("missing key uses default", func(t *testing.T) {
+		val, err := getConfigDuration(k, "missing.key", "15s")
+		require.NoError(t, err)
+		assert.Equal(t, 15*time.Second, val)
+	})
+
+	t.Run("invalid duration returns error", func(t *testing.T) {
+		_, err := getConfigDuration(k, "invalid_dur", "10s")
+		assert.Error(t, err)
+	})
+
+	t.Run("invalid default duration returns error", func(t *testing.T) {
+		_, err := getConfigDuration(k, "missing.key", "bad")
+		assert.Error(t, err)
+	})
+}
+
+func TestReadExporterConfig(t *testing.T) {
+	cfgFile := writeTestConfig(t, "exporter:\n  port: 8080\n  metrics:\n    prefix: custom_prefix\n  interval: 60\n")
+	k = koanfNew(t, cfgFile)
+
+	l := slog.Default()
+	flags := CLIFlags{ExporterPort: 9090}
+
+	cfg := readExporterConfig(k, l, flags)
+	assert.Equal(t, 8080, cfg.Port)
+	assert.Equal(t, "custom_prefix", cfg.Metrics.Prefix)
+	assert.Equal(t, 60, cfg.Interval)
+}
+
+func TestReadExporterConfig_FlagOverride(t *testing.T) {
+	cfgFile := writeTestConfig(t, "exporter:\n  port: 8080\n")
+	k = koanfNew(t, cfgFile)
+
+	l := slog.Default()
+	flags := CLIFlags{ExporterPort: 7777}
+
+	cfg := readExporterConfig(k, l, flags)
+	assert.Equal(t, 7777, cfg.Port)
+}
+
+func TestReadExporterConfig_Defaults(t *testing.T) {
+	k = koanf.New(".")
+	l := slog.Default()
+	flags := CLIFlags{ExporterPort: 9090}
+
+	cfg := readExporterConfig(k, l, flags)
+	assert.Equal(t, 9090, cfg.Port)
+	assert.Equal(t, "kopia_go_exporter", cfg.Metrics.Prefix)
+	assert.Equal(t, 300, cfg.Interval)
+}
+
+func TestReadKopiaConfig(t *testing.T) {
+	cfgFile := writeTestConfig(t, `kopia:
+  configfile: /tmp/test.config
+  connectwithconfigfile: true
+  password: secret
+  apiserver:
+    repositoryURL: "https://example.com:51515"
+    hostname: myhost
+    username: myuser
+    fingerprint: abc123
+  retentionstoextract:
+    - daily
+    - weekly
+`)
+	k = koanfNew(t, cfgFile)
+
+	l := slog.Default()
+	cfg := readKopiaConfig(k, l)
+	assert.Equal(t, "/tmp/test.config", cfg.ConfigFile)
+	assert.True(t, cfg.ConnectWithConfigFile)
+	assert.Equal(t, "secret", cfg.Password)
+	assert.Equal(t, "https://example.com:51515", cfg.APIServer.RepositoryURL)
+	assert.Equal(t, "myhost", cfg.APIServer.Hostname)
+	assert.Equal(t, "myuser", cfg.APIServer.Username)
+	assert.Equal(t, "abc123", cfg.APIServer.Fingerprint)
+	assert.Equal(t, []string{"daily", "weekly"}, cfg.Retentions)
+}
+
+func TestReadKopiaConfig_Defaults(t *testing.T) {
+	k = koanf.New(".")
+	l := slog.Default()
+
+	cfg := readKopiaConfig(k, l)
+	assert.Equal(t, "/tmp/kopia.cfg", cfg.ConfigFile)
+	assert.False(t, cfg.ConnectWithConfigFile)
+	assert.Equal(t, "", cfg.Password)
+	assert.Equal(t, "", cfg.APIServer.RepositoryURL)
+	assert.Equal(t, "", cfg.APIServer.Hostname)
+	assert.Equal(t, "", cfg.APIServer.Username)
+	assert.Equal(t, "", cfg.APIServer.Fingerprint)
+	assert.Equal(t, []string{}, cfg.Retentions)
+}
+
+func TestReadConfig_MissingFile(t *testing.T) {
+	k = koanf.New(".")
+	flags := CLIFlags{
+		ConfigFile:   "/nonexistent/config.yaml",
+		ExporterPort: 9090,
+		LogLevel:     "info",
+	}
+	err := readConfig("/nonexistent/config.yaml", flags)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read configuration file")
+}
+
+func TestReadConfig_EnvOverride(t *testing.T) {
+	tmpFile := writeTestConfig(t, "exporter:\n  port: 8080\n")
+
+	t.Setenv("KGE_EXPORTER_PORT", "7777")
+
+	k = koanf.New(".")
+	flags := CLIFlags{
+		ConfigFile:   tmpFile,
+		ExporterPort: 9090,
+		LogLevel:     "info",
+	}
+	err := readConfig(tmpFile, flags)
+	require.NoError(t, err)
+	assert.Equal(t, 7777, Cfg.Exporter.Port)
+}
+
+func TestCheckConfig_ValidConfig(t *testing.T) {
 	origCfg := Cfg
 	defer func() { Cfg = origCfg }()
 
-	tests := []struct {
-		name    string
-		cfg     Config
-		wantErr bool
-	}{
-		{
-			name: "valid config with API server",
-			cfg: Config{
-				Kopia: KopiaConfig{
-					Password: "test",
-					APIServer: APIServerConfig{
-						RepositoryURL: "https://example.com:51515",
-						Hostname:      "localhost",
-						Username:      "kopia",
-						Fingerprint:   "abc123",
-					},
-				},
+	Cfg = Config{
+		Kopia: KopiaConfig{
+			ConfigFile: "/tmp/test.config",
+			Password:   "test",
+			APIServer: APIServerConfig{
+				RepositoryURL: "https://example.com:51515",
+				Hostname:      "localhost",
+				Username:      "kopia",
+				Fingerprint:   "abc123",
 			},
-			wantErr: false,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			Cfg = tt.cfg
-			// CheckConfig calls os.Exit(1) on validation failure,
-			// so we can't easily test failure cases without subprocess testing
-			CheckConfig()
-		})
-	}
+	assert.NoError(t, CheckConfig())
 }
 
-func TestNew(t *testing.T) {
-	tests := []struct {
-		name    string
-		args    []string
-		wantErr bool
-	}{
-		{
-			name:    "load sample config",
-			args:    []string{"--config", "../config.yaml.sample"},
-			wantErr: false,
+func TestCheckConfig_MissingPassword(t *testing.T) {
+	origCfg := Cfg
+	defer func() { Cfg = origCfg }()
+
+	Cfg = Config{
+		Kopia: KopiaConfig{
+			ConfigFile: "/tmp/test.config",
+			Password:   "",
+			APIServer: APIServerConfig{
+				RepositoryURL: "https://example.com:51515",
+				Hostname:      "localhost",
+				Username:      "kopia",
+				Fingerprint:   "abc123",
+			},
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := New("test", tt.args); (err != nil) != tt.wantErr {
-				t.Errorf("New() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if !tt.wantErr && Cfg.Exporter.Port != 9090 {
-				t.Errorf("New() exporter.port should be 9090, got %v", Cfg.Exporter.Port)
-			}
-		})
+	err := CheckConfig()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "kopia.password is not set")
+}
+
+func TestCheckConfig_MissingRepositoryURL(t *testing.T) {
+	origCfg := Cfg
+	defer func() { Cfg = origCfg }()
+
+	Cfg = Config{
+		Kopia: KopiaConfig{
+			ConfigFile: "/tmp/test.config",
+			Password:   "test",
+			APIServer: APIServerConfig{
+				Hostname:    "localhost",
+				Username:    "kopia",
+				Fingerprint: "abc123",
+			},
+		},
 	}
+	err := CheckConfig()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "kopia.repositoryURL is not set")
+}
+
+func TestCheckConfig_MissingFingerprint(t *testing.T) {
+	origCfg := Cfg
+	defer func() { Cfg = origCfg }()
+
+	Cfg = Config{
+		Kopia: KopiaConfig{
+			ConfigFile: "/tmp/test.config",
+			Password:   "test",
+			APIServer: APIServerConfig{
+				RepositoryURL: "https://example.com:51515",
+				Hostname:      "localhost",
+				Username:      "kopia",
+			},
+		},
+	}
+	err := CheckConfig()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "kopia.fingerprint is not set")
+}
+
+func TestCheckConfig_MissingHostname(t *testing.T) {
+	origCfg := Cfg
+	defer func() { Cfg = origCfg }()
+
+	Cfg = Config{
+		Kopia: KopiaConfig{
+			ConfigFile: "/tmp/test.config",
+			Password:   "test",
+			APIServer: APIServerConfig{
+				RepositoryURL: "https://example.com:51515",
+				Username:      "kopia",
+				Fingerprint:   "abc123",
+			},
+		},
+	}
+	err := CheckConfig()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "kopia.hostname is not set")
+}
+
+func TestCheckConfig_MissingUsername(t *testing.T) {
+	origCfg := Cfg
+	defer func() { Cfg = origCfg }()
+
+	Cfg = Config{
+		Kopia: KopiaConfig{
+			ConfigFile: "/tmp/test.config",
+			Password:   "test",
+			APIServer: APIServerConfig{
+				RepositoryURL: "https://example.com:51515",
+				Fingerprint:   "abc123",
+				Hostname:      "localhost",
+			},
+		},
+	}
+	err := CheckConfig()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "kopia.username is not set")
+}
+
+func TestCheckConfig_ConnectWithConfigFile(t *testing.T) {
+	origCfg := Cfg
+	defer func() { Cfg = origCfg }()
+
+	Cfg = Config{
+		Kopia: KopiaConfig{
+			ConfigFile:            "/tmp/test.config",
+			Password:              "test",
+			ConnectWithConfigFile: true,
+		},
+	}
+	err := CheckConfig()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "kopia.connectwithconfigfile is not supported yet")
+}
+
+func TestCheckConfig_EmptyConfigFile(t *testing.T) {
+	origCfg := Cfg
+	defer func() { Cfg = origCfg }()
+
+	Cfg = Config{
+		Kopia: KopiaConfig{
+			ConfigFile: "",
+			Password:   "test",
+			APIServer: APIServerConfig{
+				RepositoryURL: "https://example.com:51515",
+				Fingerprint:   "abc123",
+				Hostname:      "localhost",
+				Username:      "kopia",
+			},
+		},
+	}
+	assert.NoError(t, CheckConfig())
+	assert.Equal(t, "/tmp/kopia.cfg", Cfg.Kopia.ConfigFile)
+}
+
+func TestNew_MissingFile(t *testing.T) {
+	err := New("test", []string{"--config", "/nonexistent/file.yaml"})
+	assert.Error(t, err)
+}
+
+func TestNew_ValidConfig(t *testing.T) {
+	err := New("test", []string{"--config", "../config.yaml.sample"})
+	assert.NoError(t, err)
+	assert.Equal(t, 9090, Cfg.Exporter.Port)
+}
+
+func TestNew_VersionFlag(t *testing.T) {
+	err := New("test", []string{"--version"})
+	assert.Equal(t, flag.ErrHelp, err)
+}
+
+func TestNew_HelpFlag(t *testing.T) {
+	err := New("test", []string{"--help"})
+	assert.Equal(t, flag.ErrHelp, err)
+}
+
+func koanfNew(t *testing.T, cfgFile string) *koanf.Koanf {
+	t.Helper()
+	k = koanf.New(".")
+	err := k.Load(file.Provider(cfgFile), yaml.Parser())
+	require.NoError(t, err)
+	return k
 }
