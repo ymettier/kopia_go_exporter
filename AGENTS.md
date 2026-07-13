@@ -141,7 +141,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Write tests alongside features in `*_test.go` files
 - Use testify assertions (`assert.NoError`, `assert.True`, `assert.Equal`)
 - Integration tests in `kopiametrics/kopia_test.go` use testcontainers to spin up a real Kopia server
-- Test data files must be placed in the `testdata/` or `test_data/` directory
+- The downloaded kopia CLI binary is kept in `kopiametrics/test_assets/` between runs
 - Unused test data files must be removed
 - Table-driven tests with struct-based test cases
 
