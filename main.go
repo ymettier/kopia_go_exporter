@@ -7,71 +7,46 @@ import (
 	"context"
 	_ "embed"
 	"flag"
-	"kopia-go-exporter/config"
-	"kopia-go-exporter/exporter"
-	"kopia-go-exporter/kopiametrics"
-	"kopia-go-exporter/logger"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"kopia-go-exporter/config"
+	"kopia-go-exporter/exporter"
+	"kopia-go-exporter/kopiametrics"
+	"kopia-go-exporter/logger"
 )
 
 //go:embed version.txt
 var version string
 
-func main() {
-	if err := config.New(version, os.Args[1:]); err != nil {
-		if err == flag.ErrHelp {
-			os.Exit(0)
-		}
-		os.Exit(1)
+func run(ctx context.Context, args []string) error {
+	if err := config.New(version, args); err != nil {
+		return err
 	}
-	if err := config.CheckConfig(); err != nil {
-		slog.Error(err.Error())
-		os.Exit(1)
-	}
-
-	logger.Reset(&logger.LogOptions{
-		Level: config.Cfg.LogLevel,
-	})
+	logger.Reset(&logger.LogOptions{Level: config.Cfg.LogLevel})
 	l := logger.Get()
 	l.Debug("Debug logging enabled")
-
-	exporter.Logger = l
-	ex := exporter.NewExporter()
-
-	k := kopiametrics.NewKopiaClient()
-	kopiametrics.Logger = l
+	ex := exporter.NewExporter(config.Cfg.Exporter)
+	k, err := kopiametrics.NewKopiaClient(config.Cfg)
+	if err != nil {
+		return err
+	}
 	k.RegisterKopiaMetrics(ex.Reg)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer func() {
-		cancel()
-	}()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		<-sigChan
-		l.Info("Caught interrupt signal")
-		cancel()
-	}()
-
-	go ex.Run()
-
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go ex.Run(ctx)
 	sleepInterval := 0
 	for {
 		select {
 		case <-ctx.Done():
-			k.Disconnect()
-			return
+			k.Disconnect(ctx)
+			return nil
 		default:
 			if sleepInterval == 0 {
 				l.Debug("Start a new iteration of main loop...")
-				if err := k.RunOnce(); err != nil {
+				if err := k.RunOnce(ctx); err != nil {
 					l.Error("RunOnce failed", "err", err)
 				}
 				sleepInterval = config.Cfg.Exporter.Interval
@@ -81,5 +56,17 @@ func main() {
 			}
 			time.Sleep(time.Second)
 		}
+	}
+}
+
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := run(ctx, os.Args[1:]); err != nil {
+		if err == flag.ErrHelp {
+			os.Exit(0)
+		}
+		os.Exit(1)
 	}
 }

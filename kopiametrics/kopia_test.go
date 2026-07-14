@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -28,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"kopia-go-exporter/config"
+	"kopia-go-exporter/logger"
 )
 
 func hashSHA256(pemContent []byte) (string, error) {
@@ -199,9 +199,18 @@ func logGatheredMetrics(t *testing.T, families []*dto.MetricFamily) {
 }
 
 func TestNewKopiaClient(t *testing.T) {
-	k := NewKopiaClient()
+	cfg := config.Config{}
+	k, err := NewKopiaClient(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	assert.NotNil(t, k)
-	assert.False(t, k.IsConnected)
+	assert.False(t, k.isConnected)
+}
+
+func TestNewKopiaClient_TempDirFailure(t *testing.T) {
+	t.Setenv("TMPDIR", "/nonexistent-kopia-tmp-dir")
+	_, err := NewKopiaClient(config.Config{})
+	assert.Error(t, err)
 }
 
 func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
@@ -215,7 +224,9 @@ func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 		"backup_end_time",
 	}
 
-	k := NewKopiaClient()
+	k, err := NewKopiaClient(config.Config{})
+	require.NoError(t, err)
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
 
@@ -225,7 +236,7 @@ func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 			Help: "whatever",
 		})
 		err := reg.Register(collector)
-		assert.Error(t, err, "Expected metric '%s' not found in registry", mn)
+		assert.Error(t, err, "Expected metric '%s' to already be registered", mn)
 	}
 }
 
@@ -239,24 +250,13 @@ func TestKopiaClient_Connect(t *testing.T) {
 
 	configFile := filepath.Join(t.TempDir(), "repo.config")
 
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	k := &KopiaClient{
-		Ctx:         context.Background(),
-		IsConnected: false,
-		Opts: repo.ConnectOptions{
-			ClientOptions: repo.ClientOptions{
-				Username: "kopia",
-				Hostname: ip,
-			},
-		},
-		ServerInfo: repo.APIServerInfo{
-			BaseURL:                             fmt.Sprintf("https://%s:%s", ip, port),
-			TrustedServerCertificateFingerprint: fingerprint,
-		},
+		isConnected: false,
 	}
 
-	k.Ctx = context.Background()
+	ctx := context.Background()
 	opts := repo.ConnectOptions{
 		ClientOptions: repo.ClientOptions{
 			Username: "kopia",
@@ -268,25 +268,26 @@ func TestKopiaClient_Connect(t *testing.T) {
 		TrustedServerCertificateFingerprint: fingerprint,
 	}
 
-	err := repo.ConnectAPIServer(k.Ctx, configFile, &serverInfo, "kopiapwd", &opts)
+	err := repo.ConnectAPIServer(ctx, configFile, &serverInfo, "kopiapwd", &opts)
 	require.NoError(t, err, "Failed to connect API server")
 
-	k.Repo, err = repo.Open(k.Ctx, configFile, "kopiapwd", nil)
+	k.repo, err = repo.Open(ctx, configFile, "kopiapwd", nil)
 	require.NoError(t, err, "Failed to open repository")
-	k.IsConnected = true
+	k.isConnected = true
 
-	assert.True(t, k.IsConnected)
+	assert.True(t, k.isConnected)
 }
 
 func TestKopiaClient_Disconnect(t *testing.T) {
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
-	k := NewKopiaClient()
-	assert.False(t, k.IsConnected)
+	k, err := NewKopiaClient(config.Config{})
+	require.NoError(t, err)
+	assert.False(t, k.isConnected)
 
-	k.IsConnected = true
-	k.Disconnect()
-	assert.False(t, k.IsConnected)
+	k.isConnected = true
+	k.Disconnect(context.Background())
+	assert.False(t, k.isConnected)
 }
 
 // TestKopiaBinaryPresent verifies that the kopia test executable already exists
@@ -332,27 +333,26 @@ func TestKopiaVersion(t *testing.T) {
 }
 
 func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
-
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Kopia: config.KopiaConfig{
 			Retentions: []string{"daily"},
 		},
 	}
-	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
-	k := NewKopiaClient()
+	k, err := NewKopiaClient(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
 
 	now := fs.UTCTimestampFromTime(time.Now())
 	m := &snapshot.Manifest{
-		Source:          snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/test/path"},
-		StartTime:       now,
-		EndTime:         now,
+		Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/test/path"},
+		StartTime:        now,
+		EndTime:          now,
 		RetentionReasons: []string{"latest"},
 		Stats: snapshot.Stats{
 			TotalFileCount:      10,
@@ -370,27 +370,26 @@ func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 }
 
 func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
-
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Kopia: config.KopiaConfig{
 			Retentions: []string{"daily"},
 		},
 	}
-	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
-	k := NewKopiaClient()
+	k, err := NewKopiaClient(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
 
 	now := fs.UTCTimestampFromTime(time.Now())
 	m := &snapshot.Manifest{
-		Source:          snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/test/path"},
-		StartTime:       now,
-		EndTime:         now,
+		Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/test/path"},
+		StartTime:        now,
+		EndTime:          now,
 		RetentionReasons: []string{"latest"},
 		Stats: snapshot.Stats{
 			TotalFileCount:      10,
@@ -418,16 +417,11 @@ func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
 }
 
 func TestRunOnce_ConnectFails(t *testing.T) {
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
-
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Kopia: config.KopiaConfig{
-			ConnectWithConfigFile: false,
-			Password:              "wrong",
-			ConfigFile:            filepath.Join(t.TempDir(), "nonexistent.config"),
+			Password: "wrong",
 			APIServer: config.APIServerConfig{
 				RepositoryURL: "https://127.0.0.1:1",
 				Fingerprint:   "0000000000000000000000000000000000000000000000000000000000000000",
@@ -437,12 +431,14 @@ func TestRunOnce_ConnectFails(t *testing.T) {
 		},
 	}
 
-	k := NewKopiaClient()
-	k.Ctx = context.Background()
+	k, err := NewKopiaClient(cfg)
+	require.NoError(t, err)
+	k.configFile = filepath.Join(t.TempDir(), "nonexistent.config")
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 
-	err := k.RunOnce()
+	err = k.RunOnce(context.Background())
 	assert.Error(t, err, "RunOnce should fail when Connect fails")
-	assert.False(t, k.IsConnected)
+	assert.False(t, k.isConnected)
 }
 
 func TestRunOnce_EmptyRepo(t *testing.T) {
@@ -478,32 +474,30 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 	out, err = cmd.CombinedOutput()
 	require.NoError(t, err, "repository connect failed: %s", string(out))
 
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
+	logger.Reset(nil)
 
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Kopia: config.KopiaConfig{
 			Password:   password,
 			Retentions: []string{},
 		},
 	}
-	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
-
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
 	k := &KopiaClient{
-		Ctx:         context.Background(),
-		IsConnected: false,
+		isConnected: false,
+		cfg:         cfg,
 	}
 
-	k.Repo, err = repo.Open(k.Ctx, configFile, password, nil)
+	ctx := context.Background()
+	k.repo, err = repo.Open(ctx, configFile, password, nil)
 	require.NoError(t, err)
-	k.IsConnected = true
+	k.isConnected = true
 
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
 
-	require.NoError(t, k.RunOnce(), "RunOnce should succeed on empty repo")
+	require.NoError(t, k.RunOnce(ctx), "RunOnce should succeed on empty repo")
 
 	families, err := reg.Gather()
 	require.NoError(t, err)
@@ -521,14 +515,9 @@ func TestConnect(t *testing.T) {
 
 	configFile := filepath.Join(t.TempDir(), "repo.config")
 
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
-
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Kopia: config.KopiaConfig{
-			ConfigFile:            configFile,
-			ConnectWithConfigFile: false,
-			Password:              "kopiapwd",
+			Password: "kopiapwd",
 			APIServer: config.APIServerConfig{
 				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
 				Fingerprint:   fingerprint,
@@ -538,15 +527,17 @@ func TestConnect(t *testing.T) {
 		},
 	}
 
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
-	k := NewKopiaClient()
-	k.Ctx = context.Background()
+	k, err := NewKopiaClient(cfg)
+	require.NoError(t, err)
+	k.configFile = configFile
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 
-	err := k.Connect()
+	err = k.Connect(context.Background())
 	require.NoError(t, err, "Connect should succeed")
-	assert.True(t, k.IsConnected)
-	assert.NotNil(t, k.Repo)
+	assert.True(t, k.isConnected)
+	assert.NotNil(t, k.repo)
 }
 
 func TestConnect_OpenFails(t *testing.T) {
@@ -558,14 +549,9 @@ func TestConnect_OpenFails(t *testing.T) {
 
 	configFile := filepath.Join(t.TempDir(), "repo.config")
 
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
-
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Kopia: config.KopiaConfig{
-			ConfigFile:            configFile,
-			ConnectWithConfigFile: false,
-			Password:              "kopiapwd",
+			Password: "kopiapwd",
 			APIServer: config.APIServerConfig{
 				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
 				Fingerprint:   fingerprint,
@@ -575,62 +561,39 @@ func TestConnect_OpenFails(t *testing.T) {
 		},
 	}
 
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
-	k := NewKopiaClient()
-	k.Ctx = context.Background()
+	k, err := NewKopiaClient(cfg)
+	require.NoError(t, err)
+	k.configFile = configFile
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 
-	err := k.Connect()
+	err = k.Connect(context.Background())
 	require.NoError(t, err, "initial Connect should succeed")
-	assert.True(t, k.IsConnected)
-	require.NoError(t, k.Repo.Close(context.Background()))
+	assert.True(t, k.isConnected)
+	require.NoError(t, k.repo.Close(context.Background()))
 
 	cleanup()
 
-	k2 := NewKopiaClient()
-	k2.Ctx = context.Background()
-	config.Cfg.Kopia.ConnectWithConfigFile = true
-
-	err = k2.Connect()
-	assert.Error(t, err, "Connect should fail after server is stopped")
-	assert.False(t, k2.IsConnected)
-}
-
-func TestRunOnce_ConnectWithConfigFile(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	configFile, _, password := setupTestRepo(t)
-
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
-
-	config.Cfg = config.Config{
+	cfg2 := config.Config{
 		Kopia: config.KopiaConfig{
-			ConfigFile:            configFile,
-			ConnectWithConfigFile: true,
-			Password:              password,
-			Retentions:            []string{},
+			Password: "kopiapwd",
+			APIServer: config.APIServerConfig{
+				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
+				Fingerprint:   fingerprint,
+				Hostname:      "localhost",
+				Username:      "kopia",
+			},
 		},
 	}
-	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
-
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
-
-	k := NewKopiaClient()
-	k.Ctx = context.Background()
-	reg := prometheus.NewRegistry()
-	k.RegisterKopiaMetrics(reg)
-
-	require.False(t, k.IsConnected, "IsConnected should start false")
-	require.NoError(t, k.RunOnce(), "RunOnce should succeed via ConnectWithConfigFile path")
-	assert.True(t, k.IsConnected, "RunOnce should have connected the client")
-
-	families, err := reg.Gather()
+	k2, err := NewKopiaClient(cfg2)
 	require.NoError(t, err)
-	logGatheredMetrics(t, families)
-	require.NotEmpty(t, families, "metrics should be set after RunOnce")
+	k2.configFile = configFile
+	t.Cleanup(func() { k2.Disconnect(context.Background()) })
+
+	err = k2.Connect(context.Background())
+	assert.Error(t, err, "Connect should fail after server is stopped")
+	assert.False(t, k2.isConnected)
 }
 
 func TestRunOnce_ConnectsAutomatically(t *testing.T) {
@@ -643,15 +606,10 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 
 	configFile := filepath.Join(t.TempDir(), "repo.config")
 
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
-
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Kopia: config.KopiaConfig{
-			ConfigFile:            configFile,
-			ConnectWithConfigFile: false,
-			Password:              "kopiapwd",
-			Retentions:            []string{},
+			Password:   "kopiapwd",
+			Retentions: []string{},
 			APIServer: config.APIServerConfig{
 				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
 				Fingerprint:   fingerprint,
@@ -660,19 +618,21 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 			},
 		},
 	}
-	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
-	k := NewKopiaClient()
-	k.Ctx = context.Background()
+	k, err := NewKopiaClient(cfg)
+	require.NoError(t, err)
+	k.configFile = configFile
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
 
-	require.False(t, k.IsConnected, "IsConnected should start false")
-	require.NoError(t, k.RunOnce(), "RunOnce should succeed with auto-connect")
-	assert.True(t, k.IsConnected, "RunOnce should have connected the client")
-	require.NotNil(t, k.Repo, "Repo should be set after auto-connect")
+	require.False(t, k.isConnected, "IsConnected should start false")
+	require.NoError(t, k.RunOnce(context.Background()), "RunOnce should succeed with auto-connect")
+	assert.True(t, k.isConnected, "RunOnce should have connected the client")
+	require.NotNil(t, k.repo, "Repo should be set after auto-connect")
 }
 
 // setupTestRepo creates a local Kopia filesystem repository and a separate
@@ -737,10 +697,7 @@ func TestRunOnceMetrics(t *testing.T) {
 
 	configFile, sourceDir, password := setupTestRepo(t)
 
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
-
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Exporter: config.ExporterConfig{
 			Port: 9090,
 		},
@@ -749,24 +706,25 @@ func TestRunOnceMetrics(t *testing.T) {
 			Retentions: []string{},
 		},
 	}
-	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	k := &KopiaClient{
-		Ctx:         context.Background(),
-		IsConnected: false,
+		isConnected: false,
+		cfg:         cfg,
 	}
 
 	var err error
-	k.Repo, err = repo.Open(k.Ctx, configFile, password, nil)
+	ctx := context.Background()
+	k.repo, err = repo.Open(ctx, configFile, password, nil)
 	require.NoError(t, err, "Failed to open repository")
-	k.IsConnected = true
+	k.isConnected = true
 
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
 
-	require.NoError(t, k.RunOnce(), "RunOnce failed")
+	require.NoError(t, k.RunOnce(ctx), "RunOnce failed")
 
 	families, err := reg.Gather()
 	require.NoError(t, err, "Failed to gather metrics")

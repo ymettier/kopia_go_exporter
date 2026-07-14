@@ -4,15 +4,19 @@
 package config
 
 import (
+	"errors"
 	"flag"
 	"log/slog"
 	"os"
 	"runtime/debug"
+	"strings"
 	"testing"
 
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/providers/posflag"
 	"github.com/knadh/koanf/v2"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -65,7 +69,7 @@ func TestParseFlags(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			flags, err := ParseFlags("test", tt.args)
+			configFile, _, err := ParseFlags("test", tt.args)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseFlags() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -74,7 +78,7 @@ func TestParseFlags(t *testing.T) {
 				t.Errorf("ParseFlags() error = %v, wantErrHelp flag.ErrHelp", err)
 			}
 			if !tt.wantErr {
-				if flags.ConfigFile == "" {
+				if configFile == "" {
 					t.Errorf("ParseFlags() ConfigFile should not be empty")
 				}
 			}
@@ -83,11 +87,9 @@ func TestParseFlags(t *testing.T) {
 }
 
 func TestParseFlags_CustomValues(t *testing.T) {
-	flags, err := ParseFlags("test", []string{"--config", "/tmp/custom.yaml", "--exporter-port", "8080", "--log_level", "warn"})
+	configFile, _, err := ParseFlags("test", []string{"--config", "/tmp/custom.yaml", "--exporter-port", "8080", "--log_level", "warn"})
 	require.NoError(t, err)
-	assert.Equal(t, "/tmp/custom.yaml", flags.ConfigFile)
-	assert.Equal(t, 8080, flags.ExporterPort)
-	assert.Equal(t, "warn", flags.LogLevel)
+	assert.Equal(t, "/tmp/custom.yaml", configFile)
 }
 
 func TestGetVersionInfo(t *testing.T) {
@@ -214,9 +216,8 @@ func TestReadExporterConfig(t *testing.T) {
 	k = koanfNew(t, cfgFile)
 
 	l := slog.Default()
-	flags := CLIFlags{ExporterPort: 9090}
 
-	cfg := readExporterConfig(k, l, flags)
+	cfg := readExporterConfig(k, l)
 	assert.Equal(t, 8080, cfg.Port)
 	assert.Equal(t, "custom_prefix", cfg.Metrics.Prefix)
 	assert.Equal(t, 60, cfg.Interval)
@@ -224,21 +225,26 @@ func TestReadExporterConfig(t *testing.T) {
 
 func TestReadExporterConfig_FlagOverride(t *testing.T) {
 	cfgFile := writeTestConfig(t, "exporter:\n  port: 8080\n")
+
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	fs.Int("exporter-port", 9090, "Exporter HTTP server port")
+	require.NoError(t, fs.Parse([]string{"--exporter-port", "7777"}))
+
 	k = koanfNew(t, cfgFile)
+	require.NoError(t, k.Load(posflag.ProviderWithValue(fs, ".", k, func(key, value string) (string, interface{}) {
+		return strings.ReplaceAll(key, "-", "."), value
+	}), nil))
 
 	l := slog.Default()
-	flags := CLIFlags{ExporterPort: 7777}
-
-	cfg := readExporterConfig(k, l, flags)
+	cfg := readExporterConfig(k, l)
 	assert.Equal(t, 7777, cfg.Port)
 }
 
 func TestReadExporterConfig_Defaults(t *testing.T) {
 	k = koanf.New(".")
 	l := slog.Default()
-	flags := CLIFlags{ExporterPort: 9090}
 
-	cfg := readExporterConfig(k, l, flags)
+	cfg := readExporterConfig(k, l)
 	assert.Equal(t, 9090, cfg.Port)
 	assert.Equal(t, "kopia_go_exporter", cfg.Metrics.Prefix)
 	assert.Equal(t, 300, cfg.Interval)
@@ -246,8 +252,6 @@ func TestReadExporterConfig_Defaults(t *testing.T) {
 
 func TestReadKopiaConfig(t *testing.T) {
 	cfgFile := writeTestConfig(t, `kopia:
-  configfile: /tmp/test.config
-  connectwithconfigfile: true
   password: secret
   apiserver:
     repositoryURL: "https://example.com:51515"
@@ -262,8 +266,6 @@ func TestReadKopiaConfig(t *testing.T) {
 
 	l := slog.Default()
 	cfg := readKopiaConfig(k, l)
-	assert.Equal(t, "/tmp/test.config", cfg.ConfigFile)
-	assert.True(t, cfg.ConnectWithConfigFile)
 	assert.Equal(t, "secret", cfg.Password)
 	assert.Equal(t, "https://example.com:51515", cfg.APIServer.RepositoryURL)
 	assert.Equal(t, "myhost", cfg.APIServer.Hostname)
@@ -277,8 +279,6 @@ func TestReadKopiaConfig_Defaults(t *testing.T) {
 	l := slog.Default()
 
 	cfg := readKopiaConfig(k, l)
-	assert.Equal(t, "/tmp/kopia.cfg", cfg.ConfigFile)
-	assert.False(t, cfg.ConnectWithConfigFile)
 	assert.Equal(t, "", cfg.Password)
 	assert.Equal(t, "", cfg.APIServer.RepositoryURL)
 	assert.Equal(t, "", cfg.APIServer.Hostname)
@@ -289,12 +289,7 @@ func TestReadKopiaConfig_Defaults(t *testing.T) {
 
 func TestReadConfig_MissingFile(t *testing.T) {
 	k = koanf.New(".")
-	flags := CLIFlags{
-		ConfigFile:   "/nonexistent/config.yaml",
-		ExporterPort: 9090,
-		LogLevel:     "info",
-	}
-	err := readConfig("/nonexistent/config.yaml", flags)
+	err := readConfig("/nonexistent/config.yaml", nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read configuration file")
 }
@@ -305,14 +300,33 @@ func TestReadConfig_EnvOverride(t *testing.T) {
 	t.Setenv("KGE_EXPORTER_PORT", "7777")
 
 	k = koanf.New(".")
-	flags := CLIFlags{
-		ConfigFile:   tmpFile,
-		ExporterPort: 9090,
-		LogLevel:     "info",
-	}
-	err := readConfig(tmpFile, flags)
+	err := readConfig(tmpFile, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 7777, Cfg.Exporter.Port)
+}
+
+type stubConfigProvider struct {
+	err error
+}
+
+func (s stubConfigProvider) ReadBytes() ([]byte, error) {
+	return nil, s.err
+}
+
+func (s stubConfigProvider) Read() (map[string]any, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return map[string]any{"exporter": map[string]any{"port": 9090}}, nil
+}
+
+func TestLoadConfigLayer(t *testing.T) {
+	k := koanf.New(".")
+	loadConfigLayer(k, stubConfigProvider{}, "failed to load stub")
+	assert.Equal(t, 9090, k.Int("exporter.port"))
+
+	k2 := koanf.New(".")
+	loadConfigLayer(k2, stubConfigProvider{err: errors.New("boom")}, "failed to load stub")
 }
 
 func TestCheckConfig_ValidConfig(t *testing.T) {
@@ -321,8 +335,7 @@ func TestCheckConfig_ValidConfig(t *testing.T) {
 
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			ConfigFile: "/tmp/test.config",
-			Password:   "test",
+			Password: "test",
 			APIServer: APIServerConfig{
 				RepositoryURL: "https://example.com:51515",
 				Hostname:      "localhost",
@@ -340,8 +353,7 @@ func TestCheckConfig_MissingPassword(t *testing.T) {
 
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			ConfigFile: "/tmp/test.config",
-			Password:   "",
+			Password: "",
 			APIServer: APIServerConfig{
 				RepositoryURL: "https://example.com:51515",
 				Hostname:      "localhost",
@@ -361,8 +373,7 @@ func TestCheckConfig_MissingRepositoryURL(t *testing.T) {
 
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			ConfigFile: "/tmp/test.config",
-			Password:   "test",
+			Password: "test",
 			APIServer: APIServerConfig{
 				Hostname:    "localhost",
 				Username:    "kopia",
@@ -372,7 +383,7 @@ func TestCheckConfig_MissingRepositoryURL(t *testing.T) {
 	}
 	err := CheckConfig()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.repositoryURL is not set")
+	assert.Contains(t, err.Error(), "kopia.apiserver.repositoryURL is not set")
 }
 
 func TestCheckConfig_MissingFingerprint(t *testing.T) {
@@ -381,8 +392,7 @@ func TestCheckConfig_MissingFingerprint(t *testing.T) {
 
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			ConfigFile: "/tmp/test.config",
-			Password:   "test",
+			Password: "test",
 			APIServer: APIServerConfig{
 				RepositoryURL: "https://example.com:51515",
 				Hostname:      "localhost",
@@ -392,7 +402,7 @@ func TestCheckConfig_MissingFingerprint(t *testing.T) {
 	}
 	err := CheckConfig()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.fingerprint is not set")
+	assert.Contains(t, err.Error(), "kopia.apiserver.fingerprint is not set")
 }
 
 func TestCheckConfig_MissingHostname(t *testing.T) {
@@ -401,8 +411,7 @@ func TestCheckConfig_MissingHostname(t *testing.T) {
 
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			ConfigFile: "/tmp/test.config",
-			Password:   "test",
+			Password: "test",
 			APIServer: APIServerConfig{
 				RepositoryURL: "https://example.com:51515",
 				Username:      "kopia",
@@ -412,7 +421,7 @@ func TestCheckConfig_MissingHostname(t *testing.T) {
 	}
 	err := CheckConfig()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.hostname is not set")
+	assert.Contains(t, err.Error(), "kopia.apiserver.hostname is not set")
 }
 
 func TestCheckConfig_MissingUsername(t *testing.T) {
@@ -421,8 +430,7 @@ func TestCheckConfig_MissingUsername(t *testing.T) {
 
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			ConfigFile: "/tmp/test.config",
-			Password:   "test",
+			Password: "test",
 			APIServer: APIServerConfig{
 				RepositoryURL: "https://example.com:51515",
 				Fingerprint:   "abc123",
@@ -432,43 +440,7 @@ func TestCheckConfig_MissingUsername(t *testing.T) {
 	}
 	err := CheckConfig()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.username is not set")
-}
-
-func TestCheckConfig_ConnectWithConfigFile(t *testing.T) {
-	origCfg := Cfg
-	defer func() { Cfg = origCfg }()
-
-	Cfg = Config{
-		Kopia: KopiaConfig{
-			ConfigFile:            "/tmp/test.config",
-			Password:              "test",
-			ConnectWithConfigFile: true,
-		},
-	}
-	err := CheckConfig()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.connectwithconfigfile is not supported yet")
-}
-
-func TestCheckConfig_EmptyConfigFile(t *testing.T) {
-	origCfg := Cfg
-	defer func() { Cfg = origCfg }()
-
-	Cfg = Config{
-		Kopia: KopiaConfig{
-			ConfigFile: "",
-			Password:   "test",
-			APIServer: APIServerConfig{
-				RepositoryURL: "https://example.com:51515",
-				Fingerprint:   "abc123",
-				Hostname:      "localhost",
-				Username:      "kopia",
-			},
-		},
-	}
-	assert.NoError(t, CheckConfig())
-	assert.Equal(t, "/tmp/kopia.cfg", Cfg.Kopia.ConfigFile)
+	assert.Contains(t, err.Error(), "kopia.apiserver.username is not set")
 }
 
 func TestNew_MissingFile(t *testing.T) {
@@ -504,19 +476,21 @@ func TestVersionInfo_BuildInfoUnavailable(t *testing.T) {
 	origReadBuildInfo := ReadBuildInfo
 	defer func() { ReadBuildInfo = origReadBuildInfo }()
 
+	givenVersion = "1.0.0"
 	ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return nil, false
 	}
 
-	output := versionInfo("1.0.0")
+	output := formatVersionInfo()
 	assert.Contains(t, output, "1.0.0")
-	assert.NotContains(t, output, "Revision")
+	assert.NotContains(t, output, "go1.25.0")
 }
 
 func TestVersionInfo_WithVCSSettings(t *testing.T) {
 	origReadBuildInfo := ReadBuildInfo
 	defer func() { ReadBuildInfo = origReadBuildInfo }()
 
+	givenVersion = "1.0.0"
 	ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return &debug.BuildInfo{
 			GoVersion: "go1.25.0",
@@ -528,7 +502,7 @@ func TestVersionInfo_WithVCSSettings(t *testing.T) {
 		}, true
 	}
 
-	output := versionInfo("1.0.0")
+	output := formatVersionInfo()
 	assert.Contains(t, output, "abc123")
 	assert.Contains(t, output, "true")
 	assert.Contains(t, output, "go1.25.0")

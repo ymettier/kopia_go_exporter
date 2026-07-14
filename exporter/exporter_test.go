@@ -4,30 +4,27 @@
 package exporter
 
 import (
-	"log/slog"
+	"context"
+	"errors"
 	"net"
 	"net/http"
-	"os"
 	"runtime/debug"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"kopia-go-exporter/config"
+	"kopia-go-exporter/logger"
 )
 
 func TestNewExporter(t *testing.T) {
-	origCfg := config.Cfg
 	origReadBuildInfo := config.ReadBuildInfo
-	defer func() {
-		config.Cfg = origCfg
-		config.ReadBuildInfo = origReadBuildInfo
-	}()
+	defer func() { config.ReadBuildInfo = origReadBuildInfo }()
 
-	config.Cfg.Exporter.Port = 12346
-	config.Cfg.Exporter.Metrics.Prefix = "test_prefix"
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	config.ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return &debug.BuildInfo{
@@ -39,41 +36,38 @@ func TestNewExporter(t *testing.T) {
 		}, true
 	}
 
-	ex := NewExporter()
-	if ex == nil {
-		t.Fatal("NewExporter() returned nil")
+	cfg := config.ExporterConfig{
+		Port:    12346,
+		Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
 	}
-	if ex.Port != 12346 {
-		t.Errorf("NewExporter() Port = %v, want %v", ex.Port, 12346)
-	}
-	if ex.Reg == nil {
-		t.Error("NewExporter() Reg is nil")
-	}
+	ex := NewExporter(cfg)
+	require.NotNil(t, ex)
+	assert.Equal(t, 12346, ex.Port)
+	assert.NotNil(t, ex.Reg)
 }
 
 func TestNewExporter_BuildInfoUnavailable(t *testing.T) {
-	origCfg := config.Cfg
 	origReadBuildInfo := config.ReadBuildInfo
-	defer func() {
-		config.Cfg = origCfg
-		config.ReadBuildInfo = origReadBuildInfo
-	}()
+	defer func() { config.ReadBuildInfo = origReadBuildInfo }()
 
-	config.Cfg.Exporter.Port = 12347
-	config.Cfg.Exporter.Metrics.Prefix = "test_prefix"
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	config.ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return nil, false
 	}
 
-	ex := NewExporter()
-	if ex == nil {
-		t.Fatal("NewExporter() returned nil")
+	cfg := config.ExporterConfig{
+		Port:    12347,
+		Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
 	}
+	ex := NewExporter(cfg)
+	require.NotNil(t, ex)
 }
 
 func TestExporter_SetBuildInfo(t *testing.T) {
+	cfg := config.ExporterConfig{
+		Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
+	}
 	type fields struct {
 		Port int
 		Reg  *prometheus.Registry
@@ -96,6 +90,7 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 			ex := &Exporter{
 				Port: tt.fields.Port,
 				Reg:  tt.fields.Reg,
+				cfg:  cfg,
 			}
 			labels := map[string]string{
 				"version": "test_version",
@@ -104,99 +99,60 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 			}
 			ex.SetBuildInfo(labels["version"], labels["commit"], labels["date"])
 
-			// Gather all metrics from the registry
 			metrics, err := ex.Reg.Gather()
-			if err != nil {
-				t.Fatalf("error gathering metrics: %v", err)
-			}
+			require.NoError(t, err)
 
-			found := false
-			foundVersion := false
-			foundRevision := false
-			foundDate := false
+			familyMap := make(map[string]*prometheus.GaugeVec)
 			for _, mFamily := range metrics {
-				if mFamily.GetName() == "build_info" {
-					found = true
+				if mFamily.GetName() == "test_prefix_build_info" {
+					familyMap[mFamily.GetName()] = nil
 					for _, m := range mFamily.Metric {
-						for _, label := range m.Label {
-							labelName := label.GetName()
-							labelValue := label.GetValue()
-							if labelName == "version" {
-								foundVersion = true
-								if labelValue != labels[labelName] {
-									t.Errorf("Found metric build_info and label %v, but got %v, wanted %v", labelName, labelValue, labels[labelName])
-								}
-							}
-							if labelName == "commit" {
-								foundRevision = true
-								if labelValue != labels[labelName] {
-									t.Errorf("Found metric build_info and label %v, but got %v, wanted %v", labelName, labelValue, labels[labelName])
-								}
-							}
-							if labelName == "date" {
-								foundDate = true
-								if labelValue != labels[labelName] {
-									t.Errorf("Found metric build_info and label %v, but got %v, wanted %v", labelName, labelValue, labels[labelName])
-								}
+						for _, label := range m.GetLabel() {
+							switch label.GetName() {
+							case "version":
+								assert.Equal(t, labels["version"], label.GetValue())
+							case "commit":
+								assert.Equal(t, labels["commit"], label.GetValue())
+							case "date":
+								assert.Equal(t, labels["date"], label.GetValue())
 							}
 						}
-						value := m.Gauge.GetValue()
-						if value != 1 {
-							t.Errorf("Found metric build_info but got value %v, wanted %v", value, 1)
-						}
+						assert.Equal(t, float64(1), m.GetGauge().GetValue())
 					}
 				}
 			}
-			if !found {
-				t.Errorf("Metric build_info was not found")
-			} else {
-				if !foundVersion {
-					t.Errorf("Found metric build_info but label %v is missing", "version")
-				}
-				if !foundRevision {
-					t.Errorf("Found metric build_info but label %v is missing", "commit")
-				}
-				if !foundDate {
-					t.Errorf("Found metric build_info but label %v is missing", "date")
-				}
-			}
+			assert.Contains(t, familyMap, "test_prefix_build_info", "metric test_prefix_build_info was not found")
 		})
 	}
 }
 
 func TestExporter_Run(t *testing.T) {
 	t.Run("Test the exporter on port 12345", func(t *testing.T) {
+		logger.Reset(nil)
+		ctx, cancel := context.WithCancel(context.Background())
 		ex := Exporter{
 			Port: 12345,
 			Reg:  prometheus.NewRegistry(),
 		}
-		Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-		go ex.Run()
+		go ex.Run(ctx)
 
-		// Wait briefly for the server to start
 		time.Sleep(200 * time.Millisecond)
 
 		resp, err := http.Get("http://localhost:12345/metrics")
-		if err != nil {
-			t.Fatalf("could not connect to exporter: %v", err)
-		}
+		require.NoError(t, err)
 		defer func() { _ = resp.Body.Close() }()
 
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("unexpected status code: got %v, want %v", resp.StatusCode, http.StatusOK)
-		}
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		cancel()
 	})
 }
 
 func TestExporter_Run_AlreadyInUse(t *testing.T) {
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
-	// Block the port first
 	blocker, err := net.Listen("tcp", ":12399")
-	if err != nil {
-		t.Fatalf("could not bind port: %v", err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = blocker.Close() }()
 
 	ex := Exporter{
@@ -206,7 +162,7 @@ func TestExporter_Run_AlreadyInUse(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		ex.Run()
+		ex.Run(context.Background())
 		close(done)
 	}()
 
@@ -215,4 +171,17 @@ func TestExporter_Run_AlreadyInUse(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run() did not return after server error")
 	}
+}
+
+type fakeShutdowner struct {
+	err error
+}
+
+func (f fakeShutdowner) Shutdown(_ context.Context) error {
+	return f.err
+}
+
+func TestShutdownServer(t *testing.T) {
+	shutdownServer(fakeShutdowner{}, 9090)
+	shutdownServer(fakeShutdowner{err: errors.New("boom")}, 9090)
 }

@@ -4,8 +4,8 @@
 package exporter
 
 import (
+	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -13,18 +13,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"kopia-go-exporter/config"
+	"kopia-go-exporter/logger"
 )
-
-var Logger *slog.Logger
 
 type Exporter struct {
 	Port int
 	Reg  *prometheus.Registry
+	cfg  config.ExporterConfig
 }
 
-func NewExporter() *Exporter {
+// NewExporter creates a new Exporter with a Prometheus registry and build info metric.
+func NewExporter(cfg config.ExporterConfig) *Exporter {
+	l := logger.Get()
 	ex := new(Exporter)
-	ex.Port = config.Cfg.Exporter.Port
+	ex.cfg = cfg
+	ex.Port = cfg.Port
 
 	ex.Reg = prometheus.NewRegistry()
 	ex.Reg.MustRegister(collectors.NewGoCollector())
@@ -32,7 +35,7 @@ func NewExporter() *Exporter {
 
 	vi := config.GetVersionInfo()
 	if vi.Revision == "" {
-		Logger.Error("Failed to retrieve full version info; metric build_info will not be available", "version", vi.Version)
+		l.Error("Failed to retrieve full version info; metric build_info will not be available", "version", vi.Version)
 	} else {
 		ex.SetBuildInfo(vi.Version, vi.Revision, vi.Time)
 	}
@@ -40,11 +43,11 @@ func NewExporter() *Exporter {
 	return ex
 }
 
+// SetBuildInfo registers a build_info gauge with version, commit, and date labels.
 func (ex *Exporter) SetBuildInfo(version, revision, time string) {
-	// Create build_info gauge with labels for version, commit, date
 	buildInfo := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace: config.Cfg.Exporter.Metrics.Prefix,
+			Namespace: ex.cfg.Metrics.Prefix,
 			Name:      "build_info",
 			Help:      "Build information",
 		},
@@ -57,10 +60,37 @@ func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 	buildInfo.WithLabelValues(version, revision, time).Set(1)
 }
 
-func (ex Exporter) Run() {
+// Run starts the HTTP server serving /metrics and blocks until ctx is cancelled.
+func (ex *Exporter) Run(ctx context.Context) {
+	l := logger.Get()
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(ex.Reg, promhttp.HandlerOpts{}))
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", ex.Port), mux); err != nil {
-		Logger.Error("HTTP server error", "port", ex.Port, "err", err)
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", ex.Port),
+		Handler: mux,
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	go func() {
+		<-ctx.Done()
+		shutdownServer(srv, ex.Port)
+	}()
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		l.Error("HTTP server error", "port", ex.Port, "err", err)
+	}
+}
+
+// Shutdowner is the subset of *http.Server used to gracefully stop the exporter.
+type Shutdowner interface {
+	Shutdown(ctx context.Context) error
+}
+
+// shutdownServer gracefully shuts down the HTTP server, logging an error if it fails.
+func shutdownServer(s Shutdowner, port int) {
+	l := logger.Get()
+	if err := s.Shutdown(context.Background()); err != nil {
+		l.Error("HTTP server shutdown error", "port", port, "err", err)
 	}
 }

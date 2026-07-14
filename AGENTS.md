@@ -7,7 +7,7 @@
 kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written in Go. It connects to a Kopia API server, retrieves snapshot metrics (size, file/dir counts, errors, duration, timestamps), and exposes them via an HTTP `/metrics` endpoint for Prometheus scraping.
 
 ## Technology Stack
-- **Language**: Go 1.25+
+- **Language**: Go 1.25.8+
 - **Configuration**: `github.com/knadh/koanf` (YAML parsing)
 - **CLI parsing**: `github.com/spf13/pflag`
 - **Metrics**: `github.com/prometheus/client_golang`
@@ -24,6 +24,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ```
 .
 ├── main.go                  # Entry point, main loop with periodic RunOnce
+├── main_test.go             # Tests for run(), config validation, context cancellation
 ├── logger/                  # Structured logging setup (slog, lumberjack rotation)
 │   └── logger.go
 ├── config/
@@ -38,7 +39,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 │   ├── kopia_tests_helpers_test.go  # Helpers to download/verify the kopia CLI binary for tests
 │   └── test_assets/
 │       └── kopia_test           # Downloaded kopia executable.
-├── config.yaml.sample       # Example configuration
+├── config.yaml.sample       # Example configuration (all options commented)
 ├── Dockerfile               # Multi-stage build (golang builder + distroless runtime)
 ├── go.mod / go.sum
 ├── version.txt              # Embedded at build time (//go:embed)
@@ -48,8 +49,8 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ## Key Components
 
 ### Configuration (config/config.go)
-- CLI flag parsing via `ParseFlags()`: `--config`/`-c`, `--exporter-port`, `--log_level`/`-l`, `--version`/`-V`
-- `New()` constructor: parses flags, loads YAML via Koanf, overlays env vars, returns error
+- CLI flag parsing via `ParseFlags()`: `--config`/`-c`, `--exporter-port`, `--log_level`/`-l`, `--version`/`-V`, `--help`/`-h`
+- `New()` constructor: parses flags, loads YAML via Koanf, overlays env vars, validates, returns error
 - Koanf layered loading: YAML file → environment variables (KGE_ prefix)
 - Environment variable mapping: `KGE_KOPIA_PASSWORD` → `kopia.password` (uppercase, underscores → dots)
 - Config validation in `CheckConfig()`: returns error on missing required fields
@@ -59,11 +60,13 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Helper functions: `lookupConfigKey`, `getConfigString`, `getConfigInt`, `getConfigBool`
 
 ### Exporter (exporter/exporter.go)
+- Constructor `NewExporter(cfg config.ExporterConfig)` receives the exporter config directly
 - Creates a `prometheus.Registry` with Go and process collectors
 - Registers `build_info` gauge with version/commit/date labels
 - Starts HTTP server on configured port serving `/metrics`
 
 ### Kopia Metrics (kopiametrics/kopia.go)
+- Constructor `NewKopiaClient(cfg config.Config)` receives the full config directly
 - `KopiaClient` manages connection lifecycle: `GenerateConfigFile` → `Connect` → `RunOnce` → `Disconnect`
 - `RunOnce()` lists all snapshot manifests, groups by source, computes retention reasons, and sets gauge metrics
 - Seven Prometheus gauge vectors: `total_size`, `file_count`, `dir_count`, `error_count`, `backup_duration`, `backup_start_time`, `backup_end_time`
@@ -73,7 +76,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ### Main Loop (main.go)
 - Configures logger, creates exporter and Kopia client
 - Runs exporter HTTP server in a goroutine
-- Main loop calls `k.RunOnce()` every `interval` seconds (default 300)
+- Main loop sleeps `interval` seconds between runs of `k.RunOnce()` (default 300)
 - Graceful shutdown via SIGTERM/SIGINT → context cancellation → `k.Disconnect()`
 
 ## Development Guidelines
@@ -104,9 +107,9 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 
 ### Patterns
 - Constructors: `New()` returns a pointer for larger structs (e.g., `*KopiaClient`, `*Exporter`).
-- Logger: slog instance passed via package-level `var Logger *slog.Logger`.
+- Logger: each package calls `logger.Get()` locally instead of exposing a package-level variable.
 - Context: pass `context.Context` to operations that may need cancellation.
-- Global config: `config.Cfg` accessed directly from packages.
+- Global config: `config.Cfg` is the global populated at startup. Exporter and KopiaClient receive their config via constructors, not by reading the global.
 
 ### Environment Variables
 - Use optional environment variables for configuration (e.g., `KGE_KOPIA_PASSWORD`...)
@@ -115,6 +118,12 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Environment variables should be documented in the `config.yaml.sample`
 - Environment variables should be prefixed with `KGE_` (e.g., `KGE_EXPORTER_PORT`, `KGE_KOPIA_PASSWORD`)
 - The mapping converts uppercase underscores to dots: `KGE_KOPIA_APISERVER_FINGERPRINT` → `kopia.apiserver.fingerprint`
+
+### config.yaml.sample
+- Every option must be present and commented with a short inline comment
+- Comments should be as short as possible (a few words)
+- Group related options under section comments
+- Avoid dead options
 
 ### Metrics
 - Use `prometheus.NewGaugeVec` for snapshot-derived metrics
@@ -151,7 +160,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 1. Add field to `Config` struct in `config/config.go`
 2. Add parsing logic in `readConfig()` or `CheckConfig()`
 3. Add test case in `config/config_test.go`
-4. Update `config.yaml.sample` with example value
+4. Update `config.yaml.sample` with example value and short comment
 
 ### Adding a New Metric
 1. Define in `KopiaMetrics` struct in `kopiametrics/kopia.go`
@@ -185,7 +194,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - `github.com/stretchr/testify` - Testing utilities
 
 ## Commits
-- Never commit, never stage (`git add`), never run `git commit` — even if explicitly asked. Always suggest the command for the user to run.
+- Never commit, never stage (`git add`), never run `git commit` — except if explicitly asked and confirmed by the user. Always suggest the command for the user to run.
 - Never work in or commit to the `main` branch.
 - Commit message: clear, descriptive, lowercase, no capital start.
 - Follow [Conventional Commits](https://www.conventionalcommits.org/): `<type>: <description>`.
@@ -196,7 +205,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Test: `echo build > version.txt && go test ./...`
 - Docker: `docker build -t kopia-go-exporter .`
 - Run: `./kopia-go-exporter --config config.yaml`
-- CLI flags: `--config` (config file), `--exporter-port` (exporter HTTP server port), `--log_level` (log level), `--version` (print version).
+- CLI flags: `--config` (config file), `--exporter-port` (exporter HTTP server port), `--log_level` (log level), `--version` (print version), `--help` (print help).
 
 ## Linting
 - Run: `golangci-lint run ./...`
@@ -206,9 +215,9 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ## Version Management
 - `version.txt` is embedded at build time via `//go:embed` and should contain the version string (e.g., `build` for dev, `1.0.0` for releases).
 - `go.mod` sets the minimum Go version. Only bump when the code requires a newer toolchain feature.
+- `Dockerfile` sets the latest stable Go version as 1.xx (example: 1.26).
 - When updating a version, check all references across the project (go.mod, Dockerfile, AGENTS.md).
 
 ## Important Notes
 - The Kopia password and API server fingerprint are sensitive — they should be provided via environment variables (`KGE_KOPIA_PASSWORD`, `KGE_KOPIA_APISERVER_FINGERPRINT`), not committed to the repository.
-- `ConnectWithConfigFile: true` is not supported yet; only API server connection is implemented.
 - The main loop sleeps 1 second at a time in a busy-wait pattern, counting down `sleepInterval` to the next `RunOnce()` call.

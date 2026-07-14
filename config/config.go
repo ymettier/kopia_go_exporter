@@ -9,13 +9,15 @@ import (
 	"log/slog"
 	"runtime/debug"
 	"strings"
-	"time"
 
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/providers/posflag"
 	"github.com/knadh/koanf/v2"
 	"github.com/spf13/pflag"
+
+	"kopia-go-exporter/logger"
 )
 
 var k = koanf.New(".")
@@ -23,13 +25,6 @@ var k = koanf.New(".")
 var givenVersion string
 
 var ReadBuildInfo = debug.ReadBuildInfo
-
-type CLIFlags struct {
-	ConfigFile   string
-	ExporterPort int
-	LogLevel     string
-	ShowVersion  bool
-}
 
 type ExporterConfig struct {
 	Port    int
@@ -47,11 +42,9 @@ type APIServerConfig struct {
 }
 
 type KopiaConfig struct {
-	ConfigFile            string
-	ConnectWithConfigFile bool
-	Password              string
-	APIServer             APIServerConfig
-	Retentions            []string
+	Password   string
+	APIServer  APIServerConfig
+	Retentions []string
 }
 
 type Config struct {
@@ -62,71 +55,80 @@ type Config struct {
 
 var Cfg Config
 
-func versionInfo(version string) string {
-	output := fmt.Sprintf("%-15s: %s\n", "Version", version)
+// VersionInfo holds build version information extracted from Go's debug info.
+type VersionInfo struct {
+	Version   string
+	Revision  string
+	Time      string
+	Dirty     bool
+	GoVersion string
+}
 
-	var lastCommit time.Time
-	revision := "unknown"
-	dirtyBuild := true
+// GetVersionInfo returns build version, revision, and time from Go's debug info.
+func GetVersionInfo() VersionInfo {
+	info := VersionInfo{Version: givenVersion}
 
-	info, ok := ReadBuildInfo()
+	buildInfo, ok := ReadBuildInfo()
 	if !ok {
-		return output
+		return info
 	}
 
-	for _, kv := range info.Settings {
+	info.GoVersion = buildInfo.GoVersion
+	for _, kv := range buildInfo.Settings {
 		if kv.Value == "" {
 			continue
 		}
 		switch kv.Key {
 		case "vcs.revision":
-			revision = kv.Value
+			info.Revision = kv.Value
 		case "vcs.time":
-			lastCommit, _ = time.Parse(time.RFC3339, kv.Value)
+			info.Time = kv.Value
 		case "vcs.modified":
-			dirtyBuild = kv.Value == "true"
+			info.Dirty = kv.Value == "true"
 		}
 	}
+	return info
+}
 
-	output += fmt.Sprintf("%-15s: %s\n", "Revision", revision)
-	output += fmt.Sprintf("%-15s: %v\n", "Dirty Build", dirtyBuild)
-	output += fmt.Sprintf("%-15s: %s\n", "Last Commit", lastCommit)
-	output += fmt.Sprintf("%-15s: %s\n", "Go Version", info.GoVersion)
+// formatVersionInfo returns the formatted build version information.
+func formatVersionInfo() string {
+	vi := GetVersionInfo()
+
+	output := fmt.Sprintf("%-15s: %s\n", "Version", vi.Version)
+	output += fmt.Sprintf("%-15s: %s\n", "Revision", vi.Revision)
+	output += fmt.Sprintf("%-15s: %v\n", "Dirty Build", vi.Dirty)
+	output += fmt.Sprintf("%-15s: %s\n", "Last Commit", vi.Time)
+	output += fmt.Sprintf("%-15s: %s\n", "Go Version", vi.GoVersion)
 	return output
 }
 
-func ParseFlags(version string, args []string) (CLIFlags, error) {
+// ParseFlags parses command-line flags and returns the config file path and parsed flagset.
+func ParseFlags(version string, args []string) (string, *pflag.FlagSet, error) {
 	givenVersion = version
 
 	fs := pflag.NewFlagSet("kopia-go-exporter", pflag.ContinueOnError)
 
 	configFile := fs.StringP("config", "c", "config.yaml", "Path to YAML config file")
-	exporterPort := fs.Int("exporter-port", 9090, "Exporter HTTP server port")
-	logLevel := fs.StringP("log_level", "l", "info", "Log level (debug, info, warn, error)")
+	fs.Int("exporter-port", 9090, "Exporter HTTP server port")
+	fs.StringP("log_level", "l", "info", "Log level (debug, info, warn, error)")
 	showVersion := fs.BoolP("version", "V", false, "Print version information and exit")
 	showHelp := fs.BoolP("help", "h", false, "Print help")
 
 	if err := fs.Parse(args); err != nil {
-		return CLIFlags{}, err
+		return "", nil, err
 	}
 
 	if *showHelp {
 		fs.PrintDefaults()
-		return CLIFlags{}, flag.ErrHelp
+		return "", nil, flag.ErrHelp
 	}
 
 	if *showVersion {
-		output := versionInfo(version)
-		fmt.Print(output)
-		return CLIFlags{}, flag.ErrHelp
+		fmt.Print(formatVersionInfo())
+		return "", nil, flag.ErrHelp
 	}
 
-	return CLIFlags{
-		ConfigFile:   *configFile,
-		ExporterPort: *exporterPort,
-		LogLevel:     *logLevel,
-		ShowVersion:  *showVersion,
-	}, nil
+	return *configFile, fs, nil
 }
 
 func lookupConfigKey(koanfInstance *koanf.Koanf, camelKey string) (string, bool) {
@@ -168,13 +170,10 @@ func getConfigBool(koanfInstance *koanf.Koanf, camelKey string, defaultValue boo
 	return defaultValue
 }
 
-func readExporterConfig(koanfInstance *koanf.Koanf, l *slog.Logger, flags CLIFlags) ExporterConfig {
+func readExporterConfig(koanfInstance *koanf.Koanf, l *slog.Logger) ExporterConfig {
 	var cfg ExporterConfig
 
 	cfg.Port = getConfigInt(koanfInstance, "exporter.port", 9090)
-	if flags.ExporterPort != 9090 {
-		cfg.Port = flags.ExporterPort
-	}
 	l.Info("Config: exporter.port", "port", cfg.Port)
 
 	cfg.Metrics.Prefix = getConfigString(koanfInstance, "exporter.metrics.prefix", "kopia_go_exporter")
@@ -188,12 +187,6 @@ func readExporterConfig(koanfInstance *koanf.Koanf, l *slog.Logger, flags CLIFla
 
 func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
 	var cfg KopiaConfig
-
-	cfg.ConfigFile = getConfigString(koanfInstance, "kopia.configfile", "/tmp/kopia.cfg")
-	l.Info("Config: kopia.configfile", "configfile", cfg.ConfigFile)
-
-	cfg.ConnectWithConfigFile = getConfigBool(koanfInstance, "kopia.connectwithconfigfile", false)
-	l.Info("Config: kopia.connectwithconfigfile", "connectwithconfigfile", cfg.ConnectWithConfigFile)
 
 	cfg.Password = getConfigString(koanfInstance, "kopia.password", "")
 	l.Info("Config: kopia.password", "password", "****")
@@ -222,96 +215,75 @@ func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
 	return cfg
 }
 
-func readConfig(filename string, flags CLIFlags) error {
-	l := slog.Default()
+func readConfig(filename string, fs *pflag.FlagSet) error {
+	l := logger.Get()
 
+	k = koanf.New(".")
 	if err := k.Load(file.Provider(filename), yaml.Parser()); err != nil {
 		return fmt.Errorf("failed to read configuration file %s: %w", filename, err)
 	}
 
 	// Load environment variables with KGE_ prefix (overrides YAML values)
-	_ = k.Load(env.Provider("KGE_", ".", func(s string) string {
+	loadConfigLayer(k, env.Provider("KGE_", ".", func(s string) string {
 		s = strings.TrimPrefix(s, "KGE_")
 		s = strings.ToLower(s)
 		s = strings.ReplaceAll(s, "_", ".")
 		return s
-	}), nil)
+	}), "Failed to load environment variable overrides")
 
-	Cfg.Exporter = readExporterConfig(k, l, flags)
+	// Load pflag values, converting dashes to dots for koanf key matching.
+	// Only flags explicitly set by the user override YAML/env values.
+	if fs != nil {
+		loadConfigLayer(k, posflag.ProviderWithValue(fs, ".", k, func(key, value string) (string, interface{}) {
+			return strings.ReplaceAll(key, "-", "."), value
+		}), "Failed to load flag overrides")
+	}
+
+	Cfg.Exporter = readExporterConfig(k, l)
 	Cfg.Kopia = readKopiaConfig(k, l)
-	Cfg.LogLevel = getConfigString(k, "log_level", flags.LogLevel)
+	Cfg.LogLevel = getConfigString(k, "log_level", "info")
 	l.Info("Config: log_level", "log_level", Cfg.LogLevel)
 
 	return nil
 }
 
+// loadConfigLayer loads a koanf provider, logging a warning instead of failing
+// when the provider errors, since env/flag overrides are best-effort.
+func loadConfigLayer(k *koanf.Koanf, loader koanf.Provider, msg string) {
+	l := logger.Get()
+	if err := k.Load(loader, nil); err != nil {
+		l.Warn(msg, "err", err)
+	}
+}
+
+// CheckConfig validates that all required configuration fields are set.
 func CheckConfig() error {
-	if Cfg.Kopia.ConfigFile == "" {
-		Cfg.Kopia.ConfigFile = "/tmp/kopia.cfg"
-		slog.Warn("Kopia.configfile was not specified. Using /tmp/kopia.cfg")
-	}
 	if Cfg.Kopia.Password == "" {
-		return fmt.Errorf("kopia.password is not set (needed when kopia.configfile is provided)")
+		return fmt.Errorf("kopia.password is not set")
 	}
-	if !Cfg.Kopia.ConnectWithConfigFile {
-		if Cfg.Kopia.APIServer.RepositoryURL == "" {
-			return fmt.Errorf("kopia.repositoryURL is not set (needed when kopia.configfile is not provided)")
-		}
-		if Cfg.Kopia.APIServer.Fingerprint == "" {
-			return fmt.Errorf("kopia.fingerprint is not set (needed when kopia.configfile is not provided)")
-		}
-		if Cfg.Kopia.APIServer.Hostname == "" {
-			return fmt.Errorf("kopia.hostname is not set (needed when kopia.configfile is not provided)")
-		}
-		if Cfg.Kopia.APIServer.Username == "" {
-			return fmt.Errorf("kopia.username is not set (needed when kopia.configfile is not provided)")
-		}
-	} else {
-		return fmt.Errorf("kopia.connectwithconfigfile is not supported yet")
+	if Cfg.Kopia.APIServer.RepositoryURL == "" {
+		return fmt.Errorf("kopia.apiserver.repositoryURL is not set")
+	}
+	if Cfg.Kopia.APIServer.Fingerprint == "" {
+		return fmt.Errorf("kopia.apiserver.fingerprint is not set")
+	}
+	if Cfg.Kopia.APIServer.Hostname == "" {
+		return fmt.Errorf("kopia.apiserver.hostname is not set")
+	}
+	if Cfg.Kopia.APIServer.Username == "" {
+		return fmt.Errorf("kopia.apiserver.username is not set")
 	}
 	return nil
 }
 
+// New parses flags, loads the config file, and validates all required fields.
 func New(version string, args []string) error {
-	flags, err := ParseFlags(version, args)
+	configFile, fs, err := ParseFlags(version, args)
 	if err != nil {
 		return err
 	}
-
-	if err := readConfig(flags.ConfigFile, flags); err != nil {
+	if err := readConfig(configFile, fs); err != nil {
 		return err
 	}
-
-	return nil
-}
-
-type VersionInfo struct {
-	Version   string
-	Revision  string
-	Time      string
-	Dirty     bool
-	GoVersion string
-}
-
-func GetVersionInfo() VersionInfo {
-	info := VersionInfo{Version: givenVersion}
-
-	bInfo, ok := ReadBuildInfo()
-	if !ok {
-		return info
-	}
-
-	for _, setting := range bInfo.Settings {
-		switch setting.Key {
-		case "vcs.revision":
-			info.Revision = setting.Value
-		case "vcs.time":
-			info.Time = setting.Value
-		case "vcs.modified":
-			info.Dirty = setting.Value == "true"
-		}
-	}
-
-	info.GoVersion = bInfo.GoVersion
-	return info
+	return CheckConfig()
 }
