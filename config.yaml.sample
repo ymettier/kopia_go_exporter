@@ -1,17 +1,22 @@
+# Exporter HTTP server settings.
 exporter:
-  port: 9090
+  port: 9090           # HTTP listen port
   metrics:
-    prefix: "kopia_go_exporter"
-  interval: 300
+    prefix: "kopia_go_exporter" # Prometheus metrics namespace
+  interval: 300        # seconds between scrapes
+
+# Kopia connection settings.
 kopia:
-  ConnectWithConfigFile: false # true is not supported yet
-  configfile: "/tmp/kopia.cfg"
-  password: "set me in KGE_KOPIA_PASSWORD env var"
+  ConnectWithConfigFile: false # use existing configfile (not supported yet)
+  configfile: "/tmp/kopia.cfg" # kopia config file path
+  password: "set me in KGE_KOPIA_PASSWORD env var" # repository password
   apiserver:
-    repositoryURL: "https://some.url:port"
-    hostname: "myhostname"
-    username: "mybackup"
-    fingerprint: "set me in KGE_KOPIA_APISERVER_FINGERPRINT env var"
-  retentionstoextract:
+    repositoryURL: "https://some.url:port" # API server URL
+    hostname: "myhostname"                 # client hostname
+    username: "mybackup"                   # client username
+    fingerprint: "set me in KGE_KOPIA_APISERVER_FINGERPRINT env var" # server cert SHA256
+  retentionstoextract: # retention reasons to export metrics for
     - "latest-1"
+
+# Log level: debug, info, warn, error.
 log_level: "debug"
