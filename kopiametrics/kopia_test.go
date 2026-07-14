@@ -202,7 +202,7 @@ func TestNewKopiaClient(t *testing.T) {
 	cfg := config.Config{}
 	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
-	t.Cleanup(func() { k.Disconnect() })
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	assert.NotNil(t, k)
 	assert.False(t, k.IsConnected)
 }
@@ -220,7 +220,7 @@ func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 
 	k, err := NewKopiaClient(config.Config{})
 	require.NoError(t, err)
-	t.Cleanup(func() { k.Disconnect() })
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
 
@@ -247,11 +247,10 @@ func TestKopiaClient_Connect(t *testing.T) {
 	logger.Reset(nil)
 
 	k := &KopiaClient{
-		Ctx:         context.Background(),
 		IsConnected: false,
 	}
 
-	k.Ctx = context.Background()
+	ctx := context.Background()
 	opts := repo.ConnectOptions{
 		ClientOptions: repo.ClientOptions{
 			Username: "kopia",
@@ -263,10 +262,10 @@ func TestKopiaClient_Connect(t *testing.T) {
 		TrustedServerCertificateFingerprint: fingerprint,
 	}
 
-	err := repo.ConnectAPIServer(k.Ctx, configFile, &serverInfo, "kopiapwd", &opts)
+	err := repo.ConnectAPIServer(ctx, configFile, &serverInfo, "kopiapwd", &opts)
 	require.NoError(t, err, "Failed to connect API server")
 
-	k.repo, err = repo.Open(k.Ctx, configFile, "kopiapwd", nil)
+	k.repo, err = repo.Open(ctx, configFile, "kopiapwd", nil)
 	require.NoError(t, err, "Failed to open repository")
 	k.IsConnected = true
 
@@ -281,7 +280,7 @@ func TestKopiaClient_Disconnect(t *testing.T) {
 	assert.False(t, k.IsConnected)
 
 	k.IsConnected = true
-	k.Disconnect()
+	k.Disconnect(context.Background())
 	assert.False(t, k.IsConnected)
 }
 
@@ -339,7 +338,7 @@ func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 
 	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
-	t.Cleanup(func() { k.Disconnect() })
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
 
@@ -376,7 +375,7 @@ func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
 
 	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
-	t.Cleanup(func() { k.Disconnect() })
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
 
@@ -428,11 +427,10 @@ func TestRunOnce_ConnectFails(t *testing.T) {
 
 	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
-	k.Ctx = context.Background()
 	k.ConfigFile = filepath.Join(t.TempDir(), "nonexistent.config")
-	t.Cleanup(func() { k.Disconnect() })
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 
-	err = k.RunOnce()
+	err = k.RunOnce(context.Background())
 	assert.Error(t, err, "RunOnce should fail when Connect fails")
 	assert.False(t, k.IsConnected)
 }
@@ -481,19 +479,19 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
 	k := &KopiaClient{
-		Ctx:         context.Background(),
 		IsConnected: false,
 		cfg:         cfg,
 	}
 
-	k.repo, err = repo.Open(k.Ctx, configFile, password, nil)
+	ctx := context.Background()
+	k.repo, err = repo.Open(ctx, configFile, password, nil)
 	require.NoError(t, err)
 	k.IsConnected = true
 
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
 
-	require.NoError(t, k.RunOnce(), "RunOnce should succeed on empty repo")
+	require.NoError(t, k.RunOnce(ctx), "RunOnce should succeed on empty repo")
 
 	families, err := reg.Gather()
 	require.NoError(t, err)
@@ -527,11 +525,10 @@ func TestConnect(t *testing.T) {
 
 	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
-	k.Ctx = context.Background()
 	k.ConfigFile = configFile
-	t.Cleanup(func() { k.Disconnect() })
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 
-	err = k.Connect()
+	err = k.Connect(context.Background())
 	require.NoError(t, err, "Connect should succeed")
 	assert.True(t, k.IsConnected)
 	assert.NotNil(t, k.repo)
@@ -562,11 +559,10 @@ func TestConnect_OpenFails(t *testing.T) {
 
 	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
-	k.Ctx = context.Background()
 	k.ConfigFile = configFile
-	t.Cleanup(func() { k.Disconnect() })
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 
-	err = k.Connect()
+	err = k.Connect(context.Background())
 	require.NoError(t, err, "initial Connect should succeed")
 	assert.True(t, k.IsConnected)
 	require.NoError(t, k.repo.Close(context.Background()))
@@ -586,11 +582,10 @@ func TestConnect_OpenFails(t *testing.T) {
 	}
 	k2, err := NewKopiaClient(cfg2)
 	require.NoError(t, err)
-	k2.Ctx = context.Background()
 	k2.ConfigFile = configFile
-	t.Cleanup(func() { k2.Disconnect() })
+	t.Cleanup(func() { k2.Disconnect(context.Background()) })
 
-	err = k2.Connect()
+	err = k2.Connect(context.Background())
 	assert.Error(t, err, "Connect should fail after server is stopped")
 	assert.False(t, k2.IsConnected)
 }
@@ -623,14 +618,13 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 
 	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
-	k.Ctx = context.Background()
 	k.ConfigFile = configFile
-	t.Cleanup(func() { k.Disconnect() })
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
 
 	require.False(t, k.IsConnected, "IsConnected should start false")
-	require.NoError(t, k.RunOnce(), "RunOnce should succeed with auto-connect")
+	require.NoError(t, k.RunOnce(context.Background()), "RunOnce should succeed with auto-connect")
 	assert.True(t, k.IsConnected, "RunOnce should have connected the client")
 	require.NotNil(t, k.repo, "Repo should be set after auto-connect")
 }
@@ -711,20 +705,20 @@ func TestRunOnceMetrics(t *testing.T) {
 	logger.Reset(nil)
 
 	k := &KopiaClient{
-		Ctx:         context.Background(),
 		IsConnected: false,
 		cfg:         cfg,
 	}
 
 	var err error
-	k.repo, err = repo.Open(k.Ctx, configFile, password, nil)
+	ctx := context.Background()
+	k.repo, err = repo.Open(ctx, configFile, password, nil)
 	require.NoError(t, err, "Failed to open repository")
 	k.IsConnected = true
 
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
 
-	require.NoError(t, k.RunOnce(), "RunOnce failed")
+	require.NoError(t, k.RunOnce(ctx), "RunOnce failed")
 
 	families, err := reg.Gather()
 	require.NoError(t, err, "Failed to gather metrics")

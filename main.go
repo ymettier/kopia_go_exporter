@@ -41,12 +41,12 @@ func run(ctx context.Context, args []string) error {
 	for {
 		select {
 		case <-ctx.Done():
-			k.Disconnect()
+			k.Disconnect(ctx)
 			return nil
 		default:
 			if sleepInterval == 0 {
 				l.Debug("Start a new iteration of main loop...")
-				if err := k.RunOnce(); err != nil {
+				if err := k.RunOnce(ctx); err != nil {
 					l.Error("RunOnce failed", "err", err)
 				}
 				sleepInterval = config.Cfg.Exporter.Interval

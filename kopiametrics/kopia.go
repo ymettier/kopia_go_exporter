@@ -31,7 +31,6 @@ type KopiaMetrics struct {
 }
 
 type KopiaClient struct {
-	Ctx         context.Context
 	IsConnected bool
 	ConfigFile  string
 	tempDir     string
@@ -81,10 +80,8 @@ func (k *KopiaClient) RegisterKopiaMetrics(reg *prometheus.Registry) {
 }
 
 // GenerateConfigFile connects to the Kopia API server and writes a config file to the temp directory.
-func (k *KopiaClient) GenerateConfigFile() error {
+func (k *KopiaClient) GenerateConfigFile(ctx context.Context) error {
 	l := logger.Get()
-	k.Ctx = context.Background()
-
 	opts := repo.ConnectOptions{
 		ClientOptions: repo.ClientOptions{
 			Username: k.cfg.Kopia.APIServer.Username,
@@ -98,7 +95,7 @@ func (k *KopiaClient) GenerateConfigFile() error {
 	}
 
 	l.Debug("Generate ConfigFile and try to connect to server", "ConfigFile", k.ConfigFile, "URL", k.cfg.Kopia.APIServer.RepositoryURL)
-	if err := repo.ConnectAPIServer(k.Ctx, k.ConfigFile, &serverInfo, k.cfg.Kopia.Password, &opts); err != nil {
+	if err := repo.ConnectAPIServer(ctx, k.ConfigFile, &serverInfo, k.cfg.Kopia.Password, &opts); err != nil {
 		l.Error("Failed to generate configFile", "err", err, "ConfigFile", k.ConfigFile)
 		return err
 	}
@@ -107,17 +104,17 @@ func (k *KopiaClient) GenerateConfigFile() error {
 }
 
 // Connect generates a config file and opens the Kopia repository.
-func (k *KopiaClient) Connect() error {
+func (k *KopiaClient) Connect(ctx context.Context) error {
 	l := logger.Get()
 	var err error
 
-	if err := k.GenerateConfigFile(); err != nil {
+	if err := k.GenerateConfigFile(ctx); err != nil {
 		l.Error("Failed to launch repository server", "err", err, "ConfigFile", k.ConfigFile)
 		k.IsConnected = false
 		return err
 	}
 	l.Debug("Try to connect to server", "ConfigFile", k.ConfigFile)
-	k.repo, err = repo.Open(k.Ctx, k.ConfigFile, k.cfg.Kopia.Password, nil)
+	k.repo, err = repo.Open(ctx, k.ConfigFile, k.cfg.Kopia.Password, nil)
 	if err != nil {
 		l.Error("Failed to open repository", "err", err, "ConfigFile", k.ConfigFile)
 		k.IsConnected = false
@@ -144,25 +141,25 @@ func (k *KopiaClient) setSnapshotMetrics(m *snapshot.Manifest, keepAllRetentions
 }
 
 // RunOnce performs a single metrics collection cycle: connects, lists snapshots, and updates gauges.
-func (k *KopiaClient) RunOnce() error {
+func (k *KopiaClient) RunOnce(ctx context.Context) error {
 	l := logger.Get()
 	keepAllRetentions := len(k.cfg.Kopia.Retentions) == 0
 	if !k.IsConnected {
-		if err := k.Connect(); err != nil {
+		if err := k.Connect(ctx); err != nil {
 			return err
 		}
 	}
 	// FIXME : if IsConnected == false, set error status to 1 (in metrics) and return
 
 	// List all snapshot manifests (nil -> all sources)
-	manifestsIds, err := snapshot.ListSnapshotManifests(k.Ctx, k.repo, nil, nil)
+	manifestsIds, err := snapshot.ListSnapshotManifests(ctx, k.repo, nil, nil)
 	if err != nil {
 		l.Error("failed to list snapshot manifests", "err", err, "ConfigFile", k.ConfigFile)
 		k.IsConnected = false
 		return err
 	}
 
-	manifests, err := snapshot.LoadSnapshots(k.Ctx, k.repo, manifestsIds)
+	manifests, err := snapshot.LoadSnapshots(ctx, k.repo, manifestsIds)
 	if err != nil {
 		l.Error("failed to snapshot manifests", "err", err, "ConfigFile", k.ConfigFile)
 		k.IsConnected = false
@@ -173,7 +170,7 @@ func (k *KopiaClient) RunOnce() error {
 		snapshotGroup = snapshot.SortByTime(snapshotGroup, true)
 		src := snapshotGroup[0].Source
 
-		pol, _, _, err := policy.GetEffectivePolicy(k.Ctx, k.repo, src)
+		pol, _, _, err := policy.GetEffectivePolicy(ctx, k.repo, src)
 		if err != nil {
 			l.Error("Unable to determine effective policy", "err", err, "Source", src)
 		} else {
@@ -188,9 +185,9 @@ func (k *KopiaClient) RunOnce() error {
 }
 
 // Disconnect closes the repository connection and removes the temp directory.
-func (k *KopiaClient) Disconnect() {
+func (k *KopiaClient) Disconnect(ctx context.Context) {
 	l := logger.Get()
-	if err := repo.Disconnect(k.Ctx, k.ConfigFile); err != nil {
+	if err := repo.Disconnect(ctx, k.ConfigFile); err != nil {
 		l.Debug("Failed to disconnect from Kopia repository", "ConfigFile", k.ConfigFile, "err", err)
 	}
 	l.Debug("Disconnected from server", "ConfigFile", k.ConfigFile)
