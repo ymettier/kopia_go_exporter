@@ -15,16 +15,16 @@ import (
 	"kopia-go-exporter/config"
 )
 
-var Logger *slog.Logger
-
 type Exporter struct {
-	Port int
-	Reg  *prometheus.Registry
+	Port   int
+	Reg    *prometheus.Registry
+	Logger *slog.Logger
 }
 
-func NewExporter() *Exporter {
+func NewExporter(l *slog.Logger) *Exporter {
 	ex := new(Exporter)
 	ex.Port = config.Cfg.Exporter.Port
+	ex.Logger = l
 
 	ex.Reg = prometheus.NewRegistry()
 	ex.Reg.MustRegister(collectors.NewGoCollector())
@@ -32,7 +32,7 @@ func NewExporter() *Exporter {
 
 	vi := config.GetVersionInfo()
 	if vi.Revision == "" {
-		Logger.Error("Failed to retrieve full version info; metric build_info will not be available", "version", vi.Version)
+		l.Error("Failed to retrieve full version info; metric build_info will not be available", "version", vi.Version)
 	} else {
 		ex.SetBuildInfo(vi.Version, vi.Revision, vi.Time)
 	}
@@ -61,6 +61,6 @@ func (ex Exporter) Run() {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(ex.Reg, promhttp.HandlerOpts{}))
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", ex.Port), mux); err != nil {
-		Logger.Error("HTTP server error", "port", ex.Port, "err", err)
+		ex.Logger.Error("HTTP server error", "port", ex.Port, "err", err)
 	}
 }

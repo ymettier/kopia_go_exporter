@@ -27,7 +27,7 @@ func TestNewExporter(t *testing.T) {
 
 	config.Cfg.Exporter.Port = 12346
 	config.Cfg.Exporter.Metrics.Prefix = "test_prefix"
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	l := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	config.ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return &debug.BuildInfo{
@@ -39,7 +39,7 @@ func TestNewExporter(t *testing.T) {
 		}, true
 	}
 
-	ex := NewExporter()
+	ex := NewExporter(l)
 	if ex == nil {
 		t.Fatal("NewExporter() returned nil")
 	}
@@ -61,13 +61,13 @@ func TestNewExporter_BuildInfoUnavailable(t *testing.T) {
 
 	config.Cfg.Exporter.Port = 12347
 	config.Cfg.Exporter.Metrics.Prefix = "test_prefix"
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	l := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	config.ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return nil, false
 	}
 
-	ex := NewExporter()
+	ex := NewExporter(l)
 	if ex == nil {
 		t.Fatal("NewExporter() returned nil")
 	}
@@ -166,11 +166,12 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 
 func TestExporter_Run(t *testing.T) {
 	t.Run("Test the exporter on port 12345", func(t *testing.T) {
+		l := slog.New(slog.NewTextHandler(os.Stdout, nil))
 		ex := Exporter{
-			Port: 12345,
-			Reg:  prometheus.NewRegistry(),
+			Port:   12345,
+			Reg:    prometheus.NewRegistry(),
+			Logger: l,
 		}
-		Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 		go ex.Run()
 
@@ -190,7 +191,7 @@ func TestExporter_Run(t *testing.T) {
 }
 
 func TestExporter_Run_AlreadyInUse(t *testing.T) {
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	l := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	// Block the port first
 	blocker, err := net.Listen("tcp", ":12399")
@@ -200,8 +201,9 @@ func TestExporter_Run_AlreadyInUse(t *testing.T) {
 	defer func() { _ = blocker.Close() }()
 
 	ex := Exporter{
-		Port: 12399,
-		Reg:  prometheus.NewRegistry(),
+		Port:   12399,
+		Reg:    prometheus.NewRegistry(),
+		Logger: l,
 	}
 
 	done := make(chan struct{})

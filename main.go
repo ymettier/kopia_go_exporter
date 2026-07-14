@@ -28,8 +28,7 @@ func run(ctx context.Context, args []string) error {
 	logger.Reset(&logger.LogOptions{Level: config.Cfg.LogLevel})
 	l := logger.Get()
 	l.Debug("Debug logging enabled")
-	exporter.Logger = l
-	ex := exporter.NewExporter()
+	ex := exporter.NewExporter(l)
 	k := kopiametrics.NewKopiaClient()
 	kopiametrics.Logger = l
 	k.RegisterKopiaMetrics(ex.Reg)
