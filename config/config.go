@@ -217,6 +217,7 @@ func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
 func readConfig(filename string, flags CLIFlags) error {
 	l := slog.Default()
 
+	k = koanf.New(".")
 	if err := k.Load(file.Provider(filename), yaml.Parser()); err != nil {
 		return fmt.Errorf("failed to read configuration file %s: %w", filename, err)
 	}

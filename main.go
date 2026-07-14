@@ -11,7 +11,6 @@ import (
 	"kopia-go-exporter/exporter"
 	"kopia-go-exporter/kopiametrics"
 	"kopia-go-exporter/logger"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -21,17 +20,13 @@ import (
 //go:embed version.txt
 var version string
 
-func main() {
-	if err := config.New(version, os.Args[1:]); err != nil {
-		if err == flag.ErrHelp {
-			os.Exit(0)
-		}
-		os.Exit(1)
+func run(ctx context.Context, args []string) error {
+	if err := config.New(version, args); err != nil {
+		return err
 	}
 
 	if err := config.CheckConfig(); err != nil {
-		slog.Error(err.Error())
-		os.Exit(1)
+		return err
 	}
 
 	logger.Reset(&logger.LogOptions{
@@ -47,10 +42,8 @@ func main() {
 	kopiametrics.Logger = l
 	k.RegisterKopiaMetrics(ex.Reg)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer func() {
-		cancel()
-	}()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -68,7 +61,7 @@ func main() {
 		select {
 		case <-ctx.Done():
 			k.Disconnect()
-			return
+			return nil
 		default:
 			if sleepInterval == 0 {
 				l.Debug("Start a new iteration of main loop...")
@@ -82,5 +75,17 @@ func main() {
 			}
 			time.Sleep(time.Second)
 		}
+	}
+}
+
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := run(ctx, os.Args[1:]); err != nil {
+		if err == flag.ErrHelp {
+			os.Exit(0)
+		}
+		os.Exit(1)
 	}
 }
