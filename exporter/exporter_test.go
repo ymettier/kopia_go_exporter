@@ -4,6 +4,7 @@
 package exporter
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"runtime/debug"
@@ -166,12 +167,13 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 func TestExporter_Run(t *testing.T) {
 	t.Run("Test the exporter on port 12345", func(t *testing.T) {
 		logger.Reset(nil)
+		ctx, cancel := context.WithCancel(context.Background())
 		ex := Exporter{
 			Port: 12345,
 			Reg:  prometheus.NewRegistry(),
 		}
 
-		go ex.Run()
+		go ex.Run(ctx)
 
 		// Wait briefly for the server to start
 		time.Sleep(200 * time.Millisecond)
@@ -185,6 +187,7 @@ func TestExporter_Run(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("unexpected status code: got %v, want %v", resp.StatusCode, http.StatusOK)
 		}
+		cancel()
 	})
 }
 
@@ -205,7 +208,7 @@ func TestExporter_Run_AlreadyInUse(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		ex.Run()
+		ex.Run(context.Background())
 		close(done)
 	}()
 

@@ -4,6 +4,7 @@
 package exporter
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -56,11 +57,21 @@ func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 	buildInfo.WithLabelValues(version, revision, time).Set(1)
 }
 
-func (ex Exporter) Run() {
+func (ex Exporter) Run(ctx context.Context) {
 	l := logger.Get()
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(ex.Reg, promhttp.HandlerOpts{}))
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", ex.Port), mux); err != nil {
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", ex.Port),
+		Handler: mux,
+	}
+	go func() {
+		<-ctx.Done()
+		if err := srv.Shutdown(context.Background()); err != nil {
+			l.Error("HTTP server shutdown error", "port", ex.Port, "err", err)
+		}
+	}()
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		l.Error("HTTP server error", "port", ex.Port, "err", err)
 	}
 }

@@ -36,7 +36,7 @@ func run(ctx context.Context, args []string) error {
 	k.RegisterKopiaMetrics(ex.Reg)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	go ex.Run()
+	go ex.Run(ctx)
 	sleepInterval := 0
 	for {
 		select {
