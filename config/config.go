@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"runtime/debug"
 	"strings"
-	"time"
 
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env"
@@ -56,36 +55,50 @@ type Config struct {
 
 var Cfg Config
 
-func versionInfo(version string) string {
-	output := fmt.Sprintf("%-15s: %s\n", "Version", version)
+// VersionInfo holds build version information extracted from Go's debug info.
+type VersionInfo struct {
+	Version   string
+	Revision  string
+	Time      string
+	Dirty     bool
+	GoVersion string
+}
 
-	var lastCommit time.Time
-	revision := "unknown"
-	dirtyBuild := true
+// GetVersionInfo returns build version, revision, and time from Go's debug info.
+func GetVersionInfo() VersionInfo {
+	info := VersionInfo{Version: givenVersion}
 
-	info, ok := ReadBuildInfo()
+	buildInfo, ok := ReadBuildInfo()
 	if !ok {
-		return output
+		return info
 	}
 
-	for _, kv := range info.Settings {
+	info.GoVersion = buildInfo.GoVersion
+	for _, kv := range buildInfo.Settings {
 		if kv.Value == "" {
 			continue
 		}
 		switch kv.Key {
 		case "vcs.revision":
-			revision = kv.Value
+			info.Revision = kv.Value
 		case "vcs.time":
-			lastCommit, _ = time.Parse(time.RFC3339, kv.Value)
+			info.Time = kv.Value
 		case "vcs.modified":
-			dirtyBuild = kv.Value == "true"
+			info.Dirty = kv.Value == "true"
 		}
 	}
+	return info
+}
 
-	output += fmt.Sprintf("%-15s: %s\n", "Revision", revision)
-	output += fmt.Sprintf("%-15s: %v\n", "Dirty Build", dirtyBuild)
-	output += fmt.Sprintf("%-15s: %s\n", "Last Commit", lastCommit)
-	output += fmt.Sprintf("%-15s: %s\n", "Go Version", info.GoVersion)
+// formatVersionInfo returns the formatted build version information.
+func formatVersionInfo() string {
+	vi := GetVersionInfo()
+
+	output := fmt.Sprintf("%-15s: %s\n", "Version", vi.Version)
+	output += fmt.Sprintf("%-15s: %s\n", "Revision", vi.Revision)
+	output += fmt.Sprintf("%-15s: %v\n", "Dirty Build", vi.Dirty)
+	output += fmt.Sprintf("%-15s: %s\n", "Last Commit", vi.Time)
+	output += fmt.Sprintf("%-15s: %s\n", "Go Version", vi.GoVersion)
 	return output
 }
 
@@ -111,8 +124,7 @@ func ParseFlags(version string, args []string) (string, *pflag.FlagSet, error) {
 	}
 
 	if *showVersion {
-		output := versionInfo(version)
-		fmt.Print(output)
+		fmt.Print(formatVersionInfo())
 		return "", nil, flag.ErrHelp
 	}
 
@@ -269,36 +281,4 @@ func New(version string, args []string) error {
 		return err
 	}
 	return CheckConfig()
-}
-
-type VersionInfo struct {
-	Version   string
-	Revision  string
-	Time      string
-	Dirty     bool
-	GoVersion string
-}
-
-// GetVersionInfo returns build version, revision, and time from Go's debug info.
-func GetVersionInfo() VersionInfo {
-	info := VersionInfo{Version: givenVersion}
-
-	bInfo, ok := ReadBuildInfo()
-	if !ok {
-		return info
-	}
-
-	for _, setting := range bInfo.Settings {
-		switch setting.Key {
-		case "vcs.revision":
-			info.Revision = setting.Value
-		case "vcs.time":
-			info.Time = setting.Value
-		case "vcs.modified":
-			info.Dirty = setting.Value == "true"
-		}
-	}
-
-	info.GoVersion = bInfo.GoVersion
-	return info
 }

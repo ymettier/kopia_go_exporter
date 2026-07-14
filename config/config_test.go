@@ -451,19 +451,21 @@ func TestVersionInfo_BuildInfoUnavailable(t *testing.T) {
 	origReadBuildInfo := ReadBuildInfo
 	defer func() { ReadBuildInfo = origReadBuildInfo }()
 
+	givenVersion = "1.0.0"
 	ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return nil, false
 	}
 
-	output := versionInfo("1.0.0")
+	output := formatVersionInfo()
 	assert.Contains(t, output, "1.0.0")
-	assert.NotContains(t, output, "Revision")
+	assert.NotContains(t, output, "go1.25.0")
 }
 
 func TestVersionInfo_WithVCSSettings(t *testing.T) {
 	origReadBuildInfo := ReadBuildInfo
 	defer func() { ReadBuildInfo = origReadBuildInfo }()
 
+	givenVersion = "1.0.0"
 	ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return &debug.BuildInfo{
 			GoVersion: "go1.25.0",
@@ -475,7 +477,7 @@ func TestVersionInfo_WithVCSSettings(t *testing.T) {
 		}, true
 	}
 
-	output := versionInfo("1.0.0")
+	output := formatVersionInfo()
 	assert.Contains(t, output, "abc123")
 	assert.Contains(t, output, "true")
 	assert.Contains(t, output, "go1.25.0")
