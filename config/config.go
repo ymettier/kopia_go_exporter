@@ -27,10 +27,6 @@ var givenVersion string
 
 var ReadBuildInfo = debug.ReadBuildInfo
 
-type CLIFlags struct {
-	ConfigFile string
-}
-
 type ExporterConfig struct {
 	Port    int
 	Metrics struct {
@@ -93,8 +89,8 @@ func versionInfo(version string) string {
 	return output
 }
 
-// ParseFlags parses command-line flags and returns the parsed values.
-func ParseFlags(version string, args []string) (CLIFlags, *pflag.FlagSet, error) {
+// ParseFlags parses command-line flags and returns the config file path and parsed flagset.
+func ParseFlags(version string, args []string) (string, *pflag.FlagSet, error) {
 	givenVersion = version
 
 	fs := pflag.NewFlagSet("kopia-go-exporter", pflag.ContinueOnError)
@@ -106,21 +102,21 @@ func ParseFlags(version string, args []string) (CLIFlags, *pflag.FlagSet, error)
 	showHelp := fs.BoolP("help", "h", false, "Print help")
 
 	if err := fs.Parse(args); err != nil {
-		return CLIFlags{}, nil, err
+		return "", nil, err
 	}
 
 	if *showHelp {
 		fs.PrintDefaults()
-		return CLIFlags{}, nil, flag.ErrHelp
+		return "", nil, flag.ErrHelp
 	}
 
 	if *showVersion {
 		output := versionInfo(version)
 		fmt.Print(output)
-		return CLIFlags{}, nil, flag.ErrHelp
+		return "", nil, flag.ErrHelp
 	}
 
-	return CLIFlags{ConfigFile: *configFile}, fs, nil
+	return *configFile, fs, nil
 }
 
 func lookupConfigKey(koanfInstance *koanf.Koanf, camelKey string) (string, bool) {
@@ -265,11 +261,11 @@ func CheckConfig() error {
 
 // New parses flags, loads the config file, and validates all required fields.
 func New(version string, args []string) error {
-	flags, fs, err := ParseFlags(version, args)
+	configFile, fs, err := ParseFlags(version, args)
 	if err != nil {
 		return err
 	}
-	if err := readConfig(flags.ConfigFile, fs); err != nil {
+	if err := readConfig(configFile, fs); err != nil {
 		return err
 	}
 	return CheckConfig()
