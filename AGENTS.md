@@ -49,7 +49,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ## Key Components
 
 ### Configuration (config/config.go)
-- CLI flag parsing via `ParseFlags()`: `--config`/`-c`, `--exporter-port`, `--log_level`/`-l`, `--version`/`-V`
+- CLI flag parsing via `ParseFlags()`: `--config`/`-c`, `--exporter-port`, `--log_level`/`-l`, `--version`/`-V`, `--help`/`-h`
 - `New()` constructor: parses flags, loads YAML via Koanf, overlays env vars, validates, returns error
 - Koanf layered loading: YAML file → environment variables (KGE_ prefix)
 - Environment variable mapping: `KGE_KOPIA_PASSWORD` → `kopia.password` (uppercase, underscores → dots)
@@ -203,7 +203,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Test: `echo build > version.txt && go test ./...`
 - Docker: `docker build -t kopia-go-exporter .`
 - Run: `./kopia-go-exporter --config config.yaml`
-- CLI flags: `--config` (config file), `--exporter-port` (exporter HTTP server port), `--log_level` (log level), `--version` (print version).
+- CLI flags: `--config` (config file), `--exporter-port` (exporter HTTP server port), `--log_level` (log level), `--version` (print version), `--help` (print help).
 
 ## Linting
 - Run: `golangci-lint run ./...`
