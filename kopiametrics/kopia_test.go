@@ -345,9 +345,9 @@ func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 
 	now := fs.UTCTimestampFromTime(time.Now())
 	m := &snapshot.Manifest{
-		Source:          snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/test/path"},
-		StartTime:       now,
-		EndTime:         now,
+		Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/test/path"},
+		StartTime:        now,
+		EndTime:          now,
 		RetentionReasons: []string{"latest"},
 		Stats: snapshot.Stats{
 			TotalFileCount:      10,
@@ -382,9 +382,9 @@ func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
 
 	now := fs.UTCTimestampFromTime(time.Now())
 	m := &snapshot.Manifest{
-		Source:          snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/test/path"},
-		StartTime:       now,
-		EndTime:         now,
+		Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/test/path"},
+		StartTime:        now,
+		EndTime:          now,
 		RetentionReasons: []string{"latest"},
 		Stats: snapshot.Stats{
 			TotalFileCount:      10,
@@ -607,7 +607,7 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 
 	cfg := config.Config{
 		Kopia: config.KopiaConfig{
-			Password: "kopiapwd",
+			Password:   "kopiapwd",
 			Retentions: []string{},
 			APIServer: config.APIServerConfig{
 				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
