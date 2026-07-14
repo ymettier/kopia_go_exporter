@@ -22,6 +22,7 @@ type Exporter struct {
 	cfg  config.ExporterConfig
 }
 
+// NewExporter creates a new Exporter with a Prometheus registry and build info metric.
 func NewExporter(cfg config.ExporterConfig) *Exporter {
 	l := logger.Get()
 	ex := new(Exporter)
@@ -42,6 +43,7 @@ func NewExporter(cfg config.ExporterConfig) *Exporter {
 	return ex
 }
 
+// SetBuildInfo registers a build_info gauge with version, commit, and date labels.
 func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 	buildInfo := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -58,6 +60,7 @@ func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 	buildInfo.WithLabelValues(version, revision, time).Set(1)
 }
 
+// Run starts the HTTP server serving /metrics and blocks until ctx is cancelled.
 func (ex Exporter) Run(ctx context.Context) {
 	l := logger.Get()
 	mux := http.NewServeMux()

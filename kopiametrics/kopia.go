@@ -40,6 +40,7 @@ type KopiaClient struct {
 	cfg         config.Config
 }
 
+// NewKopiaClient creates a new KopiaClient with a temp directory for the config file.
 func NewKopiaClient(cfg config.Config) (*KopiaClient, error) {
 	k := new(KopiaClient)
 	k.cfg = cfg
@@ -67,6 +68,7 @@ func newGaugeVec(reg *prometheus.Registry, namespace, name, help string) *promet
 	return gv
 }
 
+// RegisterKopiaMetrics registers all Prometheus gauge vectors with the given registry.
 func (k *KopiaClient) RegisterKopiaMetrics(reg *prometheus.Registry) {
 	prefix := k.cfg.Exporter.Metrics.Prefix
 	k.Metrics.TotalSize = newGaugeVec(reg, prefix, "total_size", "Total size of the backup")
@@ -78,6 +80,7 @@ func (k *KopiaClient) RegisterKopiaMetrics(reg *prometheus.Registry) {
 	k.Metrics.BackupEndTime = newGaugeVec(reg, prefix, "backup_end_time", "End time of the backup")
 }
 
+// GenerateConfigFile connects to the Kopia API server and writes a config file to the temp directory.
 func (k *KopiaClient) GenerateConfigFile() error {
 	l := logger.Get()
 	k.Ctx = context.Background()
@@ -103,6 +106,7 @@ func (k *KopiaClient) GenerateConfigFile() error {
 	return nil
 }
 
+// Connect generates a config file and opens the Kopia repository.
 func (k *KopiaClient) Connect() error {
 	l := logger.Get()
 	var err error
@@ -139,6 +143,7 @@ func (k *KopiaClient) setSnapshotMetrics(m *snapshot.Manifest, keepAllRetentions
 	}
 }
 
+// RunOnce performs a single metrics collection cycle: connects, lists snapshots, and updates gauges.
 func (k *KopiaClient) RunOnce() error {
 	l := logger.Get()
 	keepAllRetentions := len(k.cfg.Kopia.Retentions) == 0
@@ -180,6 +185,7 @@ func (k *KopiaClient) RunOnce() error {
 	return nil
 }
 
+// Disconnect closes the repository connection and removes the temp directory.
 func (k *KopiaClient) Disconnect() {
 	l := logger.Get()
 	if err := repo.Disconnect(k.Ctx, k.ConfigFile); err != nil {

@@ -95,6 +95,7 @@ func versionInfo(version string) string {
 	return output
 }
 
+// ParseFlags parses command-line flags and returns the parsed values.
 func ParseFlags(version string, args []string) (CLIFlags, error) {
 	givenVersion = version
 
@@ -240,6 +241,7 @@ func readConfig(filename string, flags CLIFlags) error {
 	return nil
 }
 
+// CheckConfig validates that all required configuration fields are set.
 func CheckConfig() error {
 	if Cfg.Kopia.Password == "" {
 		return fmt.Errorf("kopia.password is not set")
@@ -259,6 +261,7 @@ func CheckConfig() error {
 	return nil
 }
 
+// New parses flags, loads the config file, and validates all required fields.
 func New(version string, args []string) error {
 	flags, err := ParseFlags(version, args)
 	if err != nil {
@@ -278,6 +281,7 @@ type VersionInfo struct {
 	GoVersion string
 }
 
+// GetVersionInfo returns build version, revision, and time from Go's debug info.
 func GetVersionInfo() VersionInfo {
 	info := VersionInfo{Version: givenVersion}
 
