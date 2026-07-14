@@ -69,6 +69,10 @@ func (ex Exporter) Run(ctx context.Context) {
 		Addr:    fmt.Sprintf(":%d", ex.Port),
 		Handler: mux,
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	go func() {
 		<-ctx.Done()
 		if err := srv.Shutdown(context.Background()); err != nil {
