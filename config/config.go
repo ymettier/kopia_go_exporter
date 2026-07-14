@@ -14,6 +14,7 @@ import (
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/providers/posflag"
 	"github.com/knadh/koanf/v2"
 	"github.com/spf13/pflag"
 
@@ -27,10 +28,7 @@ var givenVersion string
 var ReadBuildInfo = debug.ReadBuildInfo
 
 type CLIFlags struct {
-	ConfigFile   string
-	ExporterPort int
-	LogLevel     string
-	ShowVersion  bool
+	ConfigFile string
 }
 
 type ExporterConfig struct {
@@ -96,38 +94,33 @@ func versionInfo(version string) string {
 }
 
 // ParseFlags parses command-line flags and returns the parsed values.
-func ParseFlags(version string, args []string) (CLIFlags, error) {
+func ParseFlags(version string, args []string) (CLIFlags, *pflag.FlagSet, error) {
 	givenVersion = version
 
 	fs := pflag.NewFlagSet("kopia-go-exporter", pflag.ContinueOnError)
 
 	configFile := fs.StringP("config", "c", "config.yaml", "Path to YAML config file")
-	exporterPort := fs.Int("exporter-port", 9090, "Exporter HTTP server port")
-	logLevel := fs.StringP("log_level", "l", "info", "Log level (debug, info, warn, error)")
+	fs.Int("exporter-port", 9090, "Exporter HTTP server port")
+	fs.StringP("log_level", "l", "info", "Log level (debug, info, warn, error)")
 	showVersion := fs.BoolP("version", "V", false, "Print version information and exit")
 	showHelp := fs.BoolP("help", "h", false, "Print help")
 
 	if err := fs.Parse(args); err != nil {
-		return CLIFlags{}, err
+		return CLIFlags{}, nil, err
 	}
 
 	if *showHelp {
 		fs.PrintDefaults()
-		return CLIFlags{}, flag.ErrHelp
+		return CLIFlags{}, nil, flag.ErrHelp
 	}
 
 	if *showVersion {
 		output := versionInfo(version)
 		fmt.Print(output)
-		return CLIFlags{}, flag.ErrHelp
+		return CLIFlags{}, nil, flag.ErrHelp
 	}
 
-	return CLIFlags{
-		ConfigFile:   *configFile,
-		ExporterPort: *exporterPort,
-		LogLevel:     *logLevel,
-		ShowVersion:  *showVersion,
-	}, nil
+	return CLIFlags{ConfigFile: *configFile}, fs, nil
 }
 
 func lookupConfigKey(koanfInstance *koanf.Koanf, camelKey string) (string, bool) {
@@ -169,13 +162,10 @@ func getConfigBool(koanfInstance *koanf.Koanf, camelKey string, defaultValue boo
 	return defaultValue
 }
 
-func readExporterConfig(koanfInstance *koanf.Koanf, l *slog.Logger, flags CLIFlags) ExporterConfig {
+func readExporterConfig(koanfInstance *koanf.Koanf, l *slog.Logger) ExporterConfig {
 	var cfg ExporterConfig
 
 	cfg.Port = getConfigInt(koanfInstance, "exporter.port", 9090)
-	if flags.ExporterPort != 9090 {
-		cfg.Port = flags.ExporterPort
-	}
 	l.Info("Config: exporter.port", "port", cfg.Port)
 
 	cfg.Metrics.Prefix = getConfigString(koanfInstance, "exporter.metrics.prefix", "kopia_go_exporter")
@@ -217,7 +207,7 @@ func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
 	return cfg
 }
 
-func readConfig(filename string, flags CLIFlags) error {
+func readConfig(filename string, fs *pflag.FlagSet) error {
 	l := logger.Get()
 
 	k = koanf.New(".")
@@ -235,9 +225,19 @@ func readConfig(filename string, flags CLIFlags) error {
 		l.Warn("Failed to load environment variable overrides", "err", err)
 	}
 
-	Cfg.Exporter = readExporterConfig(k, l, flags)
+	// Load pflag values, converting dashes to dots for koanf key matching.
+	// Only flags explicitly set by the user override YAML/env values.
+	if fs != nil {
+		if err := k.Load(posflag.ProviderWithValue(fs, ".", k, func(key, value string) (string, interface{}) {
+			return strings.ReplaceAll(key, "-", "."), value
+		}), nil); err != nil {
+			l.Warn("Failed to load flag overrides", "err", err)
+		}
+	}
+
+	Cfg.Exporter = readExporterConfig(k, l)
 	Cfg.Kopia = readKopiaConfig(k, l)
-	Cfg.LogLevel = getConfigString(k, "log_level", flags.LogLevel)
+	Cfg.LogLevel = getConfigString(k, "log_level", "info")
 	l.Info("Config: log_level", "log_level", Cfg.LogLevel)
 
 	return nil
@@ -265,11 +265,11 @@ func CheckConfig() error {
 
 // New parses flags, loads the config file, and validates all required fields.
 func New(version string, args []string) error {
-	flags, err := ParseFlags(version, args)
+	flags, fs, err := ParseFlags(version, args)
 	if err != nil {
 		return err
 	}
-	if err := readConfig(flags.ConfigFile, flags); err != nil {
+	if err := readConfig(flags.ConfigFile, fs); err != nil {
 		return err
 	}
 	return CheckConfig()

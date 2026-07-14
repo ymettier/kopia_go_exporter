@@ -8,11 +8,14 @@ import (
 	"log/slog"
 	"os"
 	"runtime/debug"
+	"strings"
 	"testing"
 
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/providers/posflag"
 	"github.com/knadh/koanf/v2"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -65,7 +68,7 @@ func TestParseFlags(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			flags, err := ParseFlags("test", tt.args)
+			flags, _, err := ParseFlags("test", tt.args)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseFlags() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -83,11 +86,9 @@ func TestParseFlags(t *testing.T) {
 }
 
 func TestParseFlags_CustomValues(t *testing.T) {
-	flags, err := ParseFlags("test", []string{"--config", "/tmp/custom.yaml", "--exporter-port", "8080", "--log_level", "warn"})
+	flags, _, err := ParseFlags("test", []string{"--config", "/tmp/custom.yaml", "--exporter-port", "8080", "--log_level", "warn"})
 	require.NoError(t, err)
 	assert.Equal(t, "/tmp/custom.yaml", flags.ConfigFile)
-	assert.Equal(t, 8080, flags.ExporterPort)
-	assert.Equal(t, "warn", flags.LogLevel)
 }
 
 func TestGetVersionInfo(t *testing.T) {
@@ -214,9 +215,8 @@ func TestReadExporterConfig(t *testing.T) {
 	k = koanfNew(t, cfgFile)
 
 	l := slog.Default()
-	flags := CLIFlags{ExporterPort: 9090}
 
-	cfg := readExporterConfig(k, l, flags)
+	cfg := readExporterConfig(k, l)
 	assert.Equal(t, 8080, cfg.Port)
 	assert.Equal(t, "custom_prefix", cfg.Metrics.Prefix)
 	assert.Equal(t, 60, cfg.Interval)
@@ -224,21 +224,26 @@ func TestReadExporterConfig(t *testing.T) {
 
 func TestReadExporterConfig_FlagOverride(t *testing.T) {
 	cfgFile := writeTestConfig(t, "exporter:\n  port: 8080\n")
+
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	fs.Int("exporter-port", 9090, "Exporter HTTP server port")
+	require.NoError(t, fs.Parse([]string{"--exporter-port", "7777"}))
+
 	k = koanfNew(t, cfgFile)
+	require.NoError(t, k.Load(posflag.ProviderWithValue(fs, ".", k, func(key, value string) (string, interface{}) {
+		return strings.ReplaceAll(key, "-", "."), value
+	}), nil))
 
 	l := slog.Default()
-	flags := CLIFlags{ExporterPort: 7777}
-
-	cfg := readExporterConfig(k, l, flags)
+	cfg := readExporterConfig(k, l)
 	assert.Equal(t, 7777, cfg.Port)
 }
 
 func TestReadExporterConfig_Defaults(t *testing.T) {
 	k = koanf.New(".")
 	l := slog.Default()
-	flags := CLIFlags{ExporterPort: 9090}
 
-	cfg := readExporterConfig(k, l, flags)
+	cfg := readExporterConfig(k, l)
 	assert.Equal(t, 9090, cfg.Port)
 	assert.Equal(t, "kopia_go_exporter", cfg.Metrics.Prefix)
 	assert.Equal(t, 300, cfg.Interval)
@@ -283,12 +288,7 @@ func TestReadKopiaConfig_Defaults(t *testing.T) {
 
 func TestReadConfig_MissingFile(t *testing.T) {
 	k = koanf.New(".")
-	flags := CLIFlags{
-		ConfigFile:   "/nonexistent/config.yaml",
-		ExporterPort: 9090,
-		LogLevel:     "info",
-	}
-	err := readConfig("/nonexistent/config.yaml", flags)
+	err := readConfig("/nonexistent/config.yaml", nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read configuration file")
 }
@@ -299,12 +299,7 @@ func TestReadConfig_EnvOverride(t *testing.T) {
 	t.Setenv("KGE_EXPORTER_PORT", "7777")
 
 	k = koanf.New(".")
-	flags := CLIFlags{
-		ConfigFile:   tmpFile,
-		ExporterPort: 9090,
-		LogLevel:     "info",
-	}
-	err := readConfig(tmpFile, flags)
+	err := readConfig(tmpFile, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 7777, Cfg.Exporter.Port)
 }
