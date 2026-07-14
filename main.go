@@ -7,14 +7,15 @@ import (
 	"context"
 	_ "embed"
 	"flag"
-	"kopia-go-exporter/config"
-	"kopia-go-exporter/exporter"
-	"kopia-go-exporter/kopiametrics"
-	"kopia-go-exporter/logger"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"kopia-go-exporter/config"
+	"kopia-go-exporter/exporter"
+	"kopia-go-exporter/kopiametrics"
+	"kopia-go-exporter/logger"
 )
 
 //go:embed version.txt
