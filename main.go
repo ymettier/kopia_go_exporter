@@ -29,7 +29,10 @@ func run(ctx context.Context, args []string) error {
 	l := logger.Get()
 	l.Debug("Debug logging enabled")
 	ex := exporter.NewExporter()
-	k := kopiametrics.NewKopiaClient()
+	k, err := kopiametrics.NewKopiaClient()
+	if err != nil {
+		return err
+	}
 	k.RegisterKopiaMetrics(ex.Reg)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

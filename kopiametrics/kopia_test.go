@@ -199,7 +199,8 @@ func logGatheredMetrics(t *testing.T, families []*dto.MetricFamily) {
 }
 
 func TestNewKopiaClient(t *testing.T) {
-	k := NewKopiaClient()
+	k, err := NewKopiaClient()
+	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect() })
 	assert.NotNil(t, k)
 	assert.False(t, k.IsConnected)
@@ -216,7 +217,8 @@ func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 		"backup_end_time",
 	}
 
-	k := NewKopiaClient()
+	k, err := NewKopiaClient()
+	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect() })
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
@@ -273,7 +275,8 @@ func TestKopiaClient_Connect(t *testing.T) {
 func TestKopiaClient_Disconnect(t *testing.T) {
 	logger.Reset(nil)
 
-	k := NewKopiaClient()
+	k, err := NewKopiaClient()
+	require.NoError(t, err)
 	assert.False(t, k.IsConnected)
 
 	k.IsConnected = true
@@ -336,7 +339,8 @@ func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k := NewKopiaClient()
+	k, err := NewKopiaClient()
+	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect() })
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
@@ -375,7 +379,8 @@ func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k := NewKopiaClient()
+	k, err := NewKopiaClient()
+	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect() })
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
@@ -429,12 +434,13 @@ func TestRunOnce_ConnectFails(t *testing.T) {
 		},
 	}
 
-	k := NewKopiaClient()
+	k, err := NewKopiaClient()
+	require.NoError(t, err)
 	k.Ctx = context.Background()
 	k.ConfigFile = filepath.Join(t.TempDir(), "nonexistent.config")
 	t.Cleanup(func() { k.Disconnect() })
 
-	err := k.RunOnce()
+	err = k.RunOnce()
 	assert.Error(t, err, "RunOnce should fail when Connect fails")
 	assert.False(t, k.IsConnected)
 }
@@ -532,12 +538,13 @@ func TestConnect(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k := NewKopiaClient()
+	k, err := NewKopiaClient()
+	require.NoError(t, err)
 	k.Ctx = context.Background()
 	k.ConfigFile = configFile
 	t.Cleanup(func() { k.Disconnect() })
 
-	err := k.Connect()
+	err = k.Connect()
 	require.NoError(t, err, "Connect should succeed")
 	assert.True(t, k.IsConnected)
 	assert.NotNil(t, k.repo)
@@ -569,19 +576,21 @@ func TestConnect_OpenFails(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k := NewKopiaClient()
+	k, err := NewKopiaClient()
+	require.NoError(t, err)
 	k.Ctx = context.Background()
 	k.ConfigFile = configFile
 	t.Cleanup(func() { k.Disconnect() })
 
-	err := k.Connect()
+	err = k.Connect()
 	require.NoError(t, err, "initial Connect should succeed")
 	assert.True(t, k.IsConnected)
 	require.NoError(t, k.repo.Close(context.Background()))
 
 	cleanup()
 
-	k2 := NewKopiaClient()
+	k2, err := NewKopiaClient()
+	require.NoError(t, err)
 	k2.Ctx = context.Background()
 	k2.ConfigFile = configFile
 	t.Cleanup(func() { k2.Disconnect() })
@@ -620,7 +629,8 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k := NewKopiaClient()
+	k, err := NewKopiaClient()
+	require.NoError(t, err)
 	k.Ctx = context.Background()
 	k.ConfigFile = configFile
 	t.Cleanup(func() { k.Disconnect() })

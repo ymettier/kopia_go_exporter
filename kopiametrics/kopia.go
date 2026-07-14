@@ -39,17 +39,17 @@ type KopiaClient struct {
 	Metrics     KopiaMetrics
 }
 
-func NewKopiaClient() *KopiaClient {
+func NewKopiaClient() (*KopiaClient, error) {
 	k := new(KopiaClient)
 
 	tempDir, err := os.MkdirTemp("", "kopia-go-exporter-*")
 	if err != nil {
-		panic(fmt.Sprintf("failed to create temp directory: %v", err))
+		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
 	k.tempDir = tempDir
 	k.ConfigFile = filepath.Join(tempDir, "kopia.cfg")
 
-	return k
+	return k, nil
 }
 
 func newGaugeVec(reg *prometheus.Registry, name, help string) *prometheus.GaugeVec {
