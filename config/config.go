@@ -16,6 +16,8 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	"github.com/spf13/pflag"
+
+	"kopia-go-exporter/logger"
 )
 
 var k = koanf.New(".")
@@ -215,7 +217,7 @@ func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
 }
 
 func readConfig(filename string, flags CLIFlags) error {
-	l := slog.Default()
+	l := logger.Get()
 
 	k = koanf.New(".")
 	if err := k.Load(file.Provider(filename), yaml.Parser()); err != nil {
