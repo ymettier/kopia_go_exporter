@@ -249,16 +249,16 @@ func CheckConfig() error {
 		return fmt.Errorf("kopia.password is not set")
 	}
 	if Cfg.Kopia.APIServer.RepositoryURL == "" {
-		return fmt.Errorf("kopia.repositoryURL is not set")
+		return fmt.Errorf("kopia.apiserver.repositoryURL is not set")
 	}
 	if Cfg.Kopia.APIServer.Fingerprint == "" {
-		return fmt.Errorf("kopia.fingerprint is not set")
+		return fmt.Errorf("kopia.apiserver.fingerprint is not set")
 	}
 	if Cfg.Kopia.APIServer.Hostname == "" {
-		return fmt.Errorf("kopia.hostname is not set")
+		return fmt.Errorf("kopia.apiserver.hostname is not set")
 	}
 	if Cfg.Kopia.APIServer.Username == "" {
-		return fmt.Errorf("kopia.username is not set")
+		return fmt.Errorf("kopia.apiserver.username is not set")
 	}
 	return nil
 }

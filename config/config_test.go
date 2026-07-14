@@ -363,7 +363,7 @@ func TestCheckConfig_MissingRepositoryURL(t *testing.T) {
 	}
 	err := CheckConfig()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.repositoryURL is not set")
+	assert.Contains(t, err.Error(), "kopia.apiserver.repositoryURL is not set")
 }
 
 func TestCheckConfig_MissingFingerprint(t *testing.T) {
@@ -382,7 +382,7 @@ func TestCheckConfig_MissingFingerprint(t *testing.T) {
 	}
 	err := CheckConfig()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.fingerprint is not set")
+	assert.Contains(t, err.Error(), "kopia.apiserver.fingerprint is not set")
 }
 
 func TestCheckConfig_MissingHostname(t *testing.T) {
@@ -401,7 +401,7 @@ func TestCheckConfig_MissingHostname(t *testing.T) {
 	}
 	err := CheckConfig()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.hostname is not set")
+	assert.Contains(t, err.Error(), "kopia.apiserver.hostname is not set")
 }
 
 func TestCheckConfig_MissingUsername(t *testing.T) {
@@ -420,7 +420,7 @@ func TestCheckConfig_MissingUsername(t *testing.T) {
 	}
 	err := CheckConfig()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.username is not set")
+	assert.Contains(t, err.Error(), "kopia.apiserver.username is not set")
 }
 
 func TestNew_MissingFile(t *testing.T) {

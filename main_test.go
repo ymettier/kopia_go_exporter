@@ -56,7 +56,7 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
     username: "kopia"
     fingerprint: "abc123"
 `,
-			wantErr: "kopia.repositoryURL is not set",
+			wantErr: "kopia.apiserver.repositoryURL is not set",
 		},
 		{
 			name: "fingerprint",
@@ -67,7 +67,7 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
     hostname: "localhost"
     username: "kopia"
 `,
-			wantErr: "kopia.fingerprint is not set",
+			wantErr: "kopia.apiserver.fingerprint is not set",
 		},
 		{
 			name: "hostname",
@@ -78,7 +78,7 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
     username: "kopia"
     fingerprint: "abc123"
 `,
-			wantErr: "kopia.hostname is not set",
+			wantErr: "kopia.apiserver.hostname is not set",
 		},
 		{
 			name: "username",
@@ -89,7 +89,7 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
     hostname: "localhost"
     fingerprint: "abc123"
 `,
-			wantErr: "kopia.username is not set",
+			wantErr: "kopia.apiserver.username is not set",
 		},
 	}
 	for _, tt := range tests {
