@@ -120,6 +120,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Every option must be present and commented with a short inline comment
 - Comments should be as short as possible (a few words)
 - Group related options under section comments
+- Avoid dead options
 
 ### Metrics
 - Use `prometheus.NewGaugeVec` for snapshot-derived metrics
