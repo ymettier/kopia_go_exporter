@@ -35,9 +35,7 @@ type KopiaClient struct {
 	IsConnected bool
 	ConfigFile  string
 	tempDir     string
-	Opts        repo.ConnectOptions
-	ServerInfo  repo.APIServerInfo
-	Repo        repo.Repository
+	repo        repo.Repository
 	Metrics     KopiaMetrics
 }
 
@@ -112,7 +110,7 @@ func (k *KopiaClient) Connect() error {
 		return err
 	}
 	l.Debug("Try to connect to server", "ConfigFile", k.ConfigFile)
-	k.Repo, err = repo.Open(k.Ctx, k.ConfigFile, config.Cfg.Kopia.Password, nil)
+	k.repo, err = repo.Open(k.Ctx, k.ConfigFile, config.Cfg.Kopia.Password, nil)
 	if err != nil {
 		l.Error("Failed to open repository", "err", err, "ConfigFile", k.ConfigFile)
 		k.IsConnected = false
@@ -149,13 +147,13 @@ func (k *KopiaClient) RunOnce() error {
 	// FIXME : if IsConnected == false, set error status to 1 (in metrics) and return
 
 	// List all snapshot manifests (nil -> all sources)
-	manifestsIds, err := snapshot.ListSnapshotManifests(k.Ctx, k.Repo, nil, nil)
+	manifestsIds, err := snapshot.ListSnapshotManifests(k.Ctx, k.repo, nil, nil)
 	if err != nil {
 		l.Error("failed to list snapshot manifests", "err", err, "ConfigFile", k.ConfigFile)
 		return err
 	}
 
-	manifests, err := snapshot.LoadSnapshots(k.Ctx, k.Repo, manifestsIds)
+	manifests, err := snapshot.LoadSnapshots(k.Ctx, k.repo, manifestsIds)
 	if err != nil {
 		l.Error("failed to snapshot manifests", "err", err, "ConfigFile", k.ConfigFile)
 		return err
@@ -165,7 +163,7 @@ func (k *KopiaClient) RunOnce() error {
 		snapshotGroup = snapshot.SortByTime(snapshotGroup, true)
 		src := snapshotGroup[0].Source
 
-		pol, _, _, err := policy.GetEffectivePolicy(k.Ctx, k.Repo, src)
+		pol, _, _, err := policy.GetEffectivePolicy(k.Ctx, k.repo, src)
 		if err != nil {
 			l.Error("Unable to determine effective policy", "Source", fmt.Sprintf("%v", src))
 		} else {

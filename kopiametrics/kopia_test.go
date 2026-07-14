@@ -246,16 +246,6 @@ func TestKopiaClient_Connect(t *testing.T) {
 	k := &KopiaClient{
 		Ctx:         context.Background(),
 		IsConnected: false,
-		Opts: repo.ConnectOptions{
-			ClientOptions: repo.ClientOptions{
-				Username: "kopia",
-				Hostname: ip,
-			},
-		},
-		ServerInfo: repo.APIServerInfo{
-			BaseURL:                             fmt.Sprintf("https://%s:%s", ip, port),
-			TrustedServerCertificateFingerprint: fingerprint,
-		},
 	}
 
 	k.Ctx = context.Background()
@@ -273,7 +263,7 @@ func TestKopiaClient_Connect(t *testing.T) {
 	err := repo.ConnectAPIServer(k.Ctx, configFile, &serverInfo, "kopiapwd", &opts)
 	require.NoError(t, err, "Failed to connect API server")
 
-	k.Repo, err = repo.Open(k.Ctx, configFile, "kopiapwd", nil)
+	k.repo, err = repo.Open(k.Ctx, configFile, "kopiapwd", nil)
 	require.NoError(t, err, "Failed to open repository")
 	k.IsConnected = true
 
@@ -500,7 +490,7 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 		IsConnected: false,
 	}
 
-	k.Repo, err = repo.Open(k.Ctx, configFile, password, nil)
+	k.repo, err = repo.Open(k.Ctx, configFile, password, nil)
 	require.NoError(t, err)
 	k.IsConnected = true
 
@@ -550,7 +540,7 @@ func TestConnect(t *testing.T) {
 	err := k.Connect()
 	require.NoError(t, err, "Connect should succeed")
 	assert.True(t, k.IsConnected)
-	assert.NotNil(t, k.Repo)
+	assert.NotNil(t, k.repo)
 }
 
 func TestConnect_OpenFails(t *testing.T) {
@@ -587,7 +577,7 @@ func TestConnect_OpenFails(t *testing.T) {
 	err := k.Connect()
 	require.NoError(t, err, "initial Connect should succeed")
 	assert.True(t, k.IsConnected)
-	require.NoError(t, k.Repo.Close(context.Background()))
+	require.NoError(t, k.repo.Close(context.Background()))
 
 	cleanup()
 
@@ -640,7 +630,7 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 	require.False(t, k.IsConnected, "IsConnected should start false")
 	require.NoError(t, k.RunOnce(), "RunOnce should succeed with auto-connect")
 	assert.True(t, k.IsConnected, "RunOnce should have connected the client")
-	require.NotNil(t, k.Repo, "Repo should be set after auto-connect")
+	require.NotNil(t, k.repo, "Repo should be set after auto-connect")
 }
 
 // setupTestRepo creates a local Kopia filesystem repository and a separate
@@ -727,7 +717,7 @@ func TestRunOnceMetrics(t *testing.T) {
 	}
 
 	var err error
-	k.Repo, err = repo.Open(k.Ctx, configFile, password, nil)
+	k.repo, err = repo.Open(k.Ctx, configFile, password, nil)
 	require.NoError(t, err, "Failed to open repository")
 	k.IsConnected = true
 
