@@ -132,7 +132,7 @@ func (k *KopiaClient) setSnapshotMetrics(m *snapshot.Manifest, keepAllRetentions
 		labels := prometheus.Labels{"host": m.Source.Host, "path": m.Source.Path, "user": m.Source.UserName, "retention": rr}
 		k.Metrics.BackupStartTime.With(labels).Set(float64(m.StartTime.ToTime().Unix()))
 		k.Metrics.BackupEndTime.With(labels).Set(float64(m.EndTime.ToTime().Unix()))
-		k.Metrics.BackupDuration.With(labels).Set(float64(m.EndTime-m.StartTime) / 1e9)
+		k.Metrics.BackupDuration.With(labels).Set(max(0.0, float64(m.EndTime-m.StartTime)/1e9))
 		k.Metrics.DirCount.With(labels).Set(float64(m.Stats.TotalDirectoryCount))
 		k.Metrics.ErrorCount.With(labels).Set(float64(m.Stats.ErrorCount))
 		k.Metrics.FileCount.With(labels).Set(float64(m.Stats.TotalFileCount))
