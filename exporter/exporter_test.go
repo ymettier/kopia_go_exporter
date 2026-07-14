@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"kopia-go-exporter/config"
 	"kopia-go-exporter/logger"
@@ -38,15 +40,9 @@ func TestNewExporter(t *testing.T) {
 		Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
 	}
 	ex := NewExporter(cfg)
-	if ex == nil {
-		t.Fatal("NewExporter() returned nil")
-	}
-	if ex.Port != 12346 {
-		t.Errorf("NewExporter() Port = %v, want %v", ex.Port, 12346)
-	}
-	if ex.Reg == nil {
-		t.Error("NewExporter() Reg is nil")
-	}
+	require.NotNil(t, ex)
+	assert.Equal(t, 12346, ex.Port)
+	assert.NotNil(t, ex.Reg)
 }
 
 func TestNewExporter_BuildInfoUnavailable(t *testing.T) {
@@ -64,9 +60,7 @@ func TestNewExporter_BuildInfoUnavailable(t *testing.T) {
 		Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
 	}
 	ex := NewExporter(cfg)
-	if ex == nil {
-		t.Fatal("NewExporter() returned nil")
-	}
+	require.NotNil(t, ex)
 }
 
 func TestExporter_SetBuildInfo(t *testing.T) {
@@ -104,62 +98,29 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 			}
 			ex.SetBuildInfo(labels["version"], labels["commit"], labels["date"])
 
-			// Gather all metrics from the registry
 			metrics, err := ex.Reg.Gather()
-			if err != nil {
-				t.Fatalf("error gathering metrics: %v", err)
-			}
+			require.NoError(t, err)
 
-			found := false
-			foundVersion := false
-			foundRevision := false
-			foundDate := false
+			familyMap := make(map[string]*prometheus.GaugeVec)
 			for _, mFamily := range metrics {
 				if mFamily.GetName() == "test_prefix_build_info" {
-					found = true
+					familyMap[mFamily.GetName()] = nil
 					for _, m := range mFamily.Metric {
-						for _, label := range m.Label {
-							labelName := label.GetName()
-							labelValue := label.GetValue()
-							if labelName == "version" {
-								foundVersion = true
-								if labelValue != labels[labelName] {
-									t.Errorf("Found metric build_info and label %v, but got %v, wanted %v", labelName, labelValue, labels[labelName])
-								}
-							}
-							if labelName == "commit" {
-								foundRevision = true
-								if labelValue != labels[labelName] {
-									t.Errorf("Found metric build_info and label %v, but got %v, wanted %v", labelName, labelValue, labels[labelName])
-								}
-							}
-							if labelName == "date" {
-								foundDate = true
-								if labelValue != labels[labelName] {
-									t.Errorf("Found metric build_info and label %v, but got %v, wanted %v", labelName, labelValue, labels[labelName])
-								}
+						for _, label := range m.GetLabel() {
+							switch label.GetName() {
+							case "version":
+								assert.Equal(t, labels["version"], label.GetValue())
+							case "commit":
+								assert.Equal(t, labels["commit"], label.GetValue())
+							case "date":
+								assert.Equal(t, labels["date"], label.GetValue())
 							}
 						}
-						value := m.Gauge.GetValue()
-						if value != 1 {
-							t.Errorf("Found metric build_info but got value %v, wanted %v", value, 1)
-						}
+						assert.Equal(t, float64(1), m.GetGauge().GetValue())
 					}
 				}
 			}
-			if !found {
-				t.Errorf("Metric build_info was not found")
-			} else {
-				if !foundVersion {
-					t.Errorf("Found metric build_info but label %v is missing", "version")
-				}
-				if !foundRevision {
-					t.Errorf("Found metric build_info but label %v is missing", "commit")
-				}
-				if !foundDate {
-					t.Errorf("Found metric build_info but label %v is missing", "date")
-				}
-			}
+			assert.Contains(t, familyMap, "test_prefix_build_info", "metric test_prefix_build_info was not found")
 		})
 	}
 }
@@ -175,18 +136,13 @@ func TestExporter_Run(t *testing.T) {
 
 		go ex.Run(ctx)
 
-		// Wait briefly for the server to start
 		time.Sleep(200 * time.Millisecond)
 
 		resp, err := http.Get("http://localhost:12345/metrics")
-		if err != nil {
-			t.Fatalf("could not connect to exporter: %v", err)
-		}
+		require.NoError(t, err)
 		defer func() { _ = resp.Body.Close() }()
 
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("unexpected status code: got %v, want %v", resp.StatusCode, http.StatusOK)
-		}
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		cancel()
 	})
 }
@@ -194,11 +150,8 @@ func TestExporter_Run(t *testing.T) {
 func TestExporter_Run_AlreadyInUse(t *testing.T) {
 	logger.Reset(nil)
 
-	// Block the port first
 	blocker, err := net.Listen("tcp", ":12399")
-	if err != nil {
-		t.Fatalf("could not bind port: %v", err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = blocker.Close() }()
 
 	ex := Exporter{
