@@ -246,8 +246,6 @@ func TestReadExporterConfig_Defaults(t *testing.T) {
 
 func TestReadKopiaConfig(t *testing.T) {
 	cfgFile := writeTestConfig(t, `kopia:
-  configfile: /tmp/test.config
-  connectwithconfigfile: true
   password: secret
   apiserver:
     repositoryURL: "https://example.com:51515"
@@ -262,8 +260,6 @@ func TestReadKopiaConfig(t *testing.T) {
 
 	l := slog.Default()
 	cfg := readKopiaConfig(k, l)
-	assert.Equal(t, "/tmp/test.config", cfg.ConfigFile)
-	assert.True(t, cfg.ConnectWithConfigFile)
 	assert.Equal(t, "secret", cfg.Password)
 	assert.Equal(t, "https://example.com:51515", cfg.APIServer.RepositoryURL)
 	assert.Equal(t, "myhost", cfg.APIServer.Hostname)
@@ -277,8 +273,6 @@ func TestReadKopiaConfig_Defaults(t *testing.T) {
 	l := slog.Default()
 
 	cfg := readKopiaConfig(k, l)
-	assert.Equal(t, "/tmp/kopia.cfg", cfg.ConfigFile)
-	assert.False(t, cfg.ConnectWithConfigFile)
 	assert.Equal(t, "", cfg.Password)
 	assert.Equal(t, "", cfg.APIServer.RepositoryURL)
 	assert.Equal(t, "", cfg.APIServer.Hostname)
@@ -321,8 +315,7 @@ func TestCheckConfig_ValidConfig(t *testing.T) {
 
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			ConfigFile: "/tmp/test.config",
-			Password:   "test",
+			Password: "test",
 			APIServer: APIServerConfig{
 				RepositoryURL: "https://example.com:51515",
 				Hostname:      "localhost",
@@ -340,8 +333,7 @@ func TestCheckConfig_MissingPassword(t *testing.T) {
 
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			ConfigFile: "/tmp/test.config",
-			Password:   "",
+			Password: "",
 			APIServer: APIServerConfig{
 				RepositoryURL: "https://example.com:51515",
 				Hostname:      "localhost",
@@ -361,8 +353,7 @@ func TestCheckConfig_MissingRepositoryURL(t *testing.T) {
 
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			ConfigFile: "/tmp/test.config",
-			Password:   "test",
+			Password: "test",
 			APIServer: APIServerConfig{
 				Hostname:    "localhost",
 				Username:    "kopia",
@@ -381,8 +372,7 @@ func TestCheckConfig_MissingFingerprint(t *testing.T) {
 
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			ConfigFile: "/tmp/test.config",
-			Password:   "test",
+			Password: "test",
 			APIServer: APIServerConfig{
 				RepositoryURL: "https://example.com:51515",
 				Hostname:      "localhost",
@@ -401,8 +391,7 @@ func TestCheckConfig_MissingHostname(t *testing.T) {
 
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			ConfigFile: "/tmp/test.config",
-			Password:   "test",
+			Password: "test",
 			APIServer: APIServerConfig{
 				RepositoryURL: "https://example.com:51515",
 				Username:      "kopia",
@@ -421,8 +410,7 @@ func TestCheckConfig_MissingUsername(t *testing.T) {
 
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			ConfigFile: "/tmp/test.config",
-			Password:   "test",
+			Password: "test",
 			APIServer: APIServerConfig{
 				RepositoryURL: "https://example.com:51515",
 				Fingerprint:   "abc123",
@@ -433,42 +421,6 @@ func TestCheckConfig_MissingUsername(t *testing.T) {
 	err := CheckConfig()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "kopia.username is not set")
-}
-
-func TestCheckConfig_ConnectWithConfigFile(t *testing.T) {
-	origCfg := Cfg
-	defer func() { Cfg = origCfg }()
-
-	Cfg = Config{
-		Kopia: KopiaConfig{
-			ConfigFile:            "/tmp/test.config",
-			Password:              "test",
-			ConnectWithConfigFile: true,
-		},
-	}
-	err := CheckConfig()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.connectwithconfigfile is not supported yet")
-}
-
-func TestCheckConfig_EmptyConfigFile(t *testing.T) {
-	origCfg := Cfg
-	defer func() { Cfg = origCfg }()
-
-	Cfg = Config{
-		Kopia: KopiaConfig{
-			ConfigFile: "",
-			Password:   "test",
-			APIServer: APIServerConfig{
-				RepositoryURL: "https://example.com:51515",
-				Fingerprint:   "abc123",
-				Hostname:      "localhost",
-				Username:      "kopia",
-			},
-		},
-	}
-	assert.NoError(t, CheckConfig())
-	assert.Equal(t, "/tmp/kopia.cfg", Cfg.Kopia.ConfigFile)
 }
 
 func TestNew_MissingFile(t *testing.T) {

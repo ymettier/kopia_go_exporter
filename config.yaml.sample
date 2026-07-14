@@ -7,8 +7,6 @@ exporter:
 
 # Kopia connection settings.
 kopia:
-  ConnectWithConfigFile: false # use existing configfile (not supported yet)
-  configfile: "/tmp/kopia.cfg" # kopia config file path
   password: "set me in KGE_KOPIA_PASSWORD env var" # repository password
   apiserver:
     repositoryURL: "https://some.url:port" # API server URL

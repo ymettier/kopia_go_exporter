@@ -28,6 +28,7 @@ func main() {
 		}
 		os.Exit(1)
 	}
+
 	if err := config.CheckConfig(); err != nil {
 		slog.Error(err.Error())
 		os.Exit(1)

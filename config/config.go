@@ -47,11 +47,9 @@ type APIServerConfig struct {
 }
 
 type KopiaConfig struct {
-	ConfigFile            string
-	ConnectWithConfigFile bool
-	Password              string
-	APIServer             APIServerConfig
-	Retentions            []string
+	Password   string
+	APIServer  APIServerConfig
+	Retentions []string
 }
 
 type Config struct {
@@ -189,12 +187,6 @@ func readExporterConfig(koanfInstance *koanf.Koanf, l *slog.Logger, flags CLIFla
 func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
 	var cfg KopiaConfig
 
-	cfg.ConfigFile = getConfigString(koanfInstance, "kopia.configfile", "/tmp/kopia.cfg")
-	l.Info("Config: kopia.configfile", "configfile", cfg.ConfigFile)
-
-	cfg.ConnectWithConfigFile = getConfigBool(koanfInstance, "kopia.connectwithconfigfile", false)
-	l.Info("Config: kopia.connectwithconfigfile", "connectwithconfigfile", cfg.ConnectWithConfigFile)
-
 	cfg.Password = getConfigString(koanfInstance, "kopia.password", "")
 	l.Info("Config: kopia.password", "password", "****")
 
@@ -246,28 +238,20 @@ func readConfig(filename string, flags CLIFlags) error {
 }
 
 func CheckConfig() error {
-	if Cfg.Kopia.ConfigFile == "" {
-		Cfg.Kopia.ConfigFile = "/tmp/kopia.cfg"
-		slog.Warn("Kopia.configfile was not specified. Using /tmp/kopia.cfg")
-	}
 	if Cfg.Kopia.Password == "" {
-		return fmt.Errorf("kopia.password is not set (needed when kopia.configfile is provided)")
+		return fmt.Errorf("kopia.password is not set")
 	}
-	if !Cfg.Kopia.ConnectWithConfigFile {
-		if Cfg.Kopia.APIServer.RepositoryURL == "" {
-			return fmt.Errorf("kopia.repositoryURL is not set (needed when kopia.configfile is not provided)")
-		}
-		if Cfg.Kopia.APIServer.Fingerprint == "" {
-			return fmt.Errorf("kopia.fingerprint is not set (needed when kopia.configfile is not provided)")
-		}
-		if Cfg.Kopia.APIServer.Hostname == "" {
-			return fmt.Errorf("kopia.hostname is not set (needed when kopia.configfile is not provided)")
-		}
-		if Cfg.Kopia.APIServer.Username == "" {
-			return fmt.Errorf("kopia.username is not set (needed when kopia.configfile is not provided)")
-		}
-	} else {
-		return fmt.Errorf("kopia.connectwithconfigfile is not supported yet")
+	if Cfg.Kopia.APIServer.RepositoryURL == "" {
+		return fmt.Errorf("kopia.repositoryURL is not set")
+	}
+	if Cfg.Kopia.APIServer.Fingerprint == "" {
+		return fmt.Errorf("kopia.fingerprint is not set")
+	}
+	if Cfg.Kopia.APIServer.Hostname == "" {
+		return fmt.Errorf("kopia.hostname is not set")
+	}
+	if Cfg.Kopia.APIServer.Username == "" {
+		return fmt.Errorf("kopia.username is not set")
 	}
 	return nil
 }
