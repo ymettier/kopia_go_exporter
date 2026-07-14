@@ -38,7 +38,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 │   ├── kopia_tests_helpers_test.go  # Helpers to download/verify the kopia CLI binary for tests
 │   └── test_assets/
 │       └── kopia_test           # Downloaded kopia executable.
-├── config.yaml.sample       # Example configuration
+├── config.yaml.sample       # Example configuration (all options commented)
 ├── Dockerfile               # Multi-stage build (golang builder + distroless runtime)
 ├── go.mod / go.sum
 ├── version.txt              # Embedded at build time (//go:embed)
@@ -116,6 +116,11 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Environment variables should be prefixed with `KGE_` (e.g., `KGE_EXPORTER_PORT`, `KGE_KOPIA_PASSWORD`)
 - The mapping converts uppercase underscores to dots: `KGE_KOPIA_APISERVER_FINGERPRINT` → `kopia.apiserver.fingerprint`
 
+### config.yaml.sample
+- Every option must be present and commented with a short inline comment
+- Comments should be as short as possible (a few words)
+- Group related options under section comments
+
 ### Metrics
 - Use `prometheus.NewGaugeVec` for snapshot-derived metrics
 - Register metrics immediately after creation with `reg.MustRegister()`
@@ -151,7 +156,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 1. Add field to `Config` struct in `config/config.go`
 2. Add parsing logic in `readConfig()` or `CheckConfig()`
 3. Add test case in `config/config_test.go`
-4. Update `config.yaml.sample` with example value
+4. Update `config.yaml.sample` with example value and short comment
 
 ### Adding a New Metric
 1. Define in `KopiaMetrics` struct in `kopiametrics/kopia.go`
