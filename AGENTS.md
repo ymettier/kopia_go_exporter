@@ -7,7 +7,7 @@
 kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written in Go. It connects to a Kopia API server, retrieves snapshot metrics (size, file/dir counts, errors, duration, timestamps), and exposes them via an HTTP `/metrics` endpoint for Prometheus scraping.
 
 ## Technology Stack
-- **Language**: Go 1.25+
+- **Language**: Go 1.25.8+
 - **Configuration**: `github.com/knadh/koanf` (YAML parsing)
 - **CLI parsing**: `github.com/spf13/pflag`
 - **Metrics**: `github.com/prometheus/client_golang`
@@ -215,6 +215,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ## Version Management
 - `version.txt` is embedded at build time via `//go:embed` and should contain the version string (e.g., `build` for dev, `1.0.0` for releases).
 - `go.mod` sets the minimum Go version. Only bump when the code requires a newer toolchain feature.
+- `Dockerfile` sets the latest stable Go version as 1.xx (example: 1.26).
 - When updating a version, check all references across the project (go.mod, Dockerfile, AGENTS.md).
 
 ## Important Notes
