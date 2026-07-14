@@ -173,7 +173,7 @@ func (k *KopiaClient) RunOnce() error {
 
 		pol, _, _, err := policy.GetEffectivePolicy(k.Ctx, k.repo, src)
 		if err != nil {
-			l.Error("Unable to determine effective policy", "Source", fmt.Sprintf("%v", src))
+			l.Error("Unable to determine effective policy", "err", err, "Source", src)
 		} else {
 			pol.RetentionPolicy.ComputeRetentionReasons(snapshotGroup)
 		}
