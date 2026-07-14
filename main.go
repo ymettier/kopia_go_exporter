@@ -25,38 +25,24 @@ func run(ctx context.Context, args []string) error {
 	if err := config.New(version, args); err != nil {
 		return err
 	}
-
-	if err := config.CheckConfig(); err != nil {
-		return err
-	}
-
-	logger.Reset(&logger.LogOptions{
-		Level: config.Cfg.LogLevel,
-	})
+	logger.Reset(&logger.LogOptions{Level: config.Cfg.LogLevel})
 	l := logger.Get()
 	l.Debug("Debug logging enabled")
-
 	exporter.Logger = l
 	ex := exporter.NewExporter()
-
 	k := kopiametrics.NewKopiaClient()
 	kopiametrics.Logger = l
 	k.RegisterKopiaMetrics(ex.Reg)
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
 	go func() {
 		<-sigChan
 		l.Info("Caught interrupt signal")
 		cancel()
 	}()
-
 	go ex.Run()
-
 	sleepInterval := 0
 	for {
 		select {
