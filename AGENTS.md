@@ -74,7 +74,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ### Main Loop (main.go)
 - Configures logger, creates exporter and Kopia client
 - Runs exporter HTTP server in a goroutine
-- Main loop calls `k.RunOnce()` every `interval` seconds (default 300)
+- Main loop sleeps `interval` seconds between runs of `k.RunOnce()` (default 300)
 - Graceful shutdown via SIGTERM/SIGINT → context cancellation → `k.Disconnect()`
 
 ## Development Guidelines
