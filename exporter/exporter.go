@@ -75,11 +75,22 @@ func (ex *Exporter) Run(ctx context.Context) {
 
 	go func() {
 		<-ctx.Done()
-		if err := srv.Shutdown(context.Background()); err != nil {
-			l.Error("HTTP server shutdown error", "port", ex.Port, "err", err)
-		}
+		shutdownServer(srv, ex.Port)
 	}()
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		l.Error("HTTP server error", "port", ex.Port, "err", err)
+	}
+}
+
+// Shutdowner is the subset of *http.Server used to gracefully stop the exporter.
+type Shutdowner interface {
+	Shutdown(ctx context.Context) error
+}
+
+// shutdownServer gracefully shuts down the HTTP server, logging an error if it fails.
+func shutdownServer(s Shutdowner, port int) {
+	l := logger.Get()
+	if err := s.Shutdown(context.Background()); err != nil {
+		l.Error("HTTP server shutdown error", "port", port, "err", err)
 	}
 }

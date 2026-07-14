@@ -5,6 +5,7 @@ package exporter
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"runtime/debug"
@@ -170,4 +171,17 @@ func TestExporter_Run_AlreadyInUse(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run() did not return after server error")
 	}
+}
+
+type fakeShutdowner struct {
+	err error
+}
+
+func (f fakeShutdowner) Shutdown(_ context.Context) error {
+	return f.err
+}
+
+func TestShutdownServer(t *testing.T) {
+	shutdownServer(fakeShutdowner{}, 9090)
+	shutdownServer(fakeShutdowner{err: errors.New("boom")}, 9090)
 }
