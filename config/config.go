@@ -224,23 +224,19 @@ func readConfig(filename string, fs *pflag.FlagSet) error {
 	}
 
 	// Load environment variables with KGE_ prefix (overrides YAML values)
-	if err := k.Load(env.Provider("KGE_", ".", func(s string) string {
+	loadConfigLayer(k, env.Provider("KGE_", ".", func(s string) string {
 		s = strings.TrimPrefix(s, "KGE_")
 		s = strings.ToLower(s)
 		s = strings.ReplaceAll(s, "_", ".")
 		return s
-	}), nil); err != nil {
-		l.Warn("Failed to load environment variable overrides", "err", err)
-	}
+	}), "Failed to load environment variable overrides")
 
 	// Load pflag values, converting dashes to dots for koanf key matching.
 	// Only flags explicitly set by the user override YAML/env values.
 	if fs != nil {
-		if err := k.Load(posflag.ProviderWithValue(fs, ".", k, func(key, value string) (string, interface{}) {
+		loadConfigLayer(k, posflag.ProviderWithValue(fs, ".", k, func(key, value string) (string, interface{}) {
 			return strings.ReplaceAll(key, "-", "."), value
-		}), nil); err != nil {
-			l.Warn("Failed to load flag overrides", "err", err)
-		}
+		}), "Failed to load flag overrides")
 	}
 
 	Cfg.Exporter = readExporterConfig(k, l)
@@ -249,6 +245,15 @@ func readConfig(filename string, fs *pflag.FlagSet) error {
 	l.Info("Config: log_level", "log_level", Cfg.LogLevel)
 
 	return nil
+}
+
+// loadConfigLayer loads a koanf provider, logging a warning instead of failing
+// when the provider errors, since env/flag overrides are best-effort.
+func loadConfigLayer(k *koanf.Koanf, loader koanf.Provider, msg string) {
+	l := logger.Get()
+	if err := k.Load(loader, nil); err != nil {
+		l.Warn(msg, "err", err)
+	}
 }
 
 // CheckConfig validates that all required configuration fields are set.

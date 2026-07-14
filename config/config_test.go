@@ -4,6 +4,7 @@
 package config
 
 import (
+	"errors"
 	"flag"
 	"log/slog"
 	"os"
@@ -302,6 +303,30 @@ func TestReadConfig_EnvOverride(t *testing.T) {
 	err := readConfig(tmpFile, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 7777, Cfg.Exporter.Port)
+}
+
+type stubConfigProvider struct {
+	err error
+}
+
+func (s stubConfigProvider) ReadBytes() ([]byte, error) {
+	return nil, s.err
+}
+
+func (s stubConfigProvider) Read() (map[string]any, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return map[string]any{"exporter": map[string]any{"port": 9090}}, nil
+}
+
+func TestLoadConfigLayer(t *testing.T) {
+	k := koanf.New(".")
+	loadConfigLayer(k, stubConfigProvider{}, "failed to load stub")
+	assert.Equal(t, 9090, k.Int("exporter.port"))
+
+	k2 := koanf.New(".")
+	loadConfigLayer(k2, stubConfigProvider{err: errors.New("boom")}, "failed to load stub")
 }
 
 func TestCheckConfig_ValidConfig(t *testing.T) {
