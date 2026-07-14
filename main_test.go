@@ -32,69 +32,76 @@ func TestRun_HelpFlag(t *testing.T) {
 	assert.Equal(t, flag.ErrHelp, err)
 }
 
-func TestRun_MissingPassword(t *testing.T) {
-	cfgFile := writeTestMainConfig(t, `kopia:
+func TestRun_MissingRequiredConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     string
+		wantErr string
+	}{
+		{
+			name: "password",
+			cfg: `kopia:
   apiserver:
     repositoryURL: "https://example.com:51515"
     hostname: "localhost"
     username: "kopia"
     fingerprint: "abc123"
-`)
-	err := run(context.Background(), []string{"--config", cfgFile})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.password is not set")
-}
-
-func TestRun_MissingRepositoryURL(t *testing.T) {
-	cfgFile := writeTestMainConfig(t, `kopia:
+`,
+			wantErr: "kopia.password is not set",
+		},
+		{
+			name: "repositoryURL",
+			cfg: `kopia:
   password: "secret"
   apiserver:
     hostname: "localhost"
     username: "kopia"
     fingerprint: "abc123"
-`)
-	err := run(context.Background(), []string{"--config", cfgFile})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.repositoryURL is not set")
-}
-
-func TestRun_MissingFingerprint(t *testing.T) {
-	cfgFile := writeTestMainConfig(t, `kopia:
+`,
+			wantErr: "kopia.repositoryURL is not set",
+		},
+		{
+			name: "fingerprint",
+			cfg: `kopia:
   password: "secret"
   apiserver:
     repositoryURL: "https://example.com:51515"
     hostname: "localhost"
     username: "kopia"
-`)
-	err := run(context.Background(), []string{"--config", cfgFile})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.fingerprint is not set")
-}
-
-func TestRun_MissingHostname(t *testing.T) {
-	cfgFile := writeTestMainConfig(t, `kopia:
+`,
+			wantErr: "kopia.fingerprint is not set",
+		},
+		{
+			name: "hostname",
+			cfg: `kopia:
   password: "secret"
   apiserver:
     repositoryURL: "https://example.com:51515"
     username: "kopia"
     fingerprint: "abc123"
-`)
-	err := run(context.Background(), []string{"--config", cfgFile})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.hostname is not set")
-}
-
-func TestRun_MissingUsername(t *testing.T) {
-	cfgFile := writeTestMainConfig(t, `kopia:
+`,
+			wantErr: "kopia.hostname is not set",
+		},
+		{
+			name: "username",
+			cfg: `kopia:
   password: "secret"
   apiserver:
     repositoryURL: "https://example.com:51515"
     hostname: "localhost"
     fingerprint: "abc123"
-`)
-	err := run(context.Background(), []string{"--config", cfgFile})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.username is not set")
+`,
+			wantErr: "kopia.username is not set",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfgFile := writeTestMainConfig(t, tt.cfg)
+			err := run(context.Background(), []string{"--config", cfgFile})
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
 }
 
 func TestRun_ContextCancel(t *testing.T) {
