@@ -61,7 +61,7 @@ func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 }
 
 // Run starts the HTTP server serving /metrics and blocks until ctx is cancelled.
-func (ex Exporter) Run(ctx context.Context) {
+func (ex *Exporter) Run(ctx context.Context) {
 	l := logger.Get()
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(ex.Reg, promhttp.HandlerOpts{}))
