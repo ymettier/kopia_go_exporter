@@ -230,7 +230,7 @@ func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 			Help: "whatever",
 		})
 		err := reg.Register(collector)
-		assert.Error(t, err, "Expected metric '%s' not found in registry", mn)
+		assert.Error(t, err, "Expected metric '%s' to already be registered", mn)
 	}
 }
 
