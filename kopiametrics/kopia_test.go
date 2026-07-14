@@ -207,6 +207,12 @@ func TestNewKopiaClient(t *testing.T) {
 	assert.False(t, k.isConnected)
 }
 
+func TestNewKopiaClient_TempDirFailure(t *testing.T) {
+	t.Setenv("TMPDIR", "/nonexistent-kopia-tmp-dir")
+	_, err := NewKopiaClient(config.Config{})
+	assert.Error(t, err)
+}
+
 func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 	metricNames := []string{
 		"total_size",
