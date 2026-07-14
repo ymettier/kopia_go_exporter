@@ -33,11 +33,9 @@ func TestNewExporter(t *testing.T) {
 		}, true
 	}
 
-	cfg := config.Config{
-		Exporter: config.ExporterConfig{
-			Port:    12346,
-			Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
-		},
+	cfg := config.ExporterConfig{
+		Port:    12346,
+		Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
 	}
 	ex := NewExporter(cfg)
 	if ex == nil {
@@ -61,11 +59,9 @@ func TestNewExporter_BuildInfoUnavailable(t *testing.T) {
 		return nil, false
 	}
 
-	cfg := config.Config{
-		Exporter: config.ExporterConfig{
-			Port:    12347,
-			Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
-		},
+	cfg := config.ExporterConfig{
+		Port:    12347,
+		Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
 	}
 	ex := NewExporter(cfg)
 	if ex == nil {
@@ -74,10 +70,8 @@ func TestNewExporter_BuildInfoUnavailable(t *testing.T) {
 }
 
 func TestExporter_SetBuildInfo(t *testing.T) {
-	cfg := config.Config{
-		Exporter: config.ExporterConfig{
-			Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
-		},
+	cfg := config.ExporterConfig{
+		Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
 	}
 	type fields struct {
 		Port int

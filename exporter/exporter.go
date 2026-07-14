@@ -19,14 +19,14 @@ import (
 type Exporter struct {
 	Port int
 	Reg  *prometheus.Registry
-	cfg  config.Config
+	cfg  config.ExporterConfig
 }
 
-func NewExporter(cfg config.Config) *Exporter {
+func NewExporter(cfg config.ExporterConfig) *Exporter {
 	l := logger.Get()
 	ex := new(Exporter)
 	ex.cfg = cfg
-	ex.Port = cfg.Exporter.Port
+	ex.Port = cfg.Port
 
 	ex.Reg = prometheus.NewRegistry()
 	ex.Reg.MustRegister(collectors.NewGoCollector())
@@ -45,7 +45,7 @@ func NewExporter(cfg config.Config) *Exporter {
 func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 	buildInfo := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace: ex.cfg.Exporter.Metrics.Prefix,
+			Namespace: ex.cfg.Metrics.Prefix,
 			Name:      "build_info",
 			Help:      "Build information",
 		},
