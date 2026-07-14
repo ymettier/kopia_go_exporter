@@ -262,12 +262,10 @@ func New(version string, args []string) error {
 	if err != nil {
 		return err
 	}
-
 	if err := readConfig(flags.ConfigFile, flags); err != nil {
 		return err
 	}
-
-	return nil
+	return CheckConfig()
 }
 
 type VersionInfo struct {
