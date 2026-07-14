@@ -194,7 +194,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - `github.com/stretchr/testify` - Testing utilities
 
 ## Commits
-- Never commit, never stage (`git add`), never run `git commit` — even if explicitly asked. Always suggest the command for the user to run.
+- Never commit, never stage (`git add`), never run `git commit` — except if explicitly asked and confirmed by the user. Always suggest the command for the user to run.
 - Never work in or commit to the `main` branch.
 - Commit message: clear, descriptive, lowercase, no capital start.
 - Follow [Conventional Commits](https://www.conventionalcommits.org/): `<type>: <description>`.
