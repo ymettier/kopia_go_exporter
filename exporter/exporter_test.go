@@ -4,10 +4,8 @@
 package exporter
 
 import (
-	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"runtime/debug"
 	"testing"
 	"time"
@@ -15,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"kopia-go-exporter/config"
+	"kopia-go-exporter/logger"
 )
 
 func TestNewExporter(t *testing.T) {
@@ -27,7 +26,7 @@ func TestNewExporter(t *testing.T) {
 
 	config.Cfg.Exporter.Port = 12346
 	config.Cfg.Exporter.Metrics.Prefix = "test_prefix"
-	l := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	config.ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return &debug.BuildInfo{
@@ -39,7 +38,7 @@ func TestNewExporter(t *testing.T) {
 		}, true
 	}
 
-	ex := NewExporter(l)
+	ex := NewExporter()
 	if ex == nil {
 		t.Fatal("NewExporter() returned nil")
 	}
@@ -61,13 +60,13 @@ func TestNewExporter_BuildInfoUnavailable(t *testing.T) {
 
 	config.Cfg.Exporter.Port = 12347
 	config.Cfg.Exporter.Metrics.Prefix = "test_prefix"
-	l := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	config.ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return nil, false
 	}
 
-	ex := NewExporter(l)
+	ex := NewExporter()
 	if ex == nil {
 		t.Fatal("NewExporter() returned nil")
 	}
@@ -166,11 +165,10 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 
 func TestExporter_Run(t *testing.T) {
 	t.Run("Test the exporter on port 12345", func(t *testing.T) {
-		l := slog.New(slog.NewTextHandler(os.Stdout, nil))
+		logger.Reset(nil)
 		ex := Exporter{
-			Port:   12345,
-			Reg:    prometheus.NewRegistry(),
-			Logger: l,
+			Port: 12345,
+			Reg:  prometheus.NewRegistry(),
 		}
 
 		go ex.Run()
@@ -191,7 +189,7 @@ func TestExporter_Run(t *testing.T) {
 }
 
 func TestExporter_Run_AlreadyInUse(t *testing.T) {
-	l := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	// Block the port first
 	blocker, err := net.Listen("tcp", ":12399")
@@ -201,9 +199,8 @@ func TestExporter_Run_AlreadyInUse(t *testing.T) {
 	defer func() { _ = blocker.Close() }()
 
 	ex := Exporter{
-		Port:   12399,
-		Reg:    prometheus.NewRegistry(),
-		Logger: l,
+		Port: 12399,
+		Reg:  prometheus.NewRegistry(),
 	}
 
 	done := make(chan struct{})

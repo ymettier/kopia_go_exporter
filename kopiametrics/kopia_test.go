@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -28,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"kopia-go-exporter/config"
+	"kopia-go-exporter/logger"
 )
 
 func hashSHA256(pemContent []byte) (string, error) {
@@ -241,7 +241,7 @@ func TestKopiaClient_Connect(t *testing.T) {
 
 	configFile := filepath.Join(t.TempDir(), "repo.config")
 
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	k := &KopiaClient{
 		Ctx:         context.Background(),
@@ -281,7 +281,7 @@ func TestKopiaClient_Connect(t *testing.T) {
 }
 
 func TestKopiaClient_Disconnect(t *testing.T) {
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	k := NewKopiaClient()
 	assert.False(t, k.IsConnected)
@@ -344,7 +344,7 @@ func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 	}
 	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	k := NewKopiaClient()
 	t.Cleanup(func() { k.Disconnect() })
@@ -383,7 +383,7 @@ func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
 	}
 	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	k := NewKopiaClient()
 	t.Cleanup(func() { k.Disconnect() })
@@ -422,7 +422,7 @@ func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
 }
 
 func TestRunOnce_ConnectFails(t *testing.T) {
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	origCfg := config.Cfg
 	t.Cleanup(func() { config.Cfg = origCfg })
@@ -493,7 +493,7 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 	}
 	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	k := &KopiaClient{
 		Ctx:         context.Background(),
@@ -540,7 +540,7 @@ func TestConnect(t *testing.T) {
 		},
 	}
 
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	k := NewKopiaClient()
 	k.Ctx = context.Background()
@@ -577,7 +577,7 @@ func TestConnect_OpenFails(t *testing.T) {
 		},
 	}
 
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	k := NewKopiaClient()
 	k.Ctx = context.Background()
@@ -628,7 +628,7 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 	}
 	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	k := NewKopiaClient()
 	k.Ctx = context.Background()
@@ -719,7 +719,7 @@ func TestRunOnceMetrics(t *testing.T) {
 	}
 	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
-	Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger.Reset(nil)
 
 	k := &KopiaClient{
 		Ctx:         context.Background(),

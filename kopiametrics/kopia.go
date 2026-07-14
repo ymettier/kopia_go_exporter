@@ -6,7 +6,6 @@ package kopiametrics
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -18,9 +17,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"kopia-go-exporter/config"
+	"kopia-go-exporter/logger"
 )
-
-var Logger *slog.Logger
 
 type KopiaMetrics struct {
 	TotalSize       *prometheus.GaugeVec
@@ -80,6 +78,7 @@ func (k *KopiaClient) RegisterKopiaMetrics(reg *prometheus.Registry) {
 }
 
 func (k *KopiaClient) GenerateConfigFile() error {
+	l := logger.Get()
 	k.Ctx = context.Background()
 
 	opts := repo.ConnectOptions{
@@ -94,28 +93,28 @@ func (k *KopiaClient) GenerateConfigFile() error {
 		TrustedServerCertificateFingerprint: config.Cfg.Kopia.APIServer.Fingerprint,
 	}
 
-	// Connect to Kopia Repository API Server
-	Logger.Debug("Generate ConfigFile and try to connect to server", "ConfigFile", k.ConfigFile, "URL", config.Cfg.Kopia.APIServer.RepositoryURL)
+	l.Debug("Generate ConfigFile and try to connect to server", "ConfigFile", k.ConfigFile, "URL", config.Cfg.Kopia.APIServer.RepositoryURL)
 	if err := repo.ConnectAPIServer(k.Ctx, k.ConfigFile, &serverInfo, config.Cfg.Kopia.Password, &opts); err != nil {
-		Logger.Error("Failed to generate configFile", "err", err, "ConfigFile", k.ConfigFile)
+		l.Error("Failed to generate configFile", "err", err, "ConfigFile", k.ConfigFile)
 		return err
 	}
-	Logger.Debug("Successfully generated configFile", "ConfigFile", k.ConfigFile)
+	l.Debug("Successfully generated configFile", "ConfigFile", k.ConfigFile)
 	return nil
 }
 
 func (k *KopiaClient) Connect() error {
+	l := logger.Get()
 	var err error
 
 	if err := k.GenerateConfigFile(); err != nil {
-		Logger.Error("Failed to launch repository server", "err", err, "ConfigFile", k.ConfigFile)
+		l.Error("Failed to launch repository server", "err", err, "ConfigFile", k.ConfigFile)
 		k.IsConnected = false
 		return err
 	}
-	Logger.Debug("Try to connect to server", "ConfigFile", k.ConfigFile)
+	l.Debug("Try to connect to server", "ConfigFile", k.ConfigFile)
 	k.Repo, err = repo.Open(k.Ctx, k.ConfigFile, config.Cfg.Kopia.Password, nil)
 	if err != nil {
-		Logger.Error("Failed to open repository", "err", err, "ConfigFile", k.ConfigFile)
+		l.Error("Failed to open repository", "err", err, "ConfigFile", k.ConfigFile)
 		k.IsConnected = false
 		return err
 	}
@@ -140,6 +139,7 @@ func (k *KopiaClient) setSnapshotMetrics(m *snapshot.Manifest, keepAllRetentions
 }
 
 func (k *KopiaClient) RunOnce() error {
+	l := logger.Get()
 	keepAllRetentions := len(config.Cfg.Kopia.Retentions) == 0
 	if !k.IsConnected {
 		if err := k.Connect(); err != nil {
@@ -151,13 +151,13 @@ func (k *KopiaClient) RunOnce() error {
 	// List all snapshot manifests (nil -> all sources)
 	manifestsIds, err := snapshot.ListSnapshotManifests(k.Ctx, k.Repo, nil, nil)
 	if err != nil {
-		Logger.Error("failed to list snapshot manifests", "err", err, "ConfigFile", k.ConfigFile)
+		l.Error("failed to list snapshot manifests", "err", err, "ConfigFile", k.ConfigFile)
 		return err
 	}
 
 	manifests, err := snapshot.LoadSnapshots(k.Ctx, k.Repo, manifestsIds)
 	if err != nil {
-		Logger.Error("failed to snapshot manifests", "err", err, "ConfigFile", k.ConfigFile)
+		l.Error("failed to snapshot manifests", "err", err, "ConfigFile", k.ConfigFile)
 		return err
 	}
 
@@ -167,7 +167,7 @@ func (k *KopiaClient) RunOnce() error {
 
 		pol, _, _, err := policy.GetEffectivePolicy(k.Ctx, k.Repo, src)
 		if err != nil {
-			Logger.Error("Unable to determine effective policy", "Source", fmt.Sprintf("%v", src))
+			l.Error("Unable to determine effective policy", "Source", fmt.Sprintf("%v", src))
 		} else {
 			pol.RetentionPolicy.ComputeRetentionReasons(snapshotGroup)
 		}
@@ -180,14 +180,11 @@ func (k *KopiaClient) RunOnce() error {
 }
 
 func (k *KopiaClient) Disconnect() {
+	l := logger.Get()
 	if err := repo.Disconnect(k.Ctx, k.ConfigFile); err != nil {
-		if Logger != nil {
-			Logger.Error("Failed to disconnect from Kopia repository", "ConfigFile", k.ConfigFile, "err", err)
-		}
+		l.Error("Failed to disconnect from Kopia repository", "ConfigFile", k.ConfigFile, "err", err)
 	}
-	if Logger != nil {
-		Logger.Debug("Disconnected from server", "ConfigFile", k.ConfigFile)
-	}
+	l.Debug("Disconnected from server", "ConfigFile", k.ConfigFile)
 	k.IsConnected = false
 	if k.tempDir != "" {
 		_ = os.RemoveAll(k.tempDir)

@@ -5,7 +5,6 @@ package exporter
 
 import (
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -13,18 +12,18 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"kopia-go-exporter/config"
+	"kopia-go-exporter/logger"
 )
 
 type Exporter struct {
-	Port   int
-	Reg    *prometheus.Registry
-	Logger *slog.Logger
+	Port int
+	Reg  *prometheus.Registry
 }
 
-func NewExporter(l *slog.Logger) *Exporter {
+func NewExporter() *Exporter {
+	l := logger.Get()
 	ex := new(Exporter)
 	ex.Port = config.Cfg.Exporter.Port
-	ex.Logger = l
 
 	ex.Reg = prometheus.NewRegistry()
 	ex.Reg.MustRegister(collectors.NewGoCollector())
@@ -58,9 +57,10 @@ func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 }
 
 func (ex Exporter) Run() {
+	l := logger.Get()
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(ex.Reg, promhttp.HandlerOpts{}))
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", ex.Port), mux); err != nil {
-		ex.Logger.Error("HTTP server error", "port", ex.Port, "err", err)
+		l.Error("HTTP server error", "port", ex.Port, "err", err)
 	}
 }
