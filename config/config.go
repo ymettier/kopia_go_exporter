@@ -226,12 +226,14 @@ func readConfig(filename string, flags CLIFlags) error {
 	}
 
 	// Load environment variables with KGE_ prefix (overrides YAML values)
-	_ = k.Load(env.Provider("KGE_", ".", func(s string) string {
+	if err := k.Load(env.Provider("KGE_", ".", func(s string) string {
 		s = strings.TrimPrefix(s, "KGE_")
 		s = strings.ToLower(s)
 		s = strings.ReplaceAll(s, "_", ".")
 		return s
-	}), nil)
+	}), nil); err != nil {
+		l.Warn("Failed to load environment variable overrides", "err", err)
+	}
 
 	Cfg.Exporter = readExporterConfig(k, l, flags)
 	Cfg.Kopia = readKopiaConfig(k, l)
