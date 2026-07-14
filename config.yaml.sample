@@ -1,5 +1,4 @@
 exporter:
-  name: "local-server"
   port: 9090
   metrics:
     prefix: "kopia_go_exporter"
