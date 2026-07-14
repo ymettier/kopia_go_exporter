@@ -24,6 +24,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ```
 .
 ├── main.go                  # Entry point, main loop with periodic RunOnce
+├── main_test.go             # Tests for run(), config validation, context cancellation
 ├── logger/                  # Structured logging setup (slog, lumberjack rotation)
 │   └── logger.go
 ├── config/
@@ -104,7 +105,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 
 ### Patterns
 - Constructors: `New()` returns a pointer for larger structs (e.g., `*KopiaClient`, `*Exporter`).
-- Logger: slog instance passed via package-level `var Logger *slog.Logger`.
+- Logger: each package calls `logger.Get()` locally instead of exposing a package-level variable.
 - Context: pass `context.Context` to operations that may need cancellation.
 - Global config: `config.Cfg` accessed directly from packages.
 
@@ -216,5 +217,4 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 
 ## Important Notes
 - The Kopia password and API server fingerprint are sensitive — they should be provided via environment variables (`KGE_KOPIA_PASSWORD`, `KGE_KOPIA_APISERVER_FINGERPRINT`), not committed to the repository.
-- `ConnectWithConfigFile: true` is not supported yet; only API server connection is implemented.
 - The main loop sleeps 1 second at a time in a busy-wait pattern, counting down `sleepInterval` to the next `RunOnce()` call.
