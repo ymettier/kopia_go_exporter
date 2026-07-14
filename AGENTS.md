@@ -60,11 +60,13 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Helper functions: `lookupConfigKey`, `getConfigString`, `getConfigInt`, `getConfigBool`
 
 ### Exporter (exporter/exporter.go)
+- Constructor `NewExporter(cfg config.ExporterConfig)` receives the exporter config directly
 - Creates a `prometheus.Registry` with Go and process collectors
 - Registers `build_info` gauge with version/commit/date labels
 - Starts HTTP server on configured port serving `/metrics`
 
 ### Kopia Metrics (kopiametrics/kopia.go)
+- Constructor `NewKopiaClient(cfg config.Config)` receives the full config directly
 - `KopiaClient` manages connection lifecycle: `GenerateConfigFile` → `Connect` → `RunOnce` → `Disconnect`
 - `RunOnce()` lists all snapshot manifests, groups by source, computes retention reasons, and sets gauge metrics
 - Seven Prometheus gauge vectors: `total_size`, `file_count`, `dir_count`, `error_count`, `backup_duration`, `backup_start_time`, `backup_end_time`
@@ -107,7 +109,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Constructors: `New()` returns a pointer for larger structs (e.g., `*KopiaClient`, `*Exporter`).
 - Logger: each package calls `logger.Get()` locally instead of exposing a package-level variable.
 - Context: pass `context.Context` to operations that may need cancellation.
-- Global config: `config.Cfg` accessed directly from packages.
+- Global config: `config.Cfg` is the global populated at startup. Exporter and KopiaClient receive their config via constructors, not by reading the global.
 
 ### Environment Variables
 - Use optional environment variables for configuration (e.g., `KGE_KOPIA_PASSWORD`...)
