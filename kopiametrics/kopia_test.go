@@ -204,7 +204,7 @@ func TestNewKopiaClient(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	assert.NotNil(t, k)
-	assert.False(t, k.IsConnected)
+	assert.False(t, k.isConnected)
 }
 
 func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
@@ -247,7 +247,7 @@ func TestKopiaClient_Connect(t *testing.T) {
 	logger.Reset(nil)
 
 	k := &KopiaClient{
-		IsConnected: false,
+		isConnected: false,
 	}
 
 	ctx := context.Background()
@@ -267,9 +267,9 @@ func TestKopiaClient_Connect(t *testing.T) {
 
 	k.repo, err = repo.Open(ctx, configFile, "kopiapwd", nil)
 	require.NoError(t, err, "Failed to open repository")
-	k.IsConnected = true
+	k.isConnected = true
 
-	assert.True(t, k.IsConnected)
+	assert.True(t, k.isConnected)
 }
 
 func TestKopiaClient_Disconnect(t *testing.T) {
@@ -277,11 +277,11 @@ func TestKopiaClient_Disconnect(t *testing.T) {
 
 	k, err := NewKopiaClient(config.Config{})
 	require.NoError(t, err)
-	assert.False(t, k.IsConnected)
+	assert.False(t, k.isConnected)
 
-	k.IsConnected = true
+	k.isConnected = true
 	k.Disconnect(context.Background())
-	assert.False(t, k.IsConnected)
+	assert.False(t, k.isConnected)
 }
 
 // TestKopiaBinaryPresent verifies that the kopia test executable already exists
@@ -427,12 +427,12 @@ func TestRunOnce_ConnectFails(t *testing.T) {
 
 	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
-	k.ConfigFile = filepath.Join(t.TempDir(), "nonexistent.config")
+	k.configFile = filepath.Join(t.TempDir(), "nonexistent.config")
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 
 	err = k.RunOnce(context.Background())
 	assert.Error(t, err, "RunOnce should fail when Connect fails")
-	assert.False(t, k.IsConnected)
+	assert.False(t, k.isConnected)
 }
 
 func TestRunOnce_EmptyRepo(t *testing.T) {
@@ -479,14 +479,14 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
 	k := &KopiaClient{
-		IsConnected: false,
+		isConnected: false,
 		cfg:         cfg,
 	}
 
 	ctx := context.Background()
 	k.repo, err = repo.Open(ctx, configFile, password, nil)
 	require.NoError(t, err)
-	k.IsConnected = true
+	k.isConnected = true
 
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
@@ -525,12 +525,12 @@ func TestConnect(t *testing.T) {
 
 	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
-	k.ConfigFile = configFile
+	k.configFile = configFile
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 
 	err = k.Connect(context.Background())
 	require.NoError(t, err, "Connect should succeed")
-	assert.True(t, k.IsConnected)
+	assert.True(t, k.isConnected)
 	assert.NotNil(t, k.repo)
 }
 
@@ -559,12 +559,12 @@ func TestConnect_OpenFails(t *testing.T) {
 
 	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
-	k.ConfigFile = configFile
+	k.configFile = configFile
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 
 	err = k.Connect(context.Background())
 	require.NoError(t, err, "initial Connect should succeed")
-	assert.True(t, k.IsConnected)
+	assert.True(t, k.isConnected)
 	require.NoError(t, k.repo.Close(context.Background()))
 
 	cleanup()
@@ -582,12 +582,12 @@ func TestConnect_OpenFails(t *testing.T) {
 	}
 	k2, err := NewKopiaClient(cfg2)
 	require.NoError(t, err)
-	k2.ConfigFile = configFile
+	k2.configFile = configFile
 	t.Cleanup(func() { k2.Disconnect(context.Background()) })
 
 	err = k2.Connect(context.Background())
 	assert.Error(t, err, "Connect should fail after server is stopped")
-	assert.False(t, k2.IsConnected)
+	assert.False(t, k2.isConnected)
 }
 
 func TestRunOnce_ConnectsAutomatically(t *testing.T) {
@@ -618,14 +618,14 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 
 	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
-	k.ConfigFile = configFile
+	k.configFile = configFile
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
 
-	require.False(t, k.IsConnected, "IsConnected should start false")
+	require.False(t, k.isConnected, "IsConnected should start false")
 	require.NoError(t, k.RunOnce(context.Background()), "RunOnce should succeed with auto-connect")
-	assert.True(t, k.IsConnected, "RunOnce should have connected the client")
+	assert.True(t, k.isConnected, "RunOnce should have connected the client")
 	require.NotNil(t, k.repo, "Repo should be set after auto-connect")
 }
 
@@ -705,7 +705,7 @@ func TestRunOnceMetrics(t *testing.T) {
 	logger.Reset(nil)
 
 	k := &KopiaClient{
-		IsConnected: false,
+		isConnected: false,
 		cfg:         cfg,
 	}
 
@@ -713,7 +713,7 @@ func TestRunOnceMetrics(t *testing.T) {
 	ctx := context.Background()
 	k.repo, err = repo.Open(ctx, configFile, password, nil)
 	require.NoError(t, err, "Failed to open repository")
-	k.IsConnected = true
+	k.isConnected = true
 
 	reg := prometheus.NewRegistry()
 	k.RegisterKopiaMetrics(reg)
