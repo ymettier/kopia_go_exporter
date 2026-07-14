@@ -180,7 +180,7 @@ func (k *KopiaClient) RunOnce() error {
 func (k *KopiaClient) Disconnect() {
 	l := logger.Get()
 	if err := repo.Disconnect(k.Ctx, k.ConfigFile); err != nil {
-		l.Error("Failed to disconnect from Kopia repository", "ConfigFile", k.ConfigFile, "err", err)
+		l.Debug("Failed to disconnect from Kopia repository", "ConfigFile", k.ConfigFile, "err", err)
 	}
 	l.Debug("Disconnected from server", "ConfigFile", k.ConfigFile)
 	k.IsConnected = false
