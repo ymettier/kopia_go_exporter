@@ -37,10 +37,12 @@ type KopiaClient struct {
 	tempDir     string
 	repo        repo.Repository
 	Metrics     KopiaMetrics
+	cfg         config.Config
 }
 
-func NewKopiaClient() (*KopiaClient, error) {
+func NewKopiaClient(cfg config.Config) (*KopiaClient, error) {
 	k := new(KopiaClient)
+	k.cfg = cfg
 
 	tempDir, err := os.MkdirTemp("", "kopia-go-exporter-*")
 	if err != nil {
@@ -52,10 +54,10 @@ func NewKopiaClient() (*KopiaClient, error) {
 	return k, nil
 }
 
-func newGaugeVec(reg *prometheus.Registry, name, help string) *prometheus.GaugeVec {
+func newGaugeVec(reg *prometheus.Registry, namespace, name, help string) *prometheus.GaugeVec {
 	gv := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace: config.Cfg.Exporter.Metrics.Prefix,
+			Namespace: namespace,
 			Name:      name,
 			Help:      help,
 		},
@@ -66,13 +68,14 @@ func newGaugeVec(reg *prometheus.Registry, name, help string) *prometheus.GaugeV
 }
 
 func (k *KopiaClient) RegisterKopiaMetrics(reg *prometheus.Registry) {
-	k.Metrics.TotalSize = newGaugeVec(reg, "total_size", "Total size of the backup")
-	k.Metrics.FileCount = newGaugeVec(reg, "file_count", "Number of files in the backup")
-	k.Metrics.DirCount = newGaugeVec(reg, "dir_count", "Number of directories in the backup")
-	k.Metrics.ErrorCount = newGaugeVec(reg, "error_count", "Number of errors in the backup")
-	k.Metrics.BackupDuration = newGaugeVec(reg, "backup_duration", "Duration of the backup")
-	k.Metrics.BackupStartTime = newGaugeVec(reg, "backup_start_time", "Start time of the backup")
-	k.Metrics.BackupEndTime = newGaugeVec(reg, "backup_end_time", "End time of the backup")
+	prefix := k.cfg.Exporter.Metrics.Prefix
+	k.Metrics.TotalSize = newGaugeVec(reg, prefix, "total_size", "Total size of the backup")
+	k.Metrics.FileCount = newGaugeVec(reg, prefix, "file_count", "Number of files in the backup")
+	k.Metrics.DirCount = newGaugeVec(reg, prefix, "dir_count", "Number of directories in the backup")
+	k.Metrics.ErrorCount = newGaugeVec(reg, prefix, "error_count", "Number of errors in the backup")
+	k.Metrics.BackupDuration = newGaugeVec(reg, prefix, "backup_duration", "Duration of the backup")
+	k.Metrics.BackupStartTime = newGaugeVec(reg, prefix, "backup_start_time", "Start time of the backup")
+	k.Metrics.BackupEndTime = newGaugeVec(reg, prefix, "backup_end_time", "End time of the backup")
 }
 
 func (k *KopiaClient) GenerateConfigFile() error {
@@ -81,18 +84,18 @@ func (k *KopiaClient) GenerateConfigFile() error {
 
 	opts := repo.ConnectOptions{
 		ClientOptions: repo.ClientOptions{
-			Username: config.Cfg.Kopia.APIServer.Username,
-			Hostname: config.Cfg.Kopia.APIServer.Hostname,
+			Username: k.cfg.Kopia.APIServer.Username,
+			Hostname: k.cfg.Kopia.APIServer.Hostname,
 		},
 		CachingOptions: content.CachingOptions{},
 	}
 	serverInfo := repo.APIServerInfo{
-		BaseURL:                             config.Cfg.Kopia.APIServer.RepositoryURL,
-		TrustedServerCertificateFingerprint: config.Cfg.Kopia.APIServer.Fingerprint,
+		BaseURL:                             k.cfg.Kopia.APIServer.RepositoryURL,
+		TrustedServerCertificateFingerprint: k.cfg.Kopia.APIServer.Fingerprint,
 	}
 
-	l.Debug("Generate ConfigFile and try to connect to server", "ConfigFile", k.ConfigFile, "URL", config.Cfg.Kopia.APIServer.RepositoryURL)
-	if err := repo.ConnectAPIServer(k.Ctx, k.ConfigFile, &serverInfo, config.Cfg.Kopia.Password, &opts); err != nil {
+	l.Debug("Generate ConfigFile and try to connect to server", "ConfigFile", k.ConfigFile, "URL", k.cfg.Kopia.APIServer.RepositoryURL)
+	if err := repo.ConnectAPIServer(k.Ctx, k.ConfigFile, &serverInfo, k.cfg.Kopia.Password, &opts); err != nil {
 		l.Error("Failed to generate configFile", "err", err, "ConfigFile", k.ConfigFile)
 		return err
 	}
@@ -110,7 +113,7 @@ func (k *KopiaClient) Connect() error {
 		return err
 	}
 	l.Debug("Try to connect to server", "ConfigFile", k.ConfigFile)
-	k.repo, err = repo.Open(k.Ctx, k.ConfigFile, config.Cfg.Kopia.Password, nil)
+	k.repo, err = repo.Open(k.Ctx, k.ConfigFile, k.cfg.Kopia.Password, nil)
 	if err != nil {
 		l.Error("Failed to open repository", "err", err, "ConfigFile", k.ConfigFile)
 		k.IsConnected = false
@@ -122,7 +125,7 @@ func (k *KopiaClient) Connect() error {
 
 func (k *KopiaClient) setSnapshotMetrics(m *snapshot.Manifest, keepAllRetentions bool) {
 	for _, rr := range m.RetentionReasons {
-		if !slices.Contains(config.Cfg.Kopia.Retentions, rr) && !keepAllRetentions {
+		if !slices.Contains(k.cfg.Kopia.Retentions, rr) && !keepAllRetentions {
 			continue
 		}
 		labels := prometheus.Labels{"host": m.Source.Host, "path": m.Source.Path, "user": m.Source.UserName, "retention": rr}
@@ -138,7 +141,7 @@ func (k *KopiaClient) setSnapshotMetrics(m *snapshot.Manifest, keepAllRetentions
 
 func (k *KopiaClient) RunOnce() error {
 	l := logger.Get()
-	keepAllRetentions := len(config.Cfg.Kopia.Retentions) == 0
+	keepAllRetentions := len(k.cfg.Kopia.Retentions) == 0
 	if !k.IsConnected {
 		if err := k.Connect(); err != nil {
 			return err

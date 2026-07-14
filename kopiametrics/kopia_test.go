@@ -199,7 +199,8 @@ func logGatheredMetrics(t *testing.T, families []*dto.MetricFamily) {
 }
 
 func TestNewKopiaClient(t *testing.T) {
-	k, err := NewKopiaClient()
+	cfg := config.Config{}
+	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect() })
 	assert.NotNil(t, k)
@@ -217,7 +218,7 @@ func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 		"backup_end_time",
 	}
 
-	k, err := NewKopiaClient()
+	k, err := NewKopiaClient(config.Config{})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect() })
 	reg := prometheus.NewRegistry()
@@ -275,7 +276,7 @@ func TestKopiaClient_Connect(t *testing.T) {
 func TestKopiaClient_Disconnect(t *testing.T) {
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient()
+	k, err := NewKopiaClient(config.Config{})
 	require.NoError(t, err)
 	assert.False(t, k.IsConnected)
 
@@ -327,19 +328,16 @@ func TestKopiaVersion(t *testing.T) {
 }
 
 func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
-
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Kopia: config.KopiaConfig{
 			Retentions: []string{"daily"},
 		},
 	}
-	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient()
+	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect() })
 	reg := prometheus.NewRegistry()
@@ -367,19 +365,16 @@ func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 }
 
 func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
-
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Kopia: config.KopiaConfig{
 			Retentions: []string{"daily"},
 		},
 	}
-	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient()
+	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect() })
 	reg := prometheus.NewRegistry()
@@ -419,10 +414,7 @@ func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
 func TestRunOnce_ConnectFails(t *testing.T) {
 	logger.Reset(nil)
 
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
-
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Kopia: config.KopiaConfig{
 			Password: "wrong",
 			APIServer: config.APIServerConfig{
@@ -434,7 +426,7 @@ func TestRunOnce_ConnectFails(t *testing.T) {
 		},
 	}
 
-	k, err := NewKopiaClient()
+	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
 	k.Ctx = context.Background()
 	k.ConfigFile = filepath.Join(t.TempDir(), "nonexistent.config")
@@ -478,22 +470,20 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 	out, err = cmd.CombinedOutput()
 	require.NoError(t, err, "repository connect failed: %s", string(out))
 
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
+	logger.Reset(nil)
 
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Kopia: config.KopiaConfig{
 			Password:   password,
 			Retentions: []string{},
 		},
 	}
-	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
-
-	logger.Reset(nil)
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
 	k := &KopiaClient{
 		Ctx:         context.Background(),
 		IsConnected: false,
+		cfg:         cfg,
 	}
 
 	k.repo, err = repo.Open(k.Ctx, configFile, password, nil)
@@ -521,10 +511,7 @@ func TestConnect(t *testing.T) {
 
 	configFile := filepath.Join(t.TempDir(), "repo.config")
 
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
-
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Kopia: config.KopiaConfig{
 			Password: "kopiapwd",
 			APIServer: config.APIServerConfig{
@@ -538,7 +525,7 @@ func TestConnect(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient()
+	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
 	k.Ctx = context.Background()
 	k.ConfigFile = configFile
@@ -559,10 +546,7 @@ func TestConnect_OpenFails(t *testing.T) {
 
 	configFile := filepath.Join(t.TempDir(), "repo.config")
 
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
-
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Kopia: config.KopiaConfig{
 			Password: "kopiapwd",
 			APIServer: config.APIServerConfig{
@@ -576,7 +560,7 @@ func TestConnect_OpenFails(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient()
+	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
 	k.Ctx = context.Background()
 	k.ConfigFile = configFile
@@ -589,7 +573,18 @@ func TestConnect_OpenFails(t *testing.T) {
 
 	cleanup()
 
-	k2, err := NewKopiaClient()
+	cfg2 := config.Config{
+		Kopia: config.KopiaConfig{
+			Password: "kopiapwd",
+			APIServer: config.APIServerConfig{
+				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
+				Fingerprint:   fingerprint,
+				Hostname:      "localhost",
+				Username:      "kopia",
+			},
+		},
+	}
+	k2, err := NewKopiaClient(cfg2)
 	require.NoError(t, err)
 	k2.Ctx = context.Background()
 	k2.ConfigFile = configFile
@@ -610,10 +605,7 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 
 	configFile := filepath.Join(t.TempDir(), "repo.config")
 
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
-
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Kopia: config.KopiaConfig{
 			Password: "kopiapwd",
 			Retentions: []string{},
@@ -625,11 +617,11 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 			},
 		},
 	}
-	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient()
+	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
 	k.Ctx = context.Background()
 	k.ConfigFile = configFile
@@ -705,10 +697,7 @@ func TestRunOnceMetrics(t *testing.T) {
 
 	configFile, sourceDir, password := setupTestRepo(t)
 
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
-
-	config.Cfg = config.Config{
+	cfg := config.Config{
 		Exporter: config.ExporterConfig{
 			Port: 9090,
 		},
@@ -717,13 +706,14 @@ func TestRunOnceMetrics(t *testing.T) {
 			Retentions: []string{},
 		},
 	}
-	config.Cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
 	logger.Reset(nil)
 
 	k := &KopiaClient{
 		Ctx:         context.Background(),
 		IsConnected: false,
+		cfg:         cfg,
 	}
 
 	var err error

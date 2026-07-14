@@ -18,15 +18,9 @@ import (
 )
 
 func TestNewExporter(t *testing.T) {
-	origCfg := config.Cfg
 	origReadBuildInfo := config.ReadBuildInfo
-	defer func() {
-		config.Cfg = origCfg
-		config.ReadBuildInfo = origReadBuildInfo
-	}()
+	defer func() { config.ReadBuildInfo = origReadBuildInfo }()
 
-	config.Cfg.Exporter.Port = 12346
-	config.Cfg.Exporter.Metrics.Prefix = "test_prefix"
 	logger.Reset(nil)
 
 	config.ReadBuildInfo = func() (*debug.BuildInfo, bool) {
@@ -39,7 +33,13 @@ func TestNewExporter(t *testing.T) {
 		}, true
 	}
 
-	ex := NewExporter()
+	cfg := config.Config{
+		Exporter: config.ExporterConfig{
+			Port:    12346,
+			Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
+		},
+	}
+	ex := NewExporter(cfg)
 	if ex == nil {
 		t.Fatal("NewExporter() returned nil")
 	}
@@ -52,28 +52,33 @@ func TestNewExporter(t *testing.T) {
 }
 
 func TestNewExporter_BuildInfoUnavailable(t *testing.T) {
-	origCfg := config.Cfg
 	origReadBuildInfo := config.ReadBuildInfo
-	defer func() {
-		config.Cfg = origCfg
-		config.ReadBuildInfo = origReadBuildInfo
-	}()
+	defer func() { config.ReadBuildInfo = origReadBuildInfo }()
 
-	config.Cfg.Exporter.Port = 12347
-	config.Cfg.Exporter.Metrics.Prefix = "test_prefix"
 	logger.Reset(nil)
 
 	config.ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 		return nil, false
 	}
 
-	ex := NewExporter()
+	cfg := config.Config{
+		Exporter: config.ExporterConfig{
+			Port:    12347,
+			Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
+		},
+	}
+	ex := NewExporter(cfg)
 	if ex == nil {
 		t.Fatal("NewExporter() returned nil")
 	}
 }
 
 func TestExporter_SetBuildInfo(t *testing.T) {
+	cfg := config.Config{
+		Exporter: config.ExporterConfig{
+			Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
+		},
+	}
 	type fields struct {
 		Port int
 		Reg  *prometheus.Registry
@@ -96,6 +101,7 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 			ex := &Exporter{
 				Port: tt.fields.Port,
 				Reg:  tt.fields.Reg,
+				cfg:  cfg,
 			}
 			labels := map[string]string{
 				"version": "test_version",
@@ -115,7 +121,7 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 			foundRevision := false
 			foundDate := false
 			for _, mFamily := range metrics {
-				if mFamily.GetName() == "build_info" {
+				if mFamily.GetName() == "test_prefix_build_info" {
 					found = true
 					for _, m := range mFamily.Metric {
 						for _, label := range m.Label {

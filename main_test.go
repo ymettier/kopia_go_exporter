@@ -13,8 +13,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"kopia-go-exporter/config"
 )
 
 func TestVersionEmbedded(t *testing.T) {
@@ -117,9 +115,6 @@ kopia:
     fingerprint: "0000000000000000000000000000000000000000000000000000000000000000"
 log_level: "error"
 `)
-
-	origCfg := config.Cfg
-	t.Cleanup(func() { config.Cfg = origCfg })
 
 	ctx, cancel := context.WithCancel(context.Background())
 
