@@ -109,7 +109,7 @@ func ParseFlags(version string, args []string) (string, *pflag.FlagSet, error) {
 	fs := pflag.NewFlagSet("kopia-go-exporter", pflag.ContinueOnError)
 
 	configFile := fs.StringP("config", "c", "config.yaml", "Path to YAML config file")
-	fs.Int("exporter-port", 9090, "Exporter HTTP server port")
+	fs.Int("exporter-port", 9090, "Exporter HTTP server port") //nolint:mnd
 	fs.StringP("log_level", "l", "info", "Log level (debug, info, warn, error)")
 	showVersion := fs.BoolP("version", "V", false, "Print version information and exit")
 	showHelp := fs.BoolP("help", "h", false, "Print help")
@@ -173,13 +173,13 @@ func getConfigBool(koanfInstance *koanf.Koanf, camelKey string, defaultValue boo
 func readExporterConfig(koanfInstance *koanf.Koanf, l *slog.Logger) ExporterConfig {
 	var cfg ExporterConfig
 
-	cfg.Port = getConfigInt(koanfInstance, "exporter.port", 9090)
+	cfg.Port = getConfigInt(koanfInstance, "exporter.port", 9090) //nolint:mnd
 	l.Info("Config: exporter.port", "port", cfg.Port)
 
 	cfg.Metrics.Prefix = getConfigString(koanfInstance, "exporter.metrics.prefix", "kopia_go_exporter")
 	l.Info("Config: exporter.metrics.prefix", "prefix", cfg.Metrics.Prefix)
 
-	cfg.Interval = getConfigInt(koanfInstance, "exporter.interval", 300)
+	cfg.Interval = getConfigInt(koanfInstance, "exporter.interval", 300) //nolint:mnd
 	l.Info("Config: exporter.interval", "interval", cfg.Interval)
 
 	return cfg
