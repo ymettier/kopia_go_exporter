@@ -20,7 +20,7 @@ func TestVersionEmbedded(t *testing.T) {
 }
 
 func TestRun_MissingConfigFile(t *testing.T) {
-	err := run(context.Background(), []string{"--config", "/nonexistent/config.yaml"})
+	err := run(context.Background(), []string{"--config", "/nonexistent/config.yaml"}) //nolint:goconst
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read configuration file")
 }

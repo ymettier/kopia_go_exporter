@@ -51,7 +51,7 @@ func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 			Name:      "build_info",
 			Help:      "Build information",
 		},
-		[]string{"version", "commit", "date"},
+		[]string{"version", "commit", "date"}, //nolint:goconst
 	)
 
 	ex.Reg.MustRegister(buildInfo)

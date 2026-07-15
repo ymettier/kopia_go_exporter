@@ -46,7 +46,7 @@ func kopiaReleaseOS() (string, error) {
 		return "linux", nil
 	case "darwin":
 		return "macOS", nil
-	case "windows":
+	case "windows": //nolint:goconst
 		return "windows", nil
 	default:
 		return "", fmt.Errorf("unsupported operating system for kopia download: %s", runtime.GOOS)
@@ -276,7 +276,7 @@ func extractKopiaFromTarGz(archivePath, targetPath string) error {
 			return fmt.Errorf("failed to read tar entry: %w", err)
 		}
 
-		if filepath.Base(header.Name) != "kopia" {
+		if filepath.Base(header.Name) != "kopia" { //nolint:goconst
 			continue
 		}
 
