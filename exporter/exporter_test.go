@@ -38,7 +38,7 @@ func TestNewExporter(t *testing.T) {
 
 	cfg := config.ExporterConfig{
 		Port:    12346,
-		Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
+		Metrics: struct{ Prefix string }{Prefix: "test_prefix"}, //nolint:goconst
 	}
 	ex := NewExporter(cfg)
 	require.NotNil(t, ex)
@@ -93,9 +93,9 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 				cfg:  cfg,
 			}
 			labels := map[string]string{
-				"version": "test_version",
-				"commit":  "test_revision",
-				"date":    "13:37",
+				"version": "test_version", //nolint:goconst
+				"commit":  "test_revision", //nolint:goconst
+				"date":    "13:37", //nolint:goconst
 			}
 			ex.SetBuildInfo(labels["version"], labels["commit"], labels["date"])
 

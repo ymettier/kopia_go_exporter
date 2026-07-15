@@ -259,8 +259,8 @@ func TestKopiaClient_Connect(t *testing.T) {
 	ctx := context.Background()
 	opts := repo.ConnectOptions{
 		ClientOptions: repo.ClientOptions{
-			Username: "kopia",
-			Hostname: "localhost",
+			Username: "kopia", //nolint:goconst
+			Hostname: "localhost", //nolint:goconst
 		},
 	}
 	serverInfo := repo.APIServerInfo{
@@ -338,7 +338,7 @@ func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 			Retentions: []string{"daily"},
 		},
 	}
-	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter" //nolint:goconst
 
 	logger.Reset(nil)
 
@@ -458,7 +458,7 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 	repoPath := filepath.Join(baseDir, "repo")
 	cachePath := filepath.Join(baseDir, "cache")
 	configFile := filepath.Join(baseDir, "repo.config")
-	password := "kopiapwd"
+	password := "kopiapwd" //nolint:goconst
 
 	cmd := exec.Command(bin, "repository", "create", "filesystem",
 		"--path="+repoPath, "-c", "-p", password,

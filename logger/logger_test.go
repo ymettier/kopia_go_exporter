@@ -36,7 +36,7 @@ func TestReset_WithOptions(t *testing.T) {
 	Reset(&LogOptions{
 		Level:    "debug",
 		JSON:     false,
-		Filename: "stdout",
+		Filename: "stdout", //nolint:goconst
 	})
 
 	l := Get()
