@@ -181,7 +181,7 @@ func (f fakeShutdowner) Shutdown(_ context.Context) error {
 	return f.err
 }
 
-func TestShutdownServer(t *testing.T) {
+func TestShutdownServer(_ *testing.T) {
 	shutdownServer(fakeShutdowner{}, 9090)
 	shutdownServer(fakeShutdowner{err: errors.New("boom")}, 9090)
 }
