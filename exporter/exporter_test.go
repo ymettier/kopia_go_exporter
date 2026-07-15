@@ -38,7 +38,7 @@ func TestNewExporter(t *testing.T) {
 
 	cfg := config.ExporterConfig{
 		Port:    12346,
-		Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
+		Metrics: struct{ Prefix string }{Prefix: "test_prefix"}, //nolint:goconst
 	}
 	ex := NewExporter(cfg)
 	require.NotNil(t, ex)
@@ -93,9 +93,9 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 				cfg:  cfg,
 			}
 			labels := map[string]string{
-				"version": "test_version",
-				"commit":  "test_revision",
-				"date":    "13:37",
+				"version": "test_version",  //nolint:goconst
+				"commit":  "test_revision", //nolint:goconst
+				"date":    "13:37",         //nolint:goconst
 			}
 			ex.SetBuildInfo(labels["version"], labels["commit"], labels["date"])
 
@@ -139,7 +139,9 @@ func TestExporter_Run(t *testing.T) {
 
 		time.Sleep(200 * time.Millisecond)
 
-		resp, err := http.Get("http://localhost:12345/metrics")
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:12345/metrics", http.NoBody)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		defer func() { _ = resp.Body.Close() }()
 
@@ -151,7 +153,7 @@ func TestExporter_Run(t *testing.T) {
 func TestExporter_Run_AlreadyInUse(t *testing.T) {
 	logger.Reset(nil)
 
-	blocker, err := net.Listen("tcp", ":12399")
+	blocker, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:12399")
 	require.NoError(t, err)
 	defer func() { _ = blocker.Close() }()
 
@@ -181,7 +183,7 @@ func (f fakeShutdowner) Shutdown(_ context.Context) error {
 	return f.err
 }
 
-func TestShutdownServer(t *testing.T) {
+func TestShutdownServer(_ *testing.T) {
 	shutdownServer(fakeShutdowner{}, 9090)
 	shutdownServer(fakeShutdowner{err: errors.New("boom")}, 9090)
 }

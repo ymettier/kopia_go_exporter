@@ -53,14 +53,16 @@ func hashSHA256(pemContent []byte) (string, error) {
 func freeTestPort(t *testing.T) string {
 	t.Helper()
 
-	l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", "0"))
+	lc := &net.ListenConfig{}
+	l, err := lc.Listen(context.Background(), "tcp", net.JoinHostPort("127.0.0.1", "0"))
 	require.NoError(t, err, "failed to allocate a free port")
 
 	port := strconv.Itoa(l.Addr().(*net.TCPAddr).Port)
 
 	require.NoError(t, l.Close(), "failed to release the probe listener")
 
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", port), 200*time.Millisecond)
+	d := &net.Dialer{Timeout: 200 * time.Millisecond}
+	conn, err := d.DialContext(context.Background(), "tcp", net.JoinHostPort("127.0.0.1", port))
 	if err == nil {
 		_ = conn.Close()
 		t.Fatalf("expected port %s to be free but something is already listening", port)
@@ -143,7 +145,7 @@ func setupTestKopia(t *testing.T) (cleanup func(), fingerprint, ip, port string)
 	}, 10*time.Second, 200*time.Millisecond, "kopia server did not generate a TLS certificate")
 
 	require.Eventually(t, func() bool {
-		conn, err := net.Dial("tcp", net.JoinHostPort(ip, port))
+		conn, err := (&net.Dialer{}).DialContext(context.Background(), "tcp", net.JoinHostPort(ip, port))
 		if err != nil {
 			return false
 		}
@@ -157,7 +159,7 @@ func setupTestKopia(t *testing.T) (cleanup func(), fingerprint, ip, port string)
 	require.NoError(t, err, "failed to extract fingerprint from certificate")
 
 	cleanup = func() {
-		shutdown := exec.CommandContext(context.Background(), bin, "server", "shutdown",
+		shutdown := exec.CommandContext(context.Background(), bin, "server", "shutdown", //nolint:gosec
 			"--server-cert-fingerprint="+fingerprint,
 			"--address=https://"+net.JoinHostPort(ip, port),
 			"--server-control-username=kopia",
@@ -199,7 +201,7 @@ func logGatheredMetrics(t *testing.T, families []*dto.MetricFamily) {
 }
 
 func TestNewKopiaClient(t *testing.T) {
-	cfg := config.Config{}
+	cfg := &config.Config{}
 	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
@@ -209,7 +211,7 @@ func TestNewKopiaClient(t *testing.T) {
 
 func TestNewKopiaClient_TempDirFailure(t *testing.T) {
 	t.Setenv("TMPDIR", "/nonexistent-kopia-tmp-dir")
-	_, err := NewKopiaClient(config.Config{})
+	_, err := NewKopiaClient(&config.Config{})
 	assert.Error(t, err)
 }
 
@@ -224,7 +226,7 @@ func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 		"backup_end_time",
 	}
 
-	k, err := NewKopiaClient(config.Config{})
+	k, err := NewKopiaClient(&config.Config{})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
@@ -259,8 +261,8 @@ func TestKopiaClient_Connect(t *testing.T) {
 	ctx := context.Background()
 	opts := repo.ConnectOptions{
 		ClientOptions: repo.ClientOptions{
-			Username: "kopia",
-			Hostname: "localhost",
+			Username: "kopia",     //nolint:goconst
+			Hostname: "localhost", //nolint:goconst
 		},
 	}
 	serverInfo := repo.APIServerInfo{
@@ -281,7 +283,7 @@ func TestKopiaClient_Connect(t *testing.T) {
 func TestKopiaClient_Disconnect(t *testing.T) {
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient(config.Config{})
+	k, err := NewKopiaClient(&config.Config{})
 	require.NoError(t, err)
 	assert.False(t, k.isConnected)
 
@@ -333,12 +335,12 @@ func TestKopiaVersion(t *testing.T) {
 }
 
 func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
-	cfg := config.Config{
+	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Retentions: []string{"daily"},
 		},
 	}
-	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter" //nolint:goconst
 
 	logger.Reset(nil)
 
@@ -370,7 +372,7 @@ func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 }
 
 func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
-	cfg := config.Config{
+	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Retentions: []string{"daily"},
 		},
@@ -419,7 +421,7 @@ func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
 func TestRunOnce_ConnectFails(t *testing.T) {
 	logger.Reset(nil)
 
-	cfg := config.Config{
+	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Password: "wrong",
 			APIServer: config.APIServerConfig{
@@ -458,9 +460,9 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 	repoPath := filepath.Join(baseDir, "repo")
 	cachePath := filepath.Join(baseDir, "cache")
 	configFile := filepath.Join(baseDir, "repo.config")
-	password := "kopiapwd"
+	password := "kopiapwd" //nolint:goconst
 
-	cmd := exec.Command(bin, "repository", "create", "filesystem",
+	cmd := exec.CommandContext(context.Background(), bin, "repository", "create", "filesystem",
 		"--path="+repoPath, "-c", "-p", password,
 		"--cache-directory="+cachePath, "--no-check-for-updates",
 		"--override-hostname=localhost", "--override-username=kopia")
@@ -468,7 +470,7 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "repository create failed: %s", string(out))
 
-	cmd = exec.Command(bin, "--config-file="+configFile, "repository", "connect", "filesystem",
+	cmd = exec.CommandContext(context.Background(), bin, "--config-file="+configFile, "repository", "connect", "filesystem",
 		"--path="+repoPath, "-p", password, "--cache-directory="+cachePath, "--no-check-for-updates")
 	cmd.Dir = baseDir
 	out, err = cmd.CombinedOutput()
@@ -476,7 +478,7 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 
 	logger.Reset(nil)
 
-	cfg := config.Config{
+	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Password:   password,
 			Retentions: []string{},
@@ -515,7 +517,7 @@ func TestConnect(t *testing.T) {
 
 	configFile := filepath.Join(t.TempDir(), "repo.config")
 
-	cfg := config.Config{
+	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Password: "kopiapwd",
 			APIServer: config.APIServerConfig{
@@ -549,7 +551,7 @@ func TestConnect_OpenFails(t *testing.T) {
 
 	configFile := filepath.Join(t.TempDir(), "repo.config")
 
-	cfg := config.Config{
+	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Password: "kopiapwd",
 			APIServer: config.APIServerConfig{
@@ -575,7 +577,7 @@ func TestConnect_OpenFails(t *testing.T) {
 
 	cleanup()
 
-	cfg2 := config.Config{
+	cfg2 := &config.Config{
 		Kopia: config.KopiaConfig{
 			Password: "kopiapwd",
 			APIServer: config.APIServerConfig{
@@ -606,7 +608,7 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 
 	configFile := filepath.Join(t.TempDir(), "repo.config")
 
-	cfg := config.Config{
+	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Password:   "kopiapwd",
 			Retentions: []string{},
@@ -665,9 +667,9 @@ func setupTestRepo(t *testing.T) (configFile, sourceDir, password string) {
 	require.NoError(t, os.MkdirAll(subDir, 0o755))
 
 	for _, name := range []string{"file1.txt", "file2.txt"} {
-		require.NoError(t, os.WriteFile(filepath.Join(sourceDir, name), []byte("dummy content for "+name), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(sourceDir, name), []byte("dummy content for "+name), 0o600))
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(subDir, "file3.txt"), []byte("dummy content for file3.txt"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(subDir, "file3.txt"), []byte("dummy content for file3.txt"), 0o600))
 
 	runKopia := func(name string, args ...string) {
 		cmd := exec.CommandContext(ctx, bin, args...)
@@ -697,7 +699,7 @@ func TestRunOnceMetrics(t *testing.T) {
 
 	configFile, sourceDir, password := setupTestRepo(t)
 
-	cfg := config.Config{
+	cfg := &config.Config{
 		Exporter: config.ExporterConfig{
 			Port: 9090,
 		},
@@ -746,19 +748,7 @@ func TestRunOnceMetrics(t *testing.T) {
 	}
 
 	for _, name := range expectedMetrics {
-		fam, ok := familyMap[name]
-		require.True(t, ok, "metric %s not found in registry", name)
-		require.NotEmpty(t, fam.GetMetric(), "metric %s has no samples", name)
-
-		m := fam.GetMetric()[0]
-		labels := make(map[string]string)
-		for _, lp := range m.GetLabel() {
-			labels[lp.GetName()] = lp.GetValue()
-		}
-		assert.NotEmpty(t, labels["host"], "%s: host label should not be empty", name)
-		assert.NotEmpty(t, labels["user"], "%s: user label should not be empty", name)
-		assert.Equal(t, sourceDir, labels["path"], "%s: unexpected path label", name)
-		assert.NotEmpty(t, labels["retention"], "%s: retention label should not be empty", name)
+		assertMetricLabels(t, name, sourceDir, familyMap)
 	}
 
 	cet := time.FixedZone("CET", 3600)
@@ -784,4 +774,22 @@ func TestRunOnceMetrics(t *testing.T) {
 
 	errorCount := familyMap["kopia_go_exporter_error_count"].GetMetric()[0].GetGauge().GetValue()
 	assert.Equal(t, float64(0), errorCount, "error_count should be 0")
+}
+
+func assertMetricLabels(t *testing.T, name, sourceDir string, familyMap map[string]*dto.MetricFamily) {
+	t.Helper()
+
+	fam, ok := familyMap[name]
+	require.True(t, ok, "metric %s not found in registry", name)
+	require.NotEmpty(t, fam.GetMetric(), "metric %s has no samples", name)
+
+	m := fam.GetMetric()[0]
+	labels := make(map[string]string)
+	for _, lp := range m.GetLabel() {
+		labels[lp.GetName()] = lp.GetValue()
+	}
+	assert.NotEmpty(t, labels["host"], "%s: host label should not be empty", name)
+	assert.NotEmpty(t, labels["user"], "%s: user label should not be empty", name)
+	assert.Equal(t, sourceDir, labels["path"], "%s: unexpected path label", name)
+	assert.NotEmpty(t, labels["retention"], "%s: retention label should not be empty", name)
 }

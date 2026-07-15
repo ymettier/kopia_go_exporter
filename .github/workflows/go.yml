@@ -1,0 +1,46 @@
+# Copyright 2024-2026 The kopia-go-exporter Authors. All rights reserved.
+# SPDX-License-Identifier: MIT
+
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
+name: go-build
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+
+      - name: generate version.txt
+        run: echo github-build > version.txt
+
+      - name: Generate
+        run: go generate -v ./...
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Test
+        run: go test -v -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v6
+        with:
+          files: ./coverage.out
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}

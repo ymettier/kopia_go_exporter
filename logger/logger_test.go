@@ -36,7 +36,7 @@ func TestReset_WithOptions(t *testing.T) {
 	Reset(&LogOptions{
 		Level:    "debug",
 		JSON:     false,
-		Filename: "stdout",
+		Filename: "stdout", //nolint:goconst
 	})
 
 	l := Get()
@@ -159,7 +159,7 @@ func TestNewLogger_LumberjackFile(t *testing.T) {
 	l.Info("test lumberjack output")
 }
 
-func TestReset_Concurrent(t *testing.T) {
+func TestReset_Concurrent(_ *testing.T) {
 	done := make(chan bool)
 	for i := 0; i < 10; i++ {
 		go func() {

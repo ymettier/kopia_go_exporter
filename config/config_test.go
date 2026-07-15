@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"os"
 	"runtime/debug"
-	"strings"
 	"testing"
 
 	"github.com/knadh/koanf/parsers/yaml"
@@ -47,12 +46,12 @@ func TestParseFlags(t *testing.T) {
 		},
 		{
 			name:    "custom config file",
-			args:    []string{"--config", "custom.yaml"},
+			args:    []string{"--config", "custom.yaml"}, //nolint:goconst
 			wantErr: false,
 		},
 		{
 			name:    "custom exporter port",
-			args:    []string{"--exporter-port", "9090"},
+			args:    []string{"--exporter-port", "9090"}, //nolint:goconst
 			wantErr: false,
 		},
 		{
@@ -100,7 +99,7 @@ func TestGetVersionInfo(t *testing.T) {
 }
 
 func TestGetVersionInfo_ReturnsVCSData(t *testing.T) {
-	givenVersion = "1.0.0"
+	givenVersion = "1.0.0" //nolint:goconst
 	vi := GetVersionInfo()
 	assert.Equal(t, "1.0.0", vi.Version)
 }
@@ -108,7 +107,7 @@ func TestGetVersionInfo_ReturnsVCSData(t *testing.T) {
 func writeTestConfig(t *testing.T, content string) string {
 	t.Helper()
 	tmpFile := t.TempDir() + "/test.yaml"
-	err := os.WriteFile(tmpFile, []byte(content), 0o644)
+	err := os.WriteFile(tmpFile, []byte(content), 0o600)
 	require.NoError(t, err)
 	return tmpFile
 }
@@ -231,9 +230,8 @@ func TestReadExporterConfig_FlagOverride(t *testing.T) {
 	require.NoError(t, fs.Parse([]string{"--exporter-port", "7777"}))
 
 	k = koanfNew(t, cfgFile)
-	require.NoError(t, k.Load(posflag.ProviderWithValue(fs, ".", k, func(key, value string) (string, interface{}) {
-		return strings.ReplaceAll(key, "-", "."), value
-	}), nil))
+	require.NoError(t, k.Load(
+		posflag.ProviderWithValue(fs, ".", k, flagKeyMapper), nil))
 
 	l := slog.Default()
 	cfg := readExporterConfig(k, l)
@@ -335,12 +333,12 @@ func TestCheckConfig_ValidConfig(t *testing.T) {
 
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			Password: "test",
+			Password: "test", //nolint:goconst
 			APIServer: APIServerConfig{
-				RepositoryURL: "https://example.com:51515",
-				Hostname:      "localhost",
-				Username:      "kopia",
-				Fingerprint:   "abc123",
+				RepositoryURL: "https://example.com:51515", //nolint:goconst
+				Hostname:      "localhost",                 //nolint:goconst
+				Username:      "kopia",                     //nolint:goconst
+				Fingerprint:   "abc123",                    //nolint:goconst
 			},
 		},
 	}
@@ -495,9 +493,9 @@ func TestVersionInfo_WithVCSSettings(t *testing.T) {
 		return &debug.BuildInfo{
 			GoVersion: "go1.25.0",
 			Settings: []debug.BuildSetting{
-				{Key: "vcs.revision", Value: "abc123"},
-				{Key: "vcs.time", Value: "2025-01-15T10:00:00Z"},
-				{Key: "vcs.modified", Value: "true"},
+				{Key: "vcs.revision", Value: "abc123"},           //nolint:goconst
+				{Key: "vcs.time", Value: "2025-01-15T10:00:00Z"}, //nolint:goconst
+				{Key: "vcs.modified", Value: "true"},             //nolint:goconst
 			},
 		}, true
 	}
@@ -524,48 +522,56 @@ func TestGetVersionInfo_BuildInfoUnavailable(t *testing.T) {
 	assert.False(t, vi.Dirty)
 }
 
-func TestGetVersionInfo_WithVCSSettings_Dirty(t *testing.T) {
-	origReadBuildInfo := ReadBuildInfo
-	defer func() { ReadBuildInfo = origReadBuildInfo }()
-
-	givenVersion = "3.0.0"
-	ReadBuildInfo = func() (*debug.BuildInfo, bool) {
-		return &debug.BuildInfo{
-			Settings: []debug.BuildSetting{
-				{Key: "vcs.revision", Value: "deadbeef"},
-				{Key: "vcs.time", Value: "2025-06-01T12:00:00Z"},
-				{Key: "vcs.modified", Value: "true"},
-			},
-		}, true
+func TestGetVersionInfo_WithVCSSettings(t *testing.T) {
+	tests := []struct {
+		name      string
+		version   string
+		revision  string
+		time      string
+		modified  string
+		wantDirty bool
+	}{
+		{
+			name:      "dirty",
+			version:   "3.0.0",
+			revision:  "deadbeef",
+			time:      "2025-06-01T12:00:00Z",
+			modified:  "true",
+			wantDirty: true,
+		},
+		{
+			name:      "clean",
+			version:   "4.0.0",
+			revision:  "face0ff",
+			time:      "2025-07-01T08:00:00Z",
+			modified:  "false",
+			wantDirty: false,
+		},
 	}
 
-	vi := GetVersionInfo()
-	assert.Equal(t, "3.0.0", vi.Version)
-	assert.Equal(t, "deadbeef", vi.Revision)
-	assert.Equal(t, "2025-06-01T12:00:00Z", vi.Time)
-	assert.True(t, vi.Dirty)
-}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			origReadBuildInfo := ReadBuildInfo
+			defer func() { ReadBuildInfo = origReadBuildInfo }()
 
-func TestGetVersionInfo_WithVCSSettings_Clean(t *testing.T) {
-	origReadBuildInfo := ReadBuildInfo
-	defer func() { ReadBuildInfo = origReadBuildInfo }()
+			givenVersion = tc.version
+			ReadBuildInfo = func() (*debug.BuildInfo, bool) {
+				return &debug.BuildInfo{
+					Settings: []debug.BuildSetting{
+						{Key: "vcs.revision", Value: tc.revision},
+						{Key: "vcs.time", Value: tc.time},
+						{Key: "vcs.modified", Value: tc.modified},
+					},
+				}, true
+			}
 
-	givenVersion = "4.0.0"
-	ReadBuildInfo = func() (*debug.BuildInfo, bool) {
-		return &debug.BuildInfo{
-			Settings: []debug.BuildSetting{
-				{Key: "vcs.revision", Value: "face0ff"},
-				{Key: "vcs.time", Value: "2025-07-01T08:00:00Z"},
-				{Key: "vcs.modified", Value: "false"},
-			},
-		}, true
+			vi := GetVersionInfo()
+			assert.Equal(t, tc.version, vi.Version)
+			assert.Equal(t, tc.revision, vi.Revision)
+			assert.Equal(t, tc.time, vi.Time)
+			assert.Equal(t, tc.wantDirty, vi.Dirty)
+		})
 	}
-
-	vi := GetVersionInfo()
-	assert.Equal(t, "4.0.0", vi.Version)
-	assert.Equal(t, "face0ff", vi.Revision)
-	assert.Equal(t, "2025-07-01T08:00:00Z", vi.Time)
-	assert.False(t, vi.Dirty)
 }
 
 func TestReadKopiaConfig_InvalidRetentions(t *testing.T) {

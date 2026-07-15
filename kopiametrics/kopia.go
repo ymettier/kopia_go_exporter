@@ -36,11 +36,11 @@ type KopiaClient struct {
 	tempDir     string
 	repo        repo.Repository
 	metrics     KopiaMetrics
-	cfg         config.Config
+	cfg         *config.Config
 }
 
 // NewKopiaClient creates a new KopiaClient with a temp directory for the config file.
-func NewKopiaClient(cfg config.Config) (*KopiaClient, error) {
+func NewKopiaClient(cfg *config.Config) (*KopiaClient, error) {
 	k := new(KopiaClient)
 	k.cfg = cfg
 
@@ -132,7 +132,7 @@ func (k *KopiaClient) setSnapshotMetrics(m *snapshot.Manifest, keepAllRetentions
 		labels := prometheus.Labels{"host": m.Source.Host, "path": m.Source.Path, "user": m.Source.UserName, "retention": rr}
 		k.metrics.BackupStartTime.With(labels).Set(float64(m.StartTime.ToTime().Unix()))
 		k.metrics.BackupEndTime.With(labels).Set(float64(m.EndTime.ToTime().Unix()))
-		k.metrics.BackupDuration.With(labels).Set(max(0.0, float64(m.EndTime-m.StartTime)/1e9))
+		k.metrics.BackupDuration.With(labels).Set(max(0.0, float64(m.EndTime-m.StartTime)/1e9)) //nolint:mnd
 		k.metrics.DirCount.With(labels).Set(float64(m.Stats.TotalDirectoryCount))
 		k.metrics.ErrorCount.With(labels).Set(float64(m.Stats.ErrorCount))
 		k.metrics.FileCount.With(labels).Set(float64(m.Stats.TotalFileCount))

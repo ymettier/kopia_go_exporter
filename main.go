@@ -29,7 +29,7 @@ func run(ctx context.Context, args []string) error {
 	l := logger.Get()
 	l.Debug("Debug logging enabled")
 	ex := exporter.NewExporter(config.Cfg.Exporter)
-	k, err := kopiametrics.NewKopiaClient(config.Cfg)
+	k, err := kopiametrics.NewKopiaClient(&config.Cfg)
 	if err != nil {
 		return err
 	}
@@ -61,7 +61,6 @@ func run(ctx context.Context, args []string) error {
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	if err := run(ctx, os.Args[1:]); err != nil {
 		if err == flag.ErrHelp {
@@ -69,4 +68,6 @@ func main() {
 		}
 		os.Exit(1)
 	}
+
+	stop()
 }

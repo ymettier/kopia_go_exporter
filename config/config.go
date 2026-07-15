@@ -79,12 +79,12 @@ func GetVersionInfo() VersionInfo {
 			continue
 		}
 		switch kv.Key {
-		case "vcs.revision":
+		case "vcs.revision": //nolint:goconst
 			info.Revision = kv.Value
-		case "vcs.time":
+		case "vcs.time": //nolint:goconst
 			info.Time = kv.Value
-		case "vcs.modified":
-			info.Dirty = kv.Value == "true"
+		case "vcs.modified": //nolint:goconst
+			info.Dirty = kv.Value == "true" //nolint:goconst
 		}
 	}
 	return info
@@ -109,7 +109,7 @@ func ParseFlags(version string, args []string) (string, *pflag.FlagSet, error) {
 	fs := pflag.NewFlagSet("kopia-go-exporter", pflag.ContinueOnError)
 
 	configFile := fs.StringP("config", "c", "config.yaml", "Path to YAML config file")
-	fs.Int("exporter-port", 9090, "Exporter HTTP server port")
+	fs.Int("exporter-port", 9090, "Exporter HTTP server port") //nolint:mnd
 	fs.StringP("log_level", "l", "info", "Log level (debug, info, warn, error)")
 	showVersion := fs.BoolP("version", "V", false, "Print version information and exit")
 	showHelp := fs.BoolP("help", "h", false, "Print help")
@@ -165,7 +165,7 @@ func getConfigInt(koanfInstance *koanf.Koanf, camelKey string, defaultValue int)
 
 func getConfigBool(koanfInstance *koanf.Koanf, camelKey string, defaultValue bool) bool {
 	if val, ok := lookupConfigKey(koanfInstance, camelKey); ok {
-		return strings.ToLower(val) == "true" || val == "1"
+		return strings.EqualFold(val, "true") || val == "1"
 	}
 	return defaultValue
 }
@@ -173,13 +173,13 @@ func getConfigBool(koanfInstance *koanf.Koanf, camelKey string, defaultValue boo
 func readExporterConfig(koanfInstance *koanf.Koanf, l *slog.Logger) ExporterConfig {
 	var cfg ExporterConfig
 
-	cfg.Port = getConfigInt(koanfInstance, "exporter.port", 9090)
+	cfg.Port = getConfigInt(koanfInstance, "exporter.port", 9090) //nolint:mnd
 	l.Info("Config: exporter.port", "port", cfg.Port)
 
 	cfg.Metrics.Prefix = getConfigString(koanfInstance, "exporter.metrics.prefix", "kopia_go_exporter")
 	l.Info("Config: exporter.metrics.prefix", "prefix", cfg.Metrics.Prefix)
 
-	cfg.Interval = getConfigInt(koanfInstance, "exporter.interval", 300)
+	cfg.Interval = getConfigInt(koanfInstance, "exporter.interval", 300) //nolint:mnd
 	l.Info("Config: exporter.interval", "interval", cfg.Interval)
 
 	return cfg
@@ -234,9 +234,10 @@ func readConfig(filename string, fs *pflag.FlagSet) error {
 	// Load pflag values, converting dashes to dots for koanf key matching.
 	// Only flags explicitly set by the user override YAML/env values.
 	if fs != nil {
-		loadConfigLayer(k, posflag.ProviderWithValue(fs, ".", k, func(key, value string) (string, interface{}) {
-			return strings.ReplaceAll(key, "-", "."), value
-		}), "Failed to load flag overrides")
+		loadConfigLayer(k,
+			posflag.ProviderWithValue(fs, ".", k, flagKeyMapper),
+			"Failed to load flag overrides",
+		)
 	}
 
 	Cfg.Exporter = readExporterConfig(k, l)
@@ -256,7 +257,13 @@ func loadConfigLayer(k *koanf.Koanf, loader koanf.Provider, msg string) {
 	}
 }
 
-// CheckConfig validates that all required configuration fields are set.
+// flagKeyMapper converts a pflag key (using dashes) into the dotted koanf key
+// format used throughout the configuration tree.
+func flagKeyMapper(key, value string) (mapped string, mappedValue any) {
+	mapped = strings.ReplaceAll(key, "-", ".")
+	mappedValue = value
+	return mapped, mappedValue
+}
 func CheckConfig() error {
 	if Cfg.Kopia.Password == "" {
 		return fmt.Errorf("kopia.password is not set")

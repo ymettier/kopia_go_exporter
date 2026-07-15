@@ -41,9 +41,9 @@ func getLogWriter(opts *LogOptions) (io.Writer, bool) {
 	}
 
 	switch filename {
-	case "stdout":
+	case "stdout": //nolint:goconst
 		return os.Stdout, false
-	case "stderr": //nolint:goconst
+	case "stderr":
 		return os.Stderr, false
 	}
 

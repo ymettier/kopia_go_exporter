@@ -7,6 +7,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -46,7 +47,7 @@ func kopiaReleaseOS() (string, error) {
 		return "linux", nil
 	case "darwin":
 		return "macOS", nil
-	case "windows":
+	case "windows": //nolint:goconst
 		return "windows", nil
 	default:
 		return "", fmt.Errorf("unsupported operating system for kopia download: %s", runtime.GOOS)
@@ -113,7 +114,7 @@ func kopiaChecksumURL() string {
 func expectedKopiaChecksum(t *testing.T, asset string) (string, error) {
 	t.Helper()
 
-	resp, err := http.Get(kopiaChecksumURL()) //nolint:gosec,noctx
+	resp, err := http.Get(kopiaChecksumURL()) //nolint:noctx
 	if err != nil {
 		return "", fmt.Errorf("failed to download checksums.txt: %w", err)
 	}
@@ -276,7 +277,7 @@ func extractKopiaFromTarGz(archivePath, targetPath string) error {
 			return fmt.Errorf("failed to read tar entry: %w", err)
 		}
 
-		if filepath.Base(header.Name) != "kopia" {
+		if filepath.Base(header.Name) != "kopia" { //nolint:goconst
 			continue
 		}
 
@@ -285,7 +286,7 @@ func extractKopiaFromTarGz(archivePath, targetPath string) error {
 			return fmt.Errorf("failed to create kopia binary: %w", err)
 		}
 
-		if _, err := io.Copy(out, tr); err != nil {
+		if _, err := io.Copy(out, io.LimitReader(tr, 1<<30)); err != nil {
 			_ = out.Close()
 			return fmt.Errorf("failed to extract kopia binary: %w", err)
 		}
@@ -321,7 +322,7 @@ func extractKopiaFromZip(archivePath, targetPath string) error {
 			return fmt.Errorf("failed to create kopia binary: %w", err)
 		}
 
-		if _, err := io.Copy(out, rc); err != nil {
+		if _, err := io.Copy(out, io.LimitReader(rc, 1<<30)); err != nil {
 			_ = rc.Close()
 			_ = out.Close()
 			return fmt.Errorf("failed to extract kopia binary: %w", err)
@@ -344,7 +345,7 @@ func kopiaBinaryVersion(t *testing.T, binaryPath string) (string, error) {
 		return "", fmt.Errorf("failed to resolve kopia binary path: %w", err)
 	}
 
-	cmd := exec.Command(runPath, "--version")
+	cmd := exec.CommandContext(context.Background(), runPath, "--version")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to run %q --version: %w", binaryPath, err)

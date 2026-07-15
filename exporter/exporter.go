@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -44,30 +45,31 @@ func NewExporter(cfg config.ExporterConfig) *Exporter {
 }
 
 // SetBuildInfo registers a build_info gauge with version, commit, and date labels.
-func (ex *Exporter) SetBuildInfo(version, revision, time string) {
+func (ex *Exporter) SetBuildInfo(version, revision, buildTime string) {
 	buildInfo := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: ex.cfg.Metrics.Prefix,
 			Name:      "build_info",
 			Help:      "Build information",
 		},
-		[]string{"version", "commit", "date"},
+		[]string{"version", "commit", "date"}, //nolint:goconst
 	)
 
 	ex.Reg.MustRegister(buildInfo)
 
 	// Set build info with value 1
-	buildInfo.WithLabelValues(version, revision, time).Set(1)
+	buildInfo.WithLabelValues(version, revision, buildTime).Set(1)
 }
 
-// Run starts the HTTP server serving /metrics and blocks until ctx is cancelled.
+// Run starts the HTTP server serving /metrics and blocks until ctx is canceled.
 func (ex *Exporter) Run(ctx context.Context) {
 	l := logger.Get()
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(ex.Reg, promhttp.HandlerOpts{}))
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", ex.Port),
-		Handler: mux,
+		Addr:              fmt.Sprintf(":%d", ex.Port),
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
