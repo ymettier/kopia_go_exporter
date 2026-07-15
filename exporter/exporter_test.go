@@ -153,7 +153,7 @@ func TestExporter_Run(t *testing.T) {
 func TestExporter_Run_AlreadyInUse(t *testing.T) {
 	logger.Reset(nil)
 
-	blocker, err := net.Listen("tcp", "127.0.0.1:12399")
+	blocker, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:12399")
 	require.NoError(t, err)
 	defer func() { _ = blocker.Close() }()
 
