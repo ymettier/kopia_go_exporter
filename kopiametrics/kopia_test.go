@@ -748,19 +748,7 @@ func TestRunOnceMetrics(t *testing.T) {
 	}
 
 	for _, name := range expectedMetrics {
-		fam, ok := familyMap[name]
-		require.True(t, ok, "metric %s not found in registry", name)
-		require.NotEmpty(t, fam.GetMetric(), "metric %s has no samples", name)
-
-		m := fam.GetMetric()[0]
-		labels := make(map[string]string)
-		for _, lp := range m.GetLabel() {
-			labels[lp.GetName()] = lp.GetValue()
-		}
-		assert.NotEmpty(t, labels["host"], "%s: host label should not be empty", name)
-		assert.NotEmpty(t, labels["user"], "%s: user label should not be empty", name)
-		assert.Equal(t, sourceDir, labels["path"], "%s: unexpected path label", name)
-		assert.NotEmpty(t, labels["retention"], "%s: retention label should not be empty", name)
+		assertMetricLabels(t, name, sourceDir, familyMap)
 	}
 
 	cet := time.FixedZone("CET", 3600)
@@ -786,4 +774,22 @@ func TestRunOnceMetrics(t *testing.T) {
 
 	errorCount := familyMap["kopia_go_exporter_error_count"].GetMetric()[0].GetGauge().GetValue()
 	assert.Equal(t, float64(0), errorCount, "error_count should be 0")
+}
+
+func assertMetricLabels(t *testing.T, name, sourceDir string, familyMap map[string]*dto.MetricFamily) {
+	t.Helper()
+
+	fam, ok := familyMap[name]
+	require.True(t, ok, "metric %s not found in registry", name)
+	require.NotEmpty(t, fam.GetMetric(), "metric %s has no samples", name)
+
+	m := fam.GetMetric()[0]
+	labels := make(map[string]string)
+	for _, lp := range m.GetLabel() {
+		labels[lp.GetName()] = lp.GetValue()
+	}
+	assert.NotEmpty(t, labels["host"], "%s: host label should not be empty", name)
+	assert.NotEmpty(t, labels["user"], "%s: user label should not be empty", name)
+	assert.Equal(t, sourceDir, labels["path"], "%s: unexpected path label", name)
+	assert.NotEmpty(t, labels["retention"], "%s: retention label should not be empty", name)
 }
