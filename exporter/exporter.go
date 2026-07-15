@@ -45,7 +45,7 @@ func NewExporter(cfg config.ExporterConfig) *Exporter {
 }
 
 // SetBuildInfo registers a build_info gauge with version, commit, and date labels.
-func (ex *Exporter) SetBuildInfo(version, revision, time string) {
+func (ex *Exporter) SetBuildInfo(version, revision, buildTime string) {
 	buildInfo := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: ex.cfg.Metrics.Prefix,
@@ -58,7 +58,7 @@ func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 	ex.Reg.MustRegister(buildInfo)
 
 	// Set build info with value 1
-	buildInfo.WithLabelValues(version, revision, time).Set(1)
+	buildInfo.WithLabelValues(version, revision, buildTime).Set(1)
 }
 
 // Run starts the HTTP server serving /metrics and blocks until ctx is canceled.
