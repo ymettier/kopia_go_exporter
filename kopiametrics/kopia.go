@@ -36,11 +36,11 @@ type KopiaClient struct {
 	tempDir     string
 	repo        repo.Repository
 	metrics     KopiaMetrics
-	cfg         config.Config
+	cfg         *config.Config
 }
 
 // NewKopiaClient creates a new KopiaClient with a temp directory for the config file.
-func NewKopiaClient(cfg config.Config) (*KopiaClient, error) {
+func NewKopiaClient(cfg *config.Config) (*KopiaClient, error) {
 	k := new(KopiaClient)
 	k.cfg = cfg
 

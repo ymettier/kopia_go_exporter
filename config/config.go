@@ -165,7 +165,7 @@ func getConfigInt(koanfInstance *koanf.Koanf, camelKey string, defaultValue int)
 
 func getConfigBool(koanfInstance *koanf.Koanf, camelKey string, defaultValue bool) bool {
 	if val, ok := lookupConfigKey(koanfInstance, camelKey); ok {
-		return strings.ToLower(val) == "true" || val == "1"
+		return strings.EqualFold(val, "true") || val == "1"
 	}
 	return defaultValue
 }

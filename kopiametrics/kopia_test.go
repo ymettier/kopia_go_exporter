@@ -199,7 +199,7 @@ func logGatheredMetrics(t *testing.T, families []*dto.MetricFamily) {
 }
 
 func TestNewKopiaClient(t *testing.T) {
-	cfg := config.Config{}
+	cfg := &config.Config{}
 	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
@@ -209,7 +209,7 @@ func TestNewKopiaClient(t *testing.T) {
 
 func TestNewKopiaClient_TempDirFailure(t *testing.T) {
 	t.Setenv("TMPDIR", "/nonexistent-kopia-tmp-dir")
-	_, err := NewKopiaClient(config.Config{})
+	_, err := NewKopiaClient(&config.Config{})
 	assert.Error(t, err)
 }
 
@@ -224,7 +224,7 @@ func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 		"backup_end_time",
 	}
 
-	k, err := NewKopiaClient(config.Config{})
+	k, err := NewKopiaClient(&config.Config{})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
@@ -281,7 +281,7 @@ func TestKopiaClient_Connect(t *testing.T) {
 func TestKopiaClient_Disconnect(t *testing.T) {
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient(config.Config{})
+	k, err := NewKopiaClient(&config.Config{})
 	require.NoError(t, err)
 	assert.False(t, k.isConnected)
 
@@ -333,7 +333,7 @@ func TestKopiaVersion(t *testing.T) {
 }
 
 func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
-	cfg := config.Config{
+	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Retentions: []string{"daily"},
 		},
@@ -370,7 +370,7 @@ func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 }
 
 func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
-	cfg := config.Config{
+	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Retentions: []string{"daily"},
 		},
@@ -419,7 +419,7 @@ func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
 func TestRunOnce_ConnectFails(t *testing.T) {
 	logger.Reset(nil)
 
-	cfg := config.Config{
+	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Password: "wrong",
 			APIServer: config.APIServerConfig{
@@ -476,7 +476,7 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 
 	logger.Reset(nil)
 
-	cfg := config.Config{
+	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Password:   password,
 			Retentions: []string{},
@@ -515,7 +515,7 @@ func TestConnect(t *testing.T) {
 
 	configFile := filepath.Join(t.TempDir(), "repo.config")
 
-	cfg := config.Config{
+	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Password: "kopiapwd",
 			APIServer: config.APIServerConfig{
@@ -549,7 +549,7 @@ func TestConnect_OpenFails(t *testing.T) {
 
 	configFile := filepath.Join(t.TempDir(), "repo.config")
 
-	cfg := config.Config{
+	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Password: "kopiapwd",
 			APIServer: config.APIServerConfig{
@@ -575,7 +575,7 @@ func TestConnect_OpenFails(t *testing.T) {
 
 	cleanup()
 
-	cfg2 := config.Config{
+	cfg2 := &config.Config{
 		Kopia: config.KopiaConfig{
 			Password: "kopiapwd",
 			APIServer: config.APIServerConfig{
@@ -606,7 +606,7 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 
 	configFile := filepath.Join(t.TempDir(), "repo.config")
 
-	cfg := config.Config{
+	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Password:   "kopiapwd",
 			Retentions: []string{},
@@ -697,7 +697,7 @@ func TestRunOnceMetrics(t *testing.T) {
 
 	configFile, sourceDir, password := setupTestRepo(t)
 
-	cfg := config.Config{
+	cfg := &config.Config{
 		Exporter: config.ExporterConfig{
 			Port: 9090,
 		},

@@ -66,7 +66,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Starts HTTP server on configured port serving `/metrics`
 
 ### Kopia Metrics (kopiametrics/kopia.go)
-- Constructor `NewKopiaClient(cfg config.Config)` receives the full config directly
+- Constructor `NewKopiaClient(cfg *config.Config)` receives the full config directly
 - `KopiaClient` manages connection lifecycle: `GenerateConfigFile` → `Connect` → `RunOnce` → `Disconnect`
 - `RunOnce()` lists all snapshot manifests, groups by source, computes retention reasons, and sets gauge metrics
 - Seven Prometheus gauge vectors: `total_size`, `file_count`, `dir_count`, `error_count`, `backup_duration`, `backup_start_time`, `backup_end_time`
