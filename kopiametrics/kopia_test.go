@@ -53,14 +53,16 @@ func hashSHA256(pemContent []byte) (string, error) {
 func freeTestPort(t *testing.T) string {
 	t.Helper()
 
-	l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", "0"))
+	lc := &net.ListenConfig{}
+	l, err := lc.Listen(context.Background(), "tcp", net.JoinHostPort("127.0.0.1", "0"))
 	require.NoError(t, err, "failed to allocate a free port")
 
 	port := strconv.Itoa(l.Addr().(*net.TCPAddr).Port)
 
 	require.NoError(t, l.Close(), "failed to release the probe listener")
 
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", port), 200*time.Millisecond)
+	d := &net.Dialer{Timeout: 200 * time.Millisecond}
+	conn, err := d.DialContext(context.Background(), "tcp", net.JoinHostPort("127.0.0.1", port))
 	if err == nil {
 		_ = conn.Close()
 		t.Fatalf("expected port %s to be free but something is already listening", port)
@@ -143,7 +145,7 @@ func setupTestKopia(t *testing.T) (cleanup func(), fingerprint, ip, port string)
 	}, 10*time.Second, 200*time.Millisecond, "kopia server did not generate a TLS certificate")
 
 	require.Eventually(t, func() bool {
-		conn, err := net.Dial("tcp", net.JoinHostPort(ip, port))
+		conn, err := (&net.Dialer{}).DialContext(context.Background(), "tcp", net.JoinHostPort(ip, port))
 		if err != nil {
 			return false
 		}
@@ -460,7 +462,7 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 	configFile := filepath.Join(baseDir, "repo.config")
 	password := "kopiapwd" //nolint:goconst
 
-	cmd := exec.Command(bin, "repository", "create", "filesystem",
+	cmd := exec.CommandContext(context.Background(), bin, "repository", "create", "filesystem",
 		"--path="+repoPath, "-c", "-p", password,
 		"--cache-directory="+cachePath, "--no-check-for-updates",
 		"--override-hostname=localhost", "--override-username=kopia")
@@ -468,7 +470,7 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "repository create failed: %s", string(out))
 
-	cmd = exec.Command(bin, "--config-file="+configFile, "repository", "connect", "filesystem",
+	cmd = exec.CommandContext(context.Background(), bin, "--config-file="+configFile, "repository", "connect", "filesystem",
 		"--path="+repoPath, "-p", password, "--cache-directory="+cachePath, "--no-check-for-updates")
 	cmd.Dir = baseDir
 	out, err = cmd.CombinedOutput()
