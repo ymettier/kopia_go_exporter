@@ -60,7 +60,7 @@ func (ex *Exporter) SetBuildInfo(version, revision, time string) {
 	buildInfo.WithLabelValues(version, revision, time).Set(1)
 }
 
-// Run starts the HTTP server serving /metrics and blocks until ctx is cancelled.
+// Run starts the HTTP server serving /metrics and blocks until ctx is canceled.
 func (ex *Exporter) Run(ctx context.Context) {
 	l := logger.Get()
 	mux := http.NewServeMux()
