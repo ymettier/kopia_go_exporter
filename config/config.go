@@ -79,11 +79,11 @@ func GetVersionInfo() VersionInfo {
 			continue
 		}
 		switch kv.Key {
-		case "vcs.revision":
+		case "vcs.revision": //nolint:goconst
 			info.Revision = kv.Value
-		case "vcs.time":
+		case "vcs.time": //nolint:goconst
 			info.Time = kv.Value
-		case "vcs.modified":
+		case "vcs.modified": //nolint:goconst
 			info.Dirty = kv.Value == "true"
 		}
 	}
