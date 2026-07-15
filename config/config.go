@@ -259,9 +259,10 @@ func loadConfigLayer(k *koanf.Koanf, loader koanf.Provider, msg string) {
 
 // flagKeyMapper converts a pflag key (using dashes) into the dotted koanf key
 // format used throughout the configuration tree.
-func flagKeyMapper(key, _ string) (mapped string, _ any) {
+func flagKeyMapper(key, value string) (mapped string, mappedValue any) {
 	mapped = strings.ReplaceAll(key, "-", ".")
-	return mapped, nil
+	mappedValue = value
+	return mapped, mappedValue
 }
 func CheckConfig() error {
 	if Cfg.Kopia.Password == "" {
