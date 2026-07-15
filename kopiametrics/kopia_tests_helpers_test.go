@@ -113,7 +113,7 @@ func kopiaChecksumURL() string {
 func expectedKopiaChecksum(t *testing.T, asset string) (string, error) {
 	t.Helper()
 
-	resp, err := http.Get(kopiaChecksumURL()) //nolint:gosec,noctx
+	resp, err := http.Get(kopiaChecksumURL()) //nolint:noctx
 	if err != nil {
 		return "", fmt.Errorf("failed to download checksums.txt: %w", err)
 	}
