@@ -234,9 +234,8 @@ func readConfig(filename string, fs *pflag.FlagSet) error {
 	// Load pflag values, converting dashes to dots for koanf key matching.
 	// Only flags explicitly set by the user override YAML/env values.
 	if fs != nil {
-		loadConfigLayer(k, posflag.ProviderWithValue(fs, ".", k, func(key, value string) (string, interface{}) {
-			return strings.ReplaceAll(key, "-", "."), value
-		}),
+		loadConfigLayer(k,
+			posflag.ProviderWithValue(fs, ".", k, flagKeyMapper),
 			"Failed to load flag overrides",
 		)
 	}
@@ -258,7 +257,12 @@ func loadConfigLayer(k *koanf.Koanf, loader koanf.Provider, msg string) {
 	}
 }
 
-// CheckConfig validates that all required configuration fields are set.
+// flagKeyMapper converts a pflag key (using dashes) into the dotted koanf key
+// format used throughout the configuration tree.
+func flagKeyMapper(key, _ string) (mapped string, _ any) {
+	mapped = strings.ReplaceAll(key, "-", ".")
+	return mapped, nil
+}
 func CheckConfig() error {
 	if Cfg.Kopia.Password == "" {
 		return fmt.Errorf("kopia.password is not set")

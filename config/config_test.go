@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"os"
 	"runtime/debug"
-	"strings"
 	"testing"
 
 	"github.com/knadh/koanf/parsers/yaml"
@@ -232,9 +231,7 @@ func TestReadExporterConfig_FlagOverride(t *testing.T) {
 
 	k = koanfNew(t, cfgFile)
 	require.NoError(t, k.Load(
-		posflag.ProviderWithValue(fs, ".", k, func(key, value string) (string, interface{}) {
-			return strings.ReplaceAll(key, "-", "."), value
-		}), nil))
+		posflag.ProviderWithValue(fs, ".", k, flagKeyMapper), nil))
 
 	l := slog.Default()
 	cfg := readExporterConfig(k, l)
