@@ -344,7 +344,7 @@ func kopiaBinaryVersion(t *testing.T, binaryPath string) (string, error) {
 		return "", fmt.Errorf("failed to resolve kopia binary path: %w", err)
 	}
 
-	cmd := exec.Command(runPath, "--version")
+	cmd := exec.CommandContext(context.Background(), runPath, "--version")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to run %q --version: %w", binaryPath, err)
