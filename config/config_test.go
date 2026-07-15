@@ -108,7 +108,7 @@ func TestGetVersionInfo_ReturnsVCSData(t *testing.T) {
 func writeTestConfig(t *testing.T, content string) string {
 	t.Helper()
 	tmpFile := t.TempDir() + "/test.yaml"
-	err := os.WriteFile(tmpFile, []byte(content), 0o644)
+	err := os.WriteFile(tmpFile, []byte(content), 0o600)
 	require.NoError(t, err)
 	return tmpFile
 }
