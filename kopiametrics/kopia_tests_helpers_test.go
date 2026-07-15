@@ -286,7 +286,7 @@ func extractKopiaFromTarGz(archivePath, targetPath string) error {
 			return fmt.Errorf("failed to create kopia binary: %w", err)
 		}
 
-		if _, err := io.Copy(out, tr); err != nil {
+		if _, err := io.Copy(out, io.LimitReader(tr, 1<<30)); err != nil {
 			_ = out.Close()
 			return fmt.Errorf("failed to extract kopia binary: %w", err)
 		}
@@ -322,7 +322,7 @@ func extractKopiaFromZip(archivePath, targetPath string) error {
 			return fmt.Errorf("failed to create kopia binary: %w", err)
 		}
 
-		if _, err := io.Copy(out, rc); err != nil {
+		if _, err := io.Copy(out, io.LimitReader(rc, 1<<30)); err != nil {
 			_ = rc.Close()
 			_ = out.Close()
 			return fmt.Errorf("failed to extract kopia binary: %w", err)
