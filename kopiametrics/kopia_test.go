@@ -159,7 +159,7 @@ func setupTestKopia(t *testing.T) (cleanup func(), fingerprint, ip, port string)
 	require.NoError(t, err, "failed to extract fingerprint from certificate")
 
 	cleanup = func() {
-		shutdown := exec.CommandContext(context.Background(), bin, "server", "shutdown",
+		shutdown := exec.CommandContext(context.Background(), bin, "server", "shutdown", //nolint:gosec
 			"--server-cert-fingerprint="+fingerprint,
 			"--address=https://"+net.JoinHostPort(ip, port),
 			"--server-control-username=kopia",
