@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -66,8 +67,9 @@ func (ex *Exporter) Run(ctx context.Context) {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(ex.Reg, promhttp.HandlerOpts{}))
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", ex.Port),
-		Handler: mux,
+		Addr:              fmt.Sprintf(":%d", ex.Port),
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
