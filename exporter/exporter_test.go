@@ -139,7 +139,7 @@ func TestExporter_Run(t *testing.T) {
 
 		time.Sleep(200 * time.Millisecond)
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:12345/metrics", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:12345/metrics", http.NoBody)
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
