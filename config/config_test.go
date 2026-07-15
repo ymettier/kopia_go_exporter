@@ -524,48 +524,56 @@ func TestGetVersionInfo_BuildInfoUnavailable(t *testing.T) {
 	assert.False(t, vi.Dirty)
 }
 
-func TestGetVersionInfo_WithVCSSettings_Dirty(t *testing.T) {
-	origReadBuildInfo := ReadBuildInfo
-	defer func() { ReadBuildInfo = origReadBuildInfo }()
-
-	givenVersion = "3.0.0"
-	ReadBuildInfo = func() (*debug.BuildInfo, bool) {
-		return &debug.BuildInfo{
-			Settings: []debug.BuildSetting{
-				{Key: "vcs.revision", Value: "deadbeef"},
-				{Key: "vcs.time", Value: "2025-06-01T12:00:00Z"},
-				{Key: "vcs.modified", Value: "true"},
-			},
-		}, true
+func TestGetVersionInfo_WithVCSSettings(t *testing.T) {
+	tests := []struct {
+		name        string
+		version     string
+		revision    string
+		time        string
+		modified    string
+		wantDirty   bool
+	}{
+		{
+			name:      "dirty",
+			version:   "3.0.0",
+			revision:  "deadbeef",
+			time:      "2025-06-01T12:00:00Z",
+			modified:  "true",
+			wantDirty: true,
+		},
+		{
+			name:      "clean",
+			version:   "4.0.0",
+			revision:  "face0ff",
+			time:      "2025-07-01T08:00:00Z",
+			modified:  "false",
+			wantDirty: false,
+		},
 	}
 
-	vi := GetVersionInfo()
-	assert.Equal(t, "3.0.0", vi.Version)
-	assert.Equal(t, "deadbeef", vi.Revision)
-	assert.Equal(t, "2025-06-01T12:00:00Z", vi.Time)
-	assert.True(t, vi.Dirty)
-}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			origReadBuildInfo := ReadBuildInfo
+			defer func() { ReadBuildInfo = origReadBuildInfo }()
 
-func TestGetVersionInfo_WithVCSSettings_Clean(t *testing.T) {
-	origReadBuildInfo := ReadBuildInfo
-	defer func() { ReadBuildInfo = origReadBuildInfo }()
+			givenVersion = tc.version
+			ReadBuildInfo = func() (*debug.BuildInfo, bool) {
+				return &debug.BuildInfo{
+					Settings: []debug.BuildSetting{
+						{Key: "vcs.revision", Value: tc.revision},
+						{Key: "vcs.time", Value: tc.time},
+						{Key: "vcs.modified", Value: tc.modified},
+					},
+				}, true
+			}
 
-	givenVersion = "4.0.0"
-	ReadBuildInfo = func() (*debug.BuildInfo, bool) {
-		return &debug.BuildInfo{
-			Settings: []debug.BuildSetting{
-				{Key: "vcs.revision", Value: "face0ff"},
-				{Key: "vcs.time", Value: "2025-07-01T08:00:00Z"},
-				{Key: "vcs.modified", Value: "false"},
-			},
-		}, true
+			vi := GetVersionInfo()
+			assert.Equal(t, tc.version, vi.Version)
+			assert.Equal(t, tc.revision, vi.Revision)
+			assert.Equal(t, tc.time, vi.Time)
+			assert.Equal(t, tc.wantDirty, vi.Dirty)
+		})
 	}
-
-	vi := GetVersionInfo()
-	assert.Equal(t, "4.0.0", vi.Version)
-	assert.Equal(t, "face0ff", vi.Revision)
-	assert.Equal(t, "2025-07-01T08:00:00Z", vi.Time)
-	assert.False(t, vi.Dirty)
 }
 
 func TestReadKopiaConfig_InvalidRetentions(t *testing.T) {
