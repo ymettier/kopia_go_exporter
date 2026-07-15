@@ -47,12 +47,12 @@ func TestParseFlags(t *testing.T) {
 		},
 		{
 			name:    "custom config file",
-			args:    []string{"--config", "custom.yaml"},
+			args:    []string{"--config", "custom.yaml"}, //nolint:goconst
 			wantErr: false,
 		},
 		{
 			name:    "custom exporter port",
-			args:    []string{"--exporter-port", "9090"},
+			args:    []string{"--exporter-port", "9090"}, //nolint:goconst
 			wantErr: false,
 		},
 		{
@@ -100,7 +100,7 @@ func TestGetVersionInfo(t *testing.T) {
 }
 
 func TestGetVersionInfo_ReturnsVCSData(t *testing.T) {
-	givenVersion = "1.0.0"
+	givenVersion = "1.0.0" //nolint:goconst
 	vi := GetVersionInfo()
 	assert.Equal(t, "1.0.0", vi.Version)
 }
@@ -335,12 +335,12 @@ func TestCheckConfig_ValidConfig(t *testing.T) {
 
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			Password: "test",
+			Password: "test", //nolint:goconst
 			APIServer: APIServerConfig{
-				RepositoryURL: "https://example.com:51515",
-				Hostname:      "localhost",
-				Username:      "kopia",
-				Fingerprint:   "abc123",
+				RepositoryURL: "https://example.com:51515", //nolint:goconst
+				Hostname:      "localhost", //nolint:goconst
+				Username:      "kopia", //nolint:goconst
+				Fingerprint:   "abc123", //nolint:goconst
 			},
 		},
 	}

@@ -84,7 +84,7 @@ func GetVersionInfo() VersionInfo {
 		case "vcs.time": //nolint:goconst
 			info.Time = kv.Value
 		case "vcs.modified": //nolint:goconst
-			info.Dirty = kv.Value == "true"
+			info.Dirty = kv.Value == "true" //nolint:goconst
 		}
 	}
 	return info
