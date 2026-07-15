@@ -137,7 +137,7 @@ log_level: "error"
 func writeTestMainConfig(t *testing.T, content string) string {
 	t.Helper()
 	tmpFile := filepath.Join(t.TempDir(), "test.yaml")
-	err := os.WriteFile(tmpFile, []byte(content), 0o644)
+	err := os.WriteFile(tmpFile, []byte(content), 0o600)
 	require.NoError(t, err)
 	return tmpFile
 }

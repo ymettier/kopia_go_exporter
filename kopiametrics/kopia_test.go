@@ -667,9 +667,9 @@ func setupTestRepo(t *testing.T) (configFile, sourceDir, password string) {
 	require.NoError(t, os.MkdirAll(subDir, 0o755))
 
 	for _, name := range []string{"file1.txt", "file2.txt"} {
-		require.NoError(t, os.WriteFile(filepath.Join(sourceDir, name), []byte("dummy content for "+name), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(sourceDir, name), []byte("dummy content for "+name), 0o600))
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(subDir, "file3.txt"), []byte("dummy content for file3.txt"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(subDir, "file3.txt"), []byte("dummy content for file3.txt"), 0o600))
 
 	runKopia := func(name string, args ...string) {
 		cmd := exec.CommandContext(ctx, bin, args...)
