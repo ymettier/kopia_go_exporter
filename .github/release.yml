@@ -1,0 +1,17 @@
+# Copyright 2024-2026 The kopia-go-exporter Authors. All rights reserved.
+# SPDX-License-Identifier: MIT
+
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+  categories:
+    - title: Breaking Changes
+      labels:
+        - breaking-change
+    - title: Enhancements
+      labels:
+        - enhancement
+    - title: Changes
+      labels:
+        - "*"

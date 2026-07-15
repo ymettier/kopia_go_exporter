@@ -1,0 +1,37 @@
+# Copyright 2024-2026 The kopia-go-exporter Authors. All rights reserved.
+# SPDX-License-Identifier: MIT
+
+name: goreleaser
+
+on:
+  push:
+    # run only against tags
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  # packages: write
+  # issues: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: git fetch --force --tags
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+      # More assembly might be required: Docker logins, GPG, etc.
+      # It all depends on your needs.
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
