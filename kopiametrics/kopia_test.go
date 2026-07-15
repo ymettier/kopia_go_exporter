@@ -261,7 +261,7 @@ func TestKopiaClient_Connect(t *testing.T) {
 	ctx := context.Background()
 	opts := repo.ConnectOptions{
 		ClientOptions: repo.ClientOptions{
-			Username: "kopia", //nolint:goconst
+			Username: "kopia",     //nolint:goconst
 			Hostname: "localhost", //nolint:goconst
 		},
 	}

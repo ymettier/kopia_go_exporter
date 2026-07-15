@@ -231,9 +231,10 @@ func TestReadExporterConfig_FlagOverride(t *testing.T) {
 	require.NoError(t, fs.Parse([]string{"--exporter-port", "7777"}))
 
 	k = koanfNew(t, cfgFile)
-	require.NoError(t, k.Load(posflag.ProviderWithValue(fs, ".", k, func(key, value string) (string, interface{}) {
-		return strings.ReplaceAll(key, "-", "."), value
-	}), nil))
+	require.NoError(t, k.Load(
+		posflag.ProviderWithValue(fs, ".", k, func(key, value string) (string, interface{}) {
+			return strings.ReplaceAll(key, "-", "."), value
+		}), nil))
 
 	l := slog.Default()
 	cfg := readExporterConfig(k, l)
@@ -338,9 +339,9 @@ func TestCheckConfig_ValidConfig(t *testing.T) {
 			Password: "test", //nolint:goconst
 			APIServer: APIServerConfig{
 				RepositoryURL: "https://example.com:51515", //nolint:goconst
-				Hostname:      "localhost", //nolint:goconst
-				Username:      "kopia", //nolint:goconst
-				Fingerprint:   "abc123", //nolint:goconst
+				Hostname:      "localhost",                 //nolint:goconst
+				Username:      "kopia",                     //nolint:goconst
+				Fingerprint:   "abc123",                    //nolint:goconst
 			},
 		},
 	}
@@ -495,9 +496,9 @@ func TestVersionInfo_WithVCSSettings(t *testing.T) {
 		return &debug.BuildInfo{
 			GoVersion: "go1.25.0",
 			Settings: []debug.BuildSetting{
-				{Key: "vcs.revision", Value: "abc123"}, //nolint:goconst
+				{Key: "vcs.revision", Value: "abc123"},           //nolint:goconst
 				{Key: "vcs.time", Value: "2025-01-15T10:00:00Z"}, //nolint:goconst
-				{Key: "vcs.modified", Value: "true"}, //nolint:goconst
+				{Key: "vcs.modified", Value: "true"},             //nolint:goconst
 			},
 		}, true
 	}
@@ -526,12 +527,12 @@ func TestGetVersionInfo_BuildInfoUnavailable(t *testing.T) {
 
 func TestGetVersionInfo_WithVCSSettings(t *testing.T) {
 	tests := []struct {
-		name        string
-		version     string
-		revision    string
-		time        string
-		modified    string
-		wantDirty   bool
+		name      string
+		version   string
+		revision  string
+		time      string
+		modified  string
+		wantDirty bool
 	}{
 		{
 			name:      "dirty",

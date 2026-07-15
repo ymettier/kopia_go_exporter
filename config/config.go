@@ -236,7 +236,9 @@ func readConfig(filename string, fs *pflag.FlagSet) error {
 	if fs != nil {
 		loadConfigLayer(k, posflag.ProviderWithValue(fs, ".", k, func(key, value string) (string, interface{}) {
 			return strings.ReplaceAll(key, "-", "."), value
-		}), "Failed to load flag overrides")
+		}),
+			"Failed to load flag overrides",
+		)
 	}
 
 	Cfg.Exporter = readExporterConfig(k, l)

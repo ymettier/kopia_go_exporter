@@ -93,9 +93,9 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 				cfg:  cfg,
 			}
 			labels := map[string]string{
-				"version": "test_version", //nolint:goconst
+				"version": "test_version",  //nolint:goconst
 				"commit":  "test_revision", //nolint:goconst
-				"date":    "13:37", //nolint:goconst
+				"date":    "13:37",         //nolint:goconst
 			}
 			ex.SetBuildInfo(labels["version"], labels["commit"], labels["date"])
 
