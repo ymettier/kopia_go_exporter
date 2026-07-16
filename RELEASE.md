@@ -4,7 +4,7 @@
 
 1. **Set the version**:
    ```sh
-   VERSION="0.2.0"
+   VERSION="v0.2.0"
    echo "version=${VERSION}"
    ```
 
@@ -14,12 +14,12 @@
    git switch main && git pull
    git switch -c "prepare-release-${VERSION}"
    ```
-3. **Update `version.txt`** with the new version:
+3. **Update `version.txt`** with the new version (without the `v` prefix):
    ```sh
-   echo "${VERSION}" > version.txt
+   echo "${VERSION#v}" > version.txt
    cat version.txt
    ```
-4. **Update the container image tag in `README.md`** to match the new version.
+4. **Update the container image tag in `README.md`** to match the new version (without the `v` prefix).
 5. **Commit**:
    ```sh
    echo "version=${VERSION}"
