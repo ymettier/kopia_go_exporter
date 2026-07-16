@@ -49,7 +49,7 @@ release:
   prerelease: auto
   footer: >-
 
-    **Docker image**: `ghcr.io/ymettier/kopia-go-exporter:{{ .Version }}`
+    **Docker image**: `ghcr.io/ymettier/kopia_go_exporter:{{ .Version }}`
 
     ---
 
