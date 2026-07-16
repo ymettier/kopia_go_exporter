@@ -1,6 +1,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Go Build](https://github.com/ymettier/kopia-go-exporter/actions/workflows/go-build.yml/badge.svg)](https://github.com/ymettier/kopia-go-exporter/actions/workflows/go-build.yml)
-[![golangci-lint](https://github.com/ymettier/kopia-go-exporter/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/ymettier/kopia-go-exporter/actions/workflows/golangci-lint.yml)
+[![Go Build](https://github.com/ymettier/kopia_go_exporter/actions/workflows/go.yml/badge.svg)](https://github.com/ymettier/kopia_go_exporter/actions/workflows/go.yml)
+[![golangci-lint](https://github.com/ymettier/kopia_go_exporter/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/ymettier/kopia_go_exporter/actions/workflows/golangci-lint.yml)
 
 # kopia-go-exporter
 
@@ -10,7 +10,7 @@ See the [Motivations](#motivations) section below for background on why this pro
 
 ## Getting Started
 
-1. **Download**: Get the latest binary for your platform from the [GitHub releases page](https://github.com/ymettier/kopia-go-exporter/releases).
+1. **Download**: Get the latest binary for your platform from the [GitHub releases page](https://github.com/ymettier/kopia_go_exporter/releases).
 2. **Configure**: Create a `config.yaml` file with the following contents. All options are documented with comments in the [config.yaml.sample](config.yaml.sample) file.
    ```yaml
    exporter:
