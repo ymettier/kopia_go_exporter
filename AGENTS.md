@@ -115,6 +115,7 @@ The project is licensed under the [MIT License](LICENSE).
 - No copyright on `version.txt`. README.md copyright goes at end of file.
 - Non-Go files use appropriate comment syntax: `//` for `.txt`, `#` for `.yaml`/`.yml`, `<!--` and `-->` for `.md`.
 - Use `any` instead of `interface{}` (gofmt rewrites it)
+- In markdown files, the indentation is 4 spaces.
 
 ### Naming
 - Package names: single word, lowercase, matching directory name.
