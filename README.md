@@ -1,6 +1,9 @@
+[![GitHub](https://img.shields.io/badge/ymettier/kopia__exporter-grey?logo=github)](https://github.com/ymettier/kopia_go_exporter)
+[![Release](https://img.shields.io/github/v/release/ymettier/kopia_go_exporter?color=blue)](https://github.com/ymettier/kopia_go_exporter/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Go Build](https://github.com/ymettier/kopia_go_exporter/actions/workflows/go.yml/badge.svg)](https://github.com/ymettier/kopia_go_exporter/actions/workflows/go.yml)
 [![golangci-lint](https://github.com/ymettier/kopia_go_exporter/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/ymettier/kopia_go_exporter/actions/workflows/golangci-lint.yml)
+[![codecov](https://img.shields.io/codecov/c/github/ymettier/kopia_go_exporter)](https://codecov.io/gh/ymettier/kopia_go_exporter)
 
 # kopia-go-exporter
 
