@@ -26,7 +26,8 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ├── main.go                  # Entry point, main loop with periodic RunOnce
 ├── main_test.go             # Tests for run(), config validation, context cancellation
 ├── logger/                  # Structured logging setup (slog, lumberjack rotation)
-│   └── logger.go
+│   ├── logger.go
+│   └── logger_test.go
 ├── config/
 │   ├── config.go            # CLI flag parsing, Koanf config loading, env vars, validation
 │   └── config_test.go
@@ -39,11 +40,22 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 │   ├── kopia_tests_helpers_test.go  # Helpers to download/verify the kopia CLI binary for tests
 │   └── test_assets/
 │       └── kopia_test           # Downloaded kopia executable.
-├── config.yaml.sample       # Example configuration (all options commented)
-├── Dockerfile               # Multi-stage build (golang builder + distroless runtime)
+├── .github/
+│   ├── release.yml               # GitHub release changelog categories
+│   └── workflows/
+│       ├── go.yml                 # Go build and test
+│       ├── golangci-lint.yml      # Linting
+│       ├── docker-build.yml       # Container image build
+│       └── release.yml            # GoReleaser-based release
+├── .gitignore
+├── .golangci.yml             # golangci-lint v2 configuration
+├── .goreleaser.yaml          # GoReleaser release configuration
+├── config.yaml.sample        # Example configuration (all options commented)
+├── Dockerfile                # Multi-stage build (golang builder + distroless runtime)
 ├── go.mod / go.sum
-├── version.txt              # Embedded at build time (//go:embed)
-└── README.md
+├── version.txt               # Embedded at build time (//go:embed)
+├── README.md
+└── RELEASE.md                # Release workflow documentation
 ```
 
 ## Key Components
@@ -183,7 +195,14 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ### Modifying Docker Image
 1. Update the builder base image in Dockerfile
 2. Update the runtime base image in Dockerfile
-3. Test with `docker build -t kopia-go-exporter .`
+3. Test with `podman build -t kopia-go-exporter .`
+
+## CI/CD (GitHub Actions)
+
+- `go.yml`: Builds and tests on push/PR.
+- `golangci-lint.yml`: Runs golangci-lint on push/PR.
+- `docker-build.yml`: Builds and pushes the container image to `ghcr.io/ymettier/kopia_go_exporter:<version>`.
+- `release.yml`: Uses GoReleaser to create a draft release with binary artifacts on tag push. Changelog categories are configured in `.github/release.yml`.
 
 ## Dependencies
 - `github.com/knadh/koanf/v2` - Configuration management
@@ -201,16 +220,16 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Before commit, always check the copyright in the files to commit.
 
 ## Build & Run
-- Build: `echo build > version.txt && go build`
-- Test: `echo build > version.txt && go test ./...`
-- Docker: `docker build -t kopia-go-exporter .`
+- Build: `echo dev > version.txt && go build`
+- Test: `echo dev > version.txt && go test ./...`
+- Docker: `podman build -t kopia-go-exporter .`
 - Run: `./kopia-go-exporter --config config.yaml`
 - CLI flags: `--config` (config file), `--exporter-port` (exporter HTTP server port), `--log_level` (log level), `--version` (print version), `--help` (print help).
 
 ## Linting
 - Run: `golangci-lint run ./...`
 - Fallback (version mismatch):
-  `docker run -t --rm -v $(pwd):/app:z -w /app golangci/golangci-lint:v2.12.2 golangci-lint run ./...`
+  `podman run -t --rm -v $(pwd):/app:z -w /app golangci/golangci-lint:v2.12.2 golangci-lint run ./...`
 
 ## Version Management
 - `version.txt` is embedded at build time via `//go:embed` and should contain the version string (e.g., `build` for dev, `1.0.0` for releases).
