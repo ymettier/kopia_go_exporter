@@ -66,7 +66,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Koanf layered loading: YAML file → environment variables (KGE_ prefix) → pflag values
 - Environment variable mapping: `KGE_KOPIA_PASSWORD` → `kopia.password` (uppercase, underscores → dots)
 - Config validation in `CheckConfig()`: returns error on missing required fields
-- Config struct: `config.Cfg` (global, populated at startup)
+- Config struct: `config.Cfg` (global, populated at startup) with `Exporter`, `Kopia`, and `Logger` sub-structs
 - `GetVersionInfo()` returns `VersionInfo` struct with version, revision, time, dirty, goVersion from build info
 - `ReadBuildInfo` is an exported variable holding `debug.ReadBuildInfo`, mockable for testing
 - Helper functions: `lookupConfigKey`, `getConfigString`, `getConfigInt`, `getConfigBool`
@@ -128,7 +128,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Environment variables should override values from the config file
 - Environment variable names should be in uppercase with underscores (e.g., `KGE_KOPIA_PASSWORD`)
 - Environment variables should be documented in the `config.yaml.sample`
-- Environment variables should be prefixed with `KGE_` (e.g., `KGE_EXPORTER_PORT`, `KGE_KOPIA_PASSWORD`)
+- Environment variables should be prefixed with `KGE_` (e.g., `KGE_EXPORTER_PORT`, `KGE_KOPIA_PASSWORD`, `KGE_LOGGER_LOG_LEVEL`)
 - The mapping converts uppercase underscores to dots: `KGE_KOPIA_APISERVER_FINGERPRINT` → `kopia.apiserver.fingerprint`
 
 ### config.yaml.sample
@@ -156,7 +156,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - File rotation via lumberjack.v2
 - Configurable levels: INFO, DEBUG, ERROR, WARN
 - JSON and text output formats
-- Configuration through config.yaml
+- Configuration through config.yaml: `logger.log_level`, `logger.json`, `logger.filename`, `logger.maxsize`, `logger.maxbackups`, `logger.maxage`, `logger.compress`
 
 ### Testing Conventions
 - Write tests alongside features in `*_test.go` files

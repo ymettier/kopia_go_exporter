@@ -25,7 +25,15 @@ func run(ctx context.Context, args []string) error {
 	if err := config.New(version, args); err != nil {
 		return err
 	}
-	logger.Reset(&logger.LogOptions{Level: config.Cfg.LogLevel})
+	logger.Reset(&logger.LogOptions{
+		Level:      config.Cfg.Logger.Level,
+		JSON:       config.Cfg.Logger.JSON,
+		Filename:   config.Cfg.Logger.Filename,
+		MaxSize:    config.Cfg.Logger.MaxSize,
+		MaxBackups: config.Cfg.Logger.MaxBackups,
+		MaxAge:     config.Cfg.Logger.MaxAge,
+		Compress:   config.Cfg.Logger.Compress,
+	})
 	l := logger.Get()
 	l.Debug("Debug logging enabled")
 	ex := exporter.NewExporter(config.Cfg.Exporter)

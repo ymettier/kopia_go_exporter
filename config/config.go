@@ -47,10 +47,20 @@ type KopiaConfig struct {
 	Retentions []string
 }
 
+type LoggerConfig struct {
+	Level      string
+	JSON       bool
+	Filename   string
+	MaxSize    int
+	MaxBackups int
+	MaxAge     int
+	Compress   bool
+}
+
 type Config struct {
 	Exporter ExporterConfig
 	Kopia    KopiaConfig
-	LogLevel string
+	Logger   LoggerConfig
 }
 
 var Cfg Config
@@ -215,6 +225,33 @@ func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
 	return cfg
 }
 
+func readLoggerConfig(koanfInstance *koanf.Koanf, l *slog.Logger) LoggerConfig {
+	var cfg LoggerConfig
+
+	cfg.Level = getConfigString(koanfInstance, "logger.log_level", "info")
+	l.Info("Config: log_level", "log_level", cfg.Level)
+
+	cfg.JSON = getConfigBool(koanfInstance, "logger.json", false)
+	l.Info("Config: logger.json", "json", cfg.JSON)
+
+	cfg.Filename = getConfigString(koanfInstance, "logger.filename", "")
+	l.Info("Config: logger.filename", "filename", cfg.Filename)
+
+	cfg.MaxSize = getConfigInt(koanfInstance, "logger.maxsize", 100) //nolint:mnd
+	l.Info("Config: logger.maxsize", "maxsize", cfg.MaxSize)
+
+	cfg.MaxBackups = getConfigInt(koanfInstance, "logger.maxbackups", 3) //nolint:mnd
+	l.Info("Config: logger.maxbackups", "maxbackups", cfg.MaxBackups)
+
+	cfg.MaxAge = getConfigInt(koanfInstance, "logger.maxage", 28) //nolint:mnd
+	l.Info("Config: logger.maxage", "maxage", cfg.MaxAge)
+
+	cfg.Compress = getConfigBool(koanfInstance, "logger.compress", false)
+	l.Info("Config: logger.compress", "compress", cfg.Compress)
+
+	return cfg
+}
+
 func readConfig(filename string, fs *pflag.FlagSet) error {
 	l := logger.Get()
 
@@ -242,8 +279,7 @@ func readConfig(filename string, fs *pflag.FlagSet) error {
 
 	Cfg.Exporter = readExporterConfig(k, l)
 	Cfg.Kopia = readKopiaConfig(k, l)
-	Cfg.LogLevel = getConfigString(k, "log_level", "info")
-	l.Info("Config: log_level", "log_level", Cfg.LogLevel)
+	Cfg.Logger = readLoggerConfig(k, l)
 
 	return nil
 }

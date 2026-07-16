@@ -63,7 +63,7 @@ func parseLogLevel(opts *LogOptions) slog.Level {
 	if opts != nil && opts.Level != "" {
 		levelStr = opts.Level
 	} else {
-		levelStr = os.Getenv("KGE_LOG_LEVEL")
+		levelStr = os.Getenv("KGE_LOGGER_LOG_LEVEL")
 	}
 	if levelStr != "" {
 		var l slog.Level

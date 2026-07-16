@@ -138,7 +138,7 @@ func TestNewLogger_InvalidLevel(t *testing.T) {
 }
 
 func TestNewLogger_EnvFallback(t *testing.T) {
-	t.Setenv("KGE_LOG_LEVEL", "debug")
+	t.Setenv("KGE_LOGGER_LOG_LEVEL", "debug")
 	Reset(&LogOptions{})
 	l := Get()
 	require.NotNil(t, l)

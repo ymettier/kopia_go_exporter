@@ -16,5 +16,12 @@ kopia:
   retentionstoextract: # retention reasons to export metrics for
     - "latest-1"
 
-# Log level: debug, info, warn, error.
-log_level: "debug"
+# Logger settings.
+logger:
+  log_level: "debug"      # Log level: debug, info, warn, error.
+  json: false             # use JSON format instead of text
+  filename: ""            # log file path (empty = stderr, "stdout" or "stderr" for explicit)
+  maxsize: 100            # max size in MB before rotation
+  maxbackups: 3           # max number of old log files to keep
+  maxage: 28              # max number of days to retain old log files
+  compress: false         # compress rotated files with gzip

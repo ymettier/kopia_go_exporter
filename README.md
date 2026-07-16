@@ -26,10 +26,11 @@ See the [Motivations](#motivations) section below for background on why this pro
        hostname: "myhostname"
        username: "mybackup"
        fingerprint: "you can also set me in KGE_KOPIA_APISERVER_FINGERPRINT env var"
-     retentionstoextract:
-       - "latest-1"
+      retentionstoextract:
+        - "latest-1"
 
-   log_level: "info"
+   logger:
+     log_level: "info"
    ```
 3. **Run**:
    ```sh
