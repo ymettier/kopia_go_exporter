@@ -9,6 +9,7 @@ import (
 	"flag"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,7 +23,7 @@ import (
 var version string
 
 func run(ctx context.Context, args []string) error {
-	if err := config.New(version, args); err != nil {
+	if err := config.New(strings.TrimSpace(version), args); err != nil {
 		return err
 	}
 	logger.Reset(&logger.LogOptions{
