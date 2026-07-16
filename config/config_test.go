@@ -495,14 +495,12 @@ func TestVersionInfo_WithVCSSettings(t *testing.T) {
 			Settings: []debug.BuildSetting{
 				{Key: "vcs.revision", Value: "abc123"},           //nolint:goconst
 				{Key: "vcs.time", Value: "2025-01-15T10:00:00Z"}, //nolint:goconst
-				{Key: "vcs.modified", Value: "true"},             //nolint:goconst
 			},
 		}, true
 	}
 
 	output := formatVersionInfo()
 	assert.Contains(t, output, "abc123")
-	assert.Contains(t, output, "true")
 	assert.Contains(t, output, "go1.25.0")
 }
 
@@ -519,33 +517,20 @@ func TestGetVersionInfo_BuildInfoUnavailable(t *testing.T) {
 	assert.Equal(t, "2.0.0", vi.Version)
 	assert.Empty(t, vi.Revision)
 	assert.Empty(t, vi.Time)
-	assert.False(t, vi.Dirty)
 }
 
 func TestGetVersionInfo_WithVCSSettings(t *testing.T) {
 	tests := []struct {
-		name      string
-		version   string
-		revision  string
-		time      string
-		modified  string
-		wantDirty bool
+		name     string
+		version  string
+		revision string
+		time     string
 	}{
 		{
-			name:      "dirty",
-			version:   "3.0.0",
-			revision:  "deadbeef",
-			time:      "2025-06-01T12:00:00Z",
-			modified:  "true",
-			wantDirty: true,
-		},
-		{
-			name:      "clean",
-			version:   "4.0.0",
-			revision:  "face0ff",
-			time:      "2025-07-01T08:00:00Z",
-			modified:  "false",
-			wantDirty: false,
+			name:     "with vcs settings",
+			version:  "3.0.0",
+			revision: "deadbeef",
+			time:     "2025-06-01T12:00:00Z",
 		},
 	}
 
@@ -560,7 +545,6 @@ func TestGetVersionInfo_WithVCSSettings(t *testing.T) {
 					Settings: []debug.BuildSetting{
 						{Key: "vcs.revision", Value: tc.revision},
 						{Key: "vcs.time", Value: tc.time},
-						{Key: "vcs.modified", Value: tc.modified},
 					},
 				}, true
 			}
@@ -569,7 +553,6 @@ func TestGetVersionInfo_WithVCSSettings(t *testing.T) {
 			assert.Equal(t, tc.version, vi.Version)
 			assert.Equal(t, tc.revision, vi.Revision)
 			assert.Equal(t, tc.time, vi.Time)
-			assert.Equal(t, tc.wantDirty, vi.Dirty)
 		})
 	}
 }
