@@ -65,7 +65,7 @@ ghcr.io/ymettier/kopia_go_exporter:0.1.0
 To build from source:
 
 ```sh
-go build
+echo dev > version.txt && go build
 ```
 
 To run the tests:
