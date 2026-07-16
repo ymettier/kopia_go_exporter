@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"os"
 	"runtime/debug"
 	"strings"
 
@@ -121,6 +122,8 @@ func ParseFlags(version string, args []string) (string, *pflag.FlagSet, error) {
 	showHelp := fs.BoolP("help", "h", false, "Print help")
 
 	if err := fs.Parse(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fs.PrintDefaults()
 		return "", nil, err
 	}
 
