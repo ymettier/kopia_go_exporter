@@ -70,7 +70,6 @@ type VersionInfo struct {
 	Version   string
 	Revision  string
 	Time      string
-	Dirty     bool
 	GoVersion string
 }
 
@@ -93,8 +92,6 @@ func GetVersionInfo() VersionInfo {
 			info.Revision = kv.Value
 		case "vcs.time": //nolint:goconst
 			info.Time = kv.Value
-		case "vcs.modified": //nolint:goconst
-			info.Dirty = kv.Value == "true" //nolint:goconst
 		}
 	}
 	return info
@@ -106,7 +103,6 @@ func formatVersionInfo() string {
 
 	output := fmt.Sprintf("%-15s: %s\n", "Version", vi.Version)
 	output += fmt.Sprintf("%-15s: %s\n", "Revision", vi.Revision)
-	output += fmt.Sprintf("%-15s: %v\n", "Dirty Build", vi.Dirty)
 	output += fmt.Sprintf("%-15s: %s\n", "Last Commit", vi.Time)
 	output += fmt.Sprintf("%-15s: %s\n", "Go Version", vi.GoVersion)
 	return output
