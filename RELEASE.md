@@ -12,10 +12,16 @@
    git add version.txt README.md
    git commit -m "release: 0.2.0"
    ```
-4. **Create and push the tag**:
+4. **Create a PR**:
+   ```sh
+   git push origin main
+   gh pr create --title "Prepare release 0.2.0" --body "Update version.txt and README.md for release 0.2.0."
+   ```
+5. **Merge the PR**.
+6. **Create and push the tag**:
    ```sh
    git tag 0.2.0
    git push origin 0.2.0
    ```
-5. **Build and publish**: The CI workflow creates a draft release with binary artifacts on the [GitHub releases page](https://github.com/ymettier/kopia-go-exporter/releases) and publishes the container image to `ghcr.io/ymettier/kopia_go_exporter:<version>`.
-6. **Publish the release**: review the release draft on the [GitHub releases page](https://github.com/ymettier/kopia-go-exporter/releases) and publish it.
+7. **Build and publish**: The CI workflow creates a draft release with binary artifacts on the [GitHub releases page](https://github.com/ymettier/kopia_go_exporter/releases) and publishes the container image to `ghcr.io/ymettier/kopia_go_exporter:<version>`.
+8. **Publish the release**: review the release draft on the [GitHub releases page](https://github.com/ymettier/kopia_go_exporter/releases) and publish it.
