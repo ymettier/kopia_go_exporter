@@ -6,6 +6,9 @@
 ## Project Overview
 kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written in Go. It connects to a Kopia API server, retrieves snapshot metrics (size, file/dir counts, errors, duration, timestamps), and exposes them via an HTTP `/metrics` endpoint for Prometheus scraping.
 
+## License
+The project is licensed under the [MIT License](LICENSE).
+
 ## Technology Stack
 - **Language**: Go 1.25.8+
 - **Configuration**: `github.com/knadh/koanf` (YAML parsing)
@@ -55,7 +58,8 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ├── go.mod / go.sum
 ├── version.txt               # Embedded at build time (//go:embed)
 ├── README.md
-└── RELEASE.md                # Release workflow documentation
+├── RELEASE.md                # Release workflow documentation
+└── LICENSE                   # MIT License
 ```
 
 ## Key Components
