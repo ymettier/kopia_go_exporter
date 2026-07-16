@@ -63,7 +63,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 ### Configuration (config/config.go)
 - CLI flag parsing via `ParseFlags()`: `--config`/`-c`, `--exporter-port`, `--log_level`/`-l`, `--version`/`-V`, `--help`/`-h`
 - `New()` constructor: parses flags, loads YAML via Koanf, overlays env vars, validates, returns error
-- Koanf layered loading: YAML file → environment variables (KGE_ prefix)
+- Koanf layered loading: YAML file → environment variables (KGE_ prefix) → pflag values
 - Environment variable mapping: `KGE_KOPIA_PASSWORD` → `kopia.password` (uppercase, underscores → dots)
 - Config validation in `CheckConfig()`: returns error on missing required fields
 - Config struct: `config.Cfg` (global, populated at startup)
