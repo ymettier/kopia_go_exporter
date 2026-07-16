@@ -226,6 +226,11 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 - Run: `./kopia-go-exporter --config config.yaml`
 - CLI flags: `--config` (config file), `--exporter-port` (exporter HTTP server port), `--log_level` (log level), `--version` (print version), `--help` (print help).
 
+## Code coverage
+- Packages `config`, `exporter`, and `logger` should be covered at 100%.
+- Package `main` should be covered at least at 70%.
+- Package `kopiametrics` should be covered at least at 80%.
+
 ## Linting
 - Run: `golangci-lint run ./...`
 - Fallback (version mismatch):
