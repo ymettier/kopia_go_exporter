@@ -240,7 +240,7 @@ func readLoggerConfig(koanfInstance *koanf.Koanf, l *slog.Logger) LoggerConfig {
 	cfg.MaxSize = getConfigInt(koanfInstance, "logger.maxsize", 100) //nolint:mnd
 	l.Info("Config: logger.maxsize", "maxsize", cfg.MaxSize)
 
-	cfg.MaxBackups = getConfigInt(koanfInstance, "logger.maxbackups", 3) //nolint:mnd
+	cfg.MaxBackups = getConfigInt(koanfInstance, "logger.maxbackups", 3)
 	l.Info("Config: logger.maxbackups", "maxbackups", cfg.MaxBackups)
 
 	cfg.MaxAge = getConfigInt(koanfInstance, "logger.maxage", 28) //nolint:mnd
