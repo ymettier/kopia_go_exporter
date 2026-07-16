@@ -687,7 +687,7 @@ func setupTestRepo(t *testing.T) (configFile, sourceDir, password string) {
 		"--path="+repoPath, "-p", password, "--cache-directory="+cachePath, "--no-check-for-updates")
 
 	runKopia("snapshot create", "--config-file="+configFile, "snapshot", "create", "-p", password, sourceDir,
-		"--start-time=2025-05-01 15:20:01 CET", "--end-time=2025-05-01 16:10:02 CET")
+		"--start-time=2025-05-01 15:20:01 UTC", "--end-time=2025-05-01 16:10:02 UTC")
 
 	return configFile, sourceDir, password
 }
@@ -751,9 +751,8 @@ func TestRunOnceMetrics(t *testing.T) {
 		assertMetricLabels(t, name, sourceDir, familyMap)
 	}
 
-	cet := time.FixedZone("CET", 3600)
-	expectedStart := time.Date(2025, 5, 1, 15, 20, 1, 0, cet).Unix()
-	expectedEnd := time.Date(2025, 5, 1, 16, 10, 2, 0, cet).Unix()
+	expectedStart := time.Date(2025, 5, 1, 15, 20, 1, 0, time.UTC).Unix()
+	expectedEnd := time.Date(2025, 5, 1, 16, 10, 2, 0, time.UTC).Unix()
 
 	startTime := familyMap["kopia_go_exporter_backup_start_time"].GetMetric()[0].GetGauge().GetValue()
 	endTime := familyMap["kopia_go_exporter_backup_end_time"].GetMetric()[0].GetGauge().GetValue()
