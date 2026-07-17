@@ -68,18 +68,13 @@ func TestParseFlags(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			configFile, _, err := ParseFlags("test", tt.args)
+			_, _, err := ParseFlags("test", tt.args)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseFlags() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if tt.wantErrHelp && err != flag.ErrHelp {
 				t.Errorf("ParseFlags() error = %v, wantErrHelp flag.ErrHelp", err)
-			}
-			if !tt.wantErr {
-				if configFile == "" {
-					t.Errorf("ParseFlags() ConfigFile should not be empty")
-				}
 			}
 		})
 	}
@@ -89,6 +84,26 @@ func TestParseFlags_CustomValues(t *testing.T) {
 	configFile, _, err := ParseFlags("test", []string{"--config", "/tmp/custom.yaml", "--exporter-port", "8080", "--log_level", "warn"})
 	require.NoError(t, err)
 	assert.Equal(t, "/tmp/custom.yaml", configFile)
+}
+
+func TestNew_NoConfigFile(t *testing.T) {
+	// No --config flag: config file is not read, CheckConfig fails on missing fields
+	err := New("test", []string{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "kopia.password is not set")
+}
+
+func TestNew_NoConfigFile_WithEnv(t *testing.T) {
+	// No --config flag but all required values via env vars
+	t.Setenv("KGE_KOPIA_PASSWORD", "secret")
+	t.Setenv("KGE_KOPIA_APISERVER_REPOSITORYURL", "https://some.url:port")
+	t.Setenv("KGE_KOPIA_APISERVER_FINGERPRINT", "abc123")
+	t.Setenv("KGE_KOPIA_APISERVER_HOSTNAME", "myhost")
+	t.Setenv("KGE_KOPIA_APISERVER_USERNAME", "myuser")
+
+	err := New("test", []string{})
+	assert.NoError(t, err)
+	assert.Equal(t, "secret", Cfg.Kopia.Password)
 }
 
 func TestGetVersionInfo(t *testing.T) {
@@ -444,6 +459,7 @@ func TestCheckConfig_MissingUsername(t *testing.T) {
 func TestNew_MissingFile(t *testing.T) {
 	err := New("test", []string{"--config", "/nonexistent/file.yaml"})
 	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read configuration file")
 }
 
 func TestNew_ValidConfig(t *testing.T) {
