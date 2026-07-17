@@ -65,6 +65,7 @@ The project is licensed under the [MIT License](LICENSE).
 ## Key Components
 
 ### Configuration (config/config.go)
+- The configuration file (read with `--config`/`-c`) is optional.
 - CLI flag parsing via `ParseFlags()`: `--config`/`-c`, `--exporter-port`, `--log_level`/`-l`, `--version`/`-V`, `--help`/`-h`
 - `New()` constructor: parses flags, loads YAML via Koanf, overlays env vars, validates, returns error
 - Koanf layered loading: YAML file → environment variables (KGE_ prefix) → pflag values
