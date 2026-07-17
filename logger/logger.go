@@ -132,6 +132,23 @@ func Get() *slog.Logger {
 	return global
 }
 
+// OptionsFromEnv returns LogOptions populated from logger-related
+// environment variables. Missing variables keep their zero values,
+// which lets callers fall back to defaults later.
+func OptionsFromEnv() *LogOptions {
+	opts := &LogOptions{}
+	if v := os.Getenv("KGE_LOGGER_LOG_LEVEL"); v != "" {
+		opts.Level = v
+	}
+	if v := os.Getenv("KGE_LOGGER_JSON"); v != "" {
+		opts.JSON = strings.EqualFold(v, "true") || v == "1"
+	}
+	if v := os.Getenv("KGE_LOGGER_FILENAME"); v != "" {
+		opts.Filename = v
+	}
+	return opts
+}
+
 // Reset re-initializes the global logger with the provided options.
 func Reset(opts *LogOptions) {
 	mu.Lock()

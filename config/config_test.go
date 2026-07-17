@@ -582,3 +582,12 @@ func TestReadKopiaConfig_InvalidRetentions(t *testing.T) {
 	assert.Len(t, cfg.Retentions, 1)
 	assert.Empty(t, cfg.Retentions[0])
 }
+
+func TestReadLoggerConfig_EnvVarOverride(t *testing.T) {
+	k = koanf.New(".")
+	t.Setenv("KGE_LOGGER_LOG_LEVEL", "debug")
+
+	l := slog.Default()
+	cfg := readLoggerConfig(k, l)
+	assert.Equal(t, "debug", cfg.Level)
+}

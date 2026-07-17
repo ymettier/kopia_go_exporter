@@ -172,3 +172,21 @@ func TestReset_Concurrent(_ *testing.T) {
 		<-done
 	}
 }
+
+func TestOptionsFromEnv_AllSet(t *testing.T) {
+	t.Setenv("KGE_LOGGER_LOG_LEVEL", "debug")
+	t.Setenv("KGE_LOGGER_JSON", "true")
+	t.Setenv("KGE_LOGGER_FILENAME", "/tmp/test.log")
+
+	opts := OptionsFromEnv()
+	assert.Equal(t, "debug", opts.Level)
+	assert.True(t, opts.JSON)
+	assert.Equal(t, "/tmp/test.log", opts.Filename)
+}
+
+func TestOptionsFromEnv_NoneSet(t *testing.T) {
+	opts := OptionsFromEnv()
+	assert.Equal(t, "", opts.Level)
+	assert.False(t, opts.JSON)
+	assert.Equal(t, "", opts.Filename)
+}

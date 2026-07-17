@@ -228,6 +228,9 @@ func readLoggerConfig(koanfInstance *koanf.Koanf, l *slog.Logger) LoggerConfig {
 	var cfg LoggerConfig
 
 	cfg.Level = getConfigString(koanfInstance, "logger.log_level", "info")
+	if envLevel := os.Getenv("KGE_LOGGER_LOG_LEVEL"); envLevel != "" {
+		cfg.Level = envLevel
+	}
 	l.Info("Config: log_level", "log_level", cfg.Level)
 
 	cfg.JSON = getConfigBool(koanfInstance, "logger.json", false)
