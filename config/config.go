@@ -115,7 +115,7 @@ func ParseFlags(version string, args []string) (string, *pflag.FlagSet, error) {
 
 	fs := pflag.NewFlagSet("kopia-go-exporter", pflag.ContinueOnError)
 
-	configFile := fs.StringP("config", "c", "config.yaml", "Path to YAML config file")
+	configFile := fs.StringP("config", "c", "", "Path to YAML config file")
 	fs.Int("exporter-port", 9090, "Exporter HTTP server port") //nolint:mnd
 	fs.StringP("log_level", "l", "info", "Log level (debug, info, warn, error)")
 	showVersion := fs.BoolP("version", "V", false, "Print version information and exit")
@@ -255,8 +255,10 @@ func readConfig(filename string, fs *pflag.FlagSet) error {
 	l := logger.Get()
 
 	k = koanf.New(".")
-	if err := k.Load(file.Provider(filename), yaml.Parser()); err != nil {
-		return fmt.Errorf("failed to read configuration file %s: %w", filename, err)
+	if filename != "" {
+		if err := k.Load(file.Provider(filename), yaml.Parser()); err != nil {
+			return fmt.Errorf("failed to read configuration file %s: %w", filename, err)
+		}
 	}
 
 	// Load environment variables with KGE_ prefix (overrides YAML values)
