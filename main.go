@@ -23,6 +23,7 @@ import (
 var version string
 
 func run(ctx context.Context, args []string) error {
+	logger.Reset(logger.OptionsFromEnv())
 	if err := config.New(strings.TrimSpace(version), args); err != nil {
 		return err
 	}

@@ -6,10 +6,13 @@ package main
 import (
 	"context"
 	"flag"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"kopia-go-exporter/logger"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -124,6 +127,104 @@ log_level: "error"
 	}()
 
 	time.Sleep(500 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not exit after context cancellation")
+	}
+}
+
+func TestRun_LoggerConfigFromEnvVar(t *testing.T) {
+	t.Setenv("KGE_LOGGER_LOG_LEVEL", "debug")
+
+	cfgFile := writeTestMainConfig(t, `kopia:
+  password: "secret"
+  apiserver:
+    repositoryURL: "https://127.0.0.1:1"
+    hostname: "localhost"
+    username: "kopia"
+    fingerprint: "0000000000000000000000000000000000000000000000000000000000000000"
+`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- run(ctx, []string{"--config", cfgFile})
+	}()
+
+	time.Sleep(500 * time.Millisecond)
+	l := logger.Get()
+	assert.True(t, l.Enabled(context.Background(), slog.LevelDebug))
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not exit after context cancellation")
+	}
+}
+
+func TestRun_LoggerConfigFromFile(t *testing.T) {
+	cfgFile := writeTestMainConfig(t, `logger:
+  log_level: "warn"
+kopia:
+  password: "secret"
+  apiserver:
+    repositoryURL: "https://127.0.0.1:1"
+    hostname: "localhost"
+    username: "kopia"
+    fingerprint: "0000000000000000000000000000000000000000000000000000000000000000"
+`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- run(ctx, []string{"--config", cfgFile})
+	}()
+
+	time.Sleep(500 * time.Millisecond)
+	l := logger.Get()
+	assert.True(t, l.Enabled(context.Background(), slog.LevelWarn))
+	assert.False(t, l.Enabled(context.Background(), slog.LevelInfo))
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not exit after context cancellation")
+	}
+}
+
+func TestRun_LoggerJSONFromEnvVar(t *testing.T) {
+	t.Setenv("KGE_LOGGER_JSON", "true")
+
+	cfgFile := writeTestMainConfig(t, `kopia:
+  password: "secret"
+  apiserver:
+    repositoryURL: "https://127.0.0.1:1"
+    hostname: "localhost"
+    username: "kopia"
+    fingerprint: "0000000000000000000000000000000000000000000000000000000000000000"
+`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- run(ctx, []string{"--config", cfgFile})
+	}()
+
+	time.Sleep(500 * time.Millisecond)
+	l := logger.Get()
+	_, isJSON := l.Handler().(*slog.JSONHandler)
+	assert.True(t, isJSON, "logger handler should be JSONHandler when KGE_LOGGER_JSON=true")
 	cancel()
 
 	select {
