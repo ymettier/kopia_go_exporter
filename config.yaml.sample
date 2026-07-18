@@ -5,6 +5,18 @@ exporter:
     prefix: "kopia_go_exporter" # Prometheus metrics namespace
   interval: 300        # seconds between scrapes
 
+# Filters
+# Exclude filters apply first. Then include.
+# Default exclude path is empty.
+# Default include path is empty
+# If both include and exclude pathes are empty, include everything.
+filters:
+  include:
+    path:
+      - ".*"
+  exclude:
+    path: []
+
 # Kopia connection settings.
 kopia:
   password: "set me in KGE_KOPIA_PASSWORD env var" # repository password

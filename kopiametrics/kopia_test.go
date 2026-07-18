@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -337,7 +338,7 @@ func TestKopiaVersion(t *testing.T) {
 func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
-			Retentions: []string{"daily"},
+			Retentions: []string{"daily"}, //nolint:goconst
 		},
 	}
 	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter" //nolint:goconst
@@ -352,7 +353,7 @@ func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 
 	now := fs.UTCTimestampFromTime(time.Now())
 	m := &snapshot.Manifest{
-		Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/test/path"},
+		Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/test/path"}, //nolint:goconst
 		StartTime:        now,
 		EndTime:          now,
 		RetentionReasons: []string{"latest"},
@@ -412,6 +413,181 @@ func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
 		familyMap[f.GetName()] = f
 	}
 
+	gauge := familyMap["kopia_go_exporter_file_count"]
+	require.NotNil(t, gauge)
+	require.NotEmpty(t, gauge.GetMetric())
+	assert.Equal(t, float64(10), gauge.GetMetric()[0].GetGauge().GetValue())
+}
+
+func TestMatchPathFilters(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		include []*regexp.Regexp
+		exclude []*regexp.Regexp
+		want    bool
+	}{
+		{
+			name:    "both filters empty validates everything",
+			path:    "/any/path",
+			include: nil,
+			exclude: nil,
+			want:    true,
+		},
+		{
+			name:    "exclude .* with empty include validates nothing",
+			path:    "/any/path",
+			include: nil,
+			exclude: mustRegexes(t, ".*"),
+			want:    false,
+		},
+		{
+			name:    "exclude .* with include string validates only that string",
+			path:    "/data/included",
+			include: mustRegexes(t, ".*included.*"),
+			exclude: mustRegexes(t, ".*"),
+			want:    true,
+		},
+		{
+			name:    "exclude .* with include string rejects non-matching path",
+			path:    "/data/other",
+			include: mustRegexes(t, ".*included.*"),
+			exclude: mustRegexes(t, ".*"),
+			want:    false,
+		},
+		{
+			name:    "exclude string with include .* validates everything",
+			path:    "/data/excluded",
+			include: mustRegexes(t, ".*"),
+			exclude: mustRegexes(t, ".*excluded.*"),
+			want:    true,
+		},
+		{
+			name:    "exclude and include same string validates that string",
+			path:    "/data/shared",
+			include: mustRegexes(t, ".*shared.*"),
+			exclude: mustRegexes(t, ".*shared.*"),
+			want:    true,
+		},
+		{
+			name:    "exclude and include same string rejects non-matching path",
+			path:    "/data/other",
+			include: mustRegexes(t, ".*shared.*"),
+			exclude: mustRegexes(t, ".*shared.*"),
+			want:    true,
+		},
+		{
+			name:    "include match without exclude",
+			path:    "/data/keep",
+			include: mustRegexes(t, ".*keep.*"),
+			exclude: nil,
+			want:    true,
+		},
+		{
+			name:    "include no match without exclude still validates",
+			path:    "/data/drop",
+			include: mustRegexes(t, ".*keep.*"),
+			exclude: nil,
+			want:    true,
+		},
+		{
+			name:    "exclude no match with include accepts",
+			path:    "/data/keep",
+			include: mustRegexes(t, ".*keep.*"),
+			exclude: mustRegexes(t, "/data/tmp.*"),
+			want:    true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, matchPathFilters(tt.path, tt.include, tt.exclude))
+		})
+	}
+}
+
+func mustRegexes(t *testing.T, patterns ...string) []*regexp.Regexp {
+	t.Helper()
+	res := make([]*regexp.Regexp, 0, len(patterns))
+	for _, p := range patterns {
+		res = append(res, regexp.MustCompile(p))
+	}
+	return res
+}
+
+func TestSetSnapshotMetrics_PathFilterExcludes(t *testing.T) {
+	cfg := &config.Config{
+		Kopia: config.KopiaConfig{
+			Retentions: []string{"daily"},
+		},
+		Filters: config.FiltersConfig{
+			Exclude: config.FilterConfig{PathRegex: mustRegexes(t, ".*secret.*")},
+		},
+	}
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+
+	logger.Reset(nil)
+
+	k, err := NewKopiaClient(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
+	reg := prometheus.NewRegistry()
+	k.RegisterKopiaMetrics(reg)
+
+	now := fs.UTCTimestampFromTime(time.Now())
+	m := &snapshot.Manifest{
+		Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/data/secret"},
+		StartTime:        now,
+		EndTime:          now,
+		RetentionReasons: []string{"daily"},
+		Stats:            snapshot.Stats{TotalFileCount: 10, TotalDirectoryCount: 2, TotalFileSize: 1024},
+	}
+
+	k.setSnapshotMetrics(m, false)
+
+	families, err := reg.Gather()
+	require.NoError(t, err)
+	assert.Empty(t, families, "no metrics should be set when path is excluded")
+}
+
+func TestSetSnapshotMetrics_PathFilterIncludes(t *testing.T) {
+	cfg := &config.Config{
+		Kopia: config.KopiaConfig{
+			Retentions: []string{"daily"},
+		},
+		Filters: config.FiltersConfig{
+			Include: config.FilterConfig{PathRegex: mustRegexes(t, ".*included.*")},
+		},
+	}
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+
+	logger.Reset(nil)
+
+	k, err := NewKopiaClient(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
+	reg := prometheus.NewRegistry()
+	k.RegisterKopiaMetrics(reg)
+
+	now := fs.UTCTimestampFromTime(time.Now())
+	m := &snapshot.Manifest{
+		Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/data/included"},
+		StartTime:        now,
+		EndTime:          now,
+		RetentionReasons: []string{"daily"},
+		Stats:            snapshot.Stats{TotalFileCount: 10, TotalDirectoryCount: 2, TotalFileSize: 1024},
+	}
+
+	k.setSnapshotMetrics(m, false)
+
+	families, err := reg.Gather()
+	require.NoError(t, err)
+	logGatheredMetrics(t, families)
+	require.NotEmpty(t, families, "metrics should be set when path is included")
+
+	familyMap := make(map[string]*dto.MetricFamily)
+	for _, f := range families {
+		familyMap[f.GetName()] = f
+	}
 	gauge := familyMap["kopia_go_exporter_file_count"]
 	require.NotNil(t, gauge)
 	require.NotEmpty(t, gauge.GetMetric())

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"regexp"
 	"runtime/debug"
 	"strings"
 
@@ -58,8 +59,19 @@ type LoggerConfig struct {
 	Compress   bool
 }
 
+type FilterConfig struct {
+	Path      []string
+	PathRegex []*regexp.Regexp
+}
+
+type FiltersConfig struct {
+	Include FilterConfig
+	Exclude FilterConfig
+}
+
 type Config struct {
 	Exporter ExporterConfig
+	Filters  FiltersConfig
 	Kopia    KopiaConfig
 	Logger   LoggerConfig
 }
@@ -194,6 +206,50 @@ func readExporterConfig(koanfInstance *koanf.Koanf, l *slog.Logger) ExporterConf
 	return cfg
 }
 
+func readFiltersConfig(koanfInstance *koanf.Koanf, l *slog.Logger) (FiltersConfig, error) {
+	var cfg FiltersConfig
+
+	cfg.Include.Path = make([]string, 0)
+	if koanfInstance.Exists("filters.include.path") {
+		if err := koanfInstance.Unmarshal("filters.include.path", &cfg.Include.Path); err != nil {
+			l.Warn("Failed to unmarshal filters.include.path", "err", err)
+		}
+	}
+	l.Info("Config: filters.include.path", "path", cfg.Include.Path)
+	includeRegex, err := compileRegexes(cfg.Include.Path)
+	if err != nil {
+		return cfg, fmt.Errorf("invalid filters.include.path regex: %w", err)
+	}
+	cfg.Include.PathRegex = includeRegex
+
+	cfg.Exclude.Path = make([]string, 0)
+	if koanfInstance.Exists("filters.exclude.path") {
+		if err := koanfInstance.Unmarshal("filters.exclude.path", &cfg.Exclude.Path); err != nil {
+			l.Warn("Failed to unmarshal filters.exclude.path", "err", err)
+		}
+	}
+	l.Info("Config: filters.exclude.path", "path", cfg.Exclude.Path)
+	excludeRegex, err := compileRegexes(cfg.Exclude.Path)
+	if err != nil {
+		return cfg, fmt.Errorf("invalid filters.exclude.path regex: %w", err)
+	}
+	cfg.Exclude.PathRegex = excludeRegex
+
+	return cfg, nil
+}
+
+func compileRegexes(patterns []string) ([]*regexp.Regexp, error) {
+	regexes := make([]*regexp.Regexp, 0, len(patterns))
+	for _, p := range patterns {
+		re, err := regexp.Compile(p)
+		if err != nil {
+			return nil, err
+		}
+		regexes = append(regexes, re)
+	}
+	return regexes, nil
+}
+
 func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
 	var cfg KopiaConfig
 
@@ -282,6 +338,11 @@ func readConfig(filename string, fs *pflag.FlagSet) error {
 	}
 
 	Cfg.Exporter = readExporterConfig(k, l)
+	var err error
+	Cfg.Filters, err = readFiltersConfig(k, l)
+	if err != nil {
+		return err
+	}
 	Cfg.Kopia = readKopiaConfig(k, l)
 	Cfg.Logger = readLoggerConfig(k, l)
 

@@ -263,6 +263,99 @@ func TestReadExporterConfig_Defaults(t *testing.T) {
 	assert.Equal(t, 300, cfg.Interval)
 }
 
+func TestReadFiltersConfig(t *testing.T) {
+	cfgFile := writeTestConfig(t, `filters:
+  include:
+    path:
+      - ".*"
+  exclude:
+    path:
+      - "/tmp/.*"
+`)
+	k = koanfNew(t, cfgFile)
+
+	l := slog.Default()
+	cfg, err := readFiltersConfig(k, l)
+	require.NoError(t, err)
+	assert.Equal(t, []string{".*"}, cfg.Include.Path)
+	assert.Len(t, cfg.Include.PathRegex, 1)
+	assert.Equal(t, []string{"/tmp/.*"}, cfg.Exclude.Path)
+	assert.Len(t, cfg.Exclude.PathRegex, 1)
+}
+
+func TestReadFiltersConfig_InvalidRegex(t *testing.T) {
+	cfgFile := writeTestConfig(t, "filters:\n  include:\n    path:\n      - \"[\"\n")
+	k = koanfNew(t, cfgFile)
+
+	l := slog.Default()
+	_, err := readFiltersConfig(k, l)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid filters.include.path regex")
+}
+
+func TestReadFiltersConfig_InvalidExcludeRegex(t *testing.T) {
+	cfgFile := writeTestConfig(t, "filters:\n  exclude:\n    path:\n      - \"[\"\n")
+	k = koanfNew(t, cfgFile)
+
+	l := slog.Default()
+	_, err := readFiltersConfig(k, l)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid filters.exclude.path regex")
+}
+
+func TestReadFiltersConfig_InvalidIncludeStructure(t *testing.T) {
+	cfgFile := writeTestConfig(t, "filters:\n  include:\n    path:\n      key: value\n")
+	k = koanfNew(t, cfgFile)
+
+	l := slog.Default()
+	cfg, err := readFiltersConfig(k, l)
+	require.NoError(t, err)
+	assert.Len(t, cfg.Include.PathRegex, 1)
+}
+
+func TestReadFiltersConfig_InvalidExcludeStructure(t *testing.T) {
+	cfgFile := writeTestConfig(t, "filters:\n  exclude:\n    path:\n      key: value\n")
+	k = koanfNew(t, cfgFile)
+
+	l := slog.Default()
+	cfg, err := readFiltersConfig(k, l)
+	require.NoError(t, err)
+	assert.Len(t, cfg.Exclude.PathRegex, 1)
+}
+
+func TestReadConfig_InvalidFilters(t *testing.T) {
+	tmpFile := writeTestConfig(t, "filters:\n  include:\n    path:\n      - \"[\"\n")
+
+	err := readConfig(tmpFile, nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid filters.include.path regex")
+}
+
+func TestReadFiltersConfig_Defaults(t *testing.T) {
+	k = koanf.New(".")
+	l := slog.Default()
+
+	cfg, err := readFiltersConfig(k, l)
+	require.NoError(t, err)
+	assert.Equal(t, []string{}, cfg.Include.Path)
+	assert.Empty(t, cfg.Include.PathRegex)
+	assert.Equal(t, []string{}, cfg.Exclude.Path)
+	assert.Empty(t, cfg.Exclude.PathRegex)
+}
+
+func TestReadFiltersConfig_EnvOverride(t *testing.T) {
+	tmpFile := writeTestConfig(t, "filters:\n  include:\n    path:\n      - ignored\n")
+	t.Setenv("KGE_FILTERS_INCLUDE_PATH", ".*")
+	t.Setenv("KGE_FILTERS_EXCLUDE_PATH", "/tmp/.*")
+
+	err := readConfig(tmpFile, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []string{".*"}, Cfg.Filters.Include.Path)
+	assert.Len(t, Cfg.Filters.Include.PathRegex, 1)
+	assert.Equal(t, []string{"/tmp/.*"}, Cfg.Filters.Exclude.Path)
+	assert.Len(t, Cfg.Filters.Exclude.PathRegex, 1)
+}
+
 func TestReadKopiaConfig(t *testing.T) {
 	cfgFile := writeTestConfig(t, `kopia:
   password: secret
