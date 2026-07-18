@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"sync"
+	"time"
 
 	"github.com/kopia/kopia/repo"
 	"github.com/kopia/kopia/repo/content"
@@ -20,6 +22,45 @@ import (
 	"kopia-go-exporter/config"
 	"kopia-go-exporter/logger"
 )
+
+// filterCacheTTL is the lifetime of cached path-filter results. The cache is
+// invalidated after this duration to drop entries that are no longer used.
+const filterCacheTTL = 86400 * time.Second
+
+type filterCacheEntry struct {
+	result    bool
+	expiresAt time.Time
+}
+
+var (
+	filterCacheMu sync.Mutex
+	filterCache   = make(map[string]filterCacheEntry)
+	filterCacheTS = time.Now()
+)
+
+// matchPathFiltersCached returns whether the given path matches the filters,
+// using a process-wide cache keyed by path to avoid re-running the regexes on
+// every snapshot. The whole cache is invalidated every filterCacheTTL seconds.
+func matchPathFiltersCached(path string, include, exclude []*regexp.Regexp) bool {
+	now := time.Now()
+	filterCacheMu.Lock()
+	if now.Sub(filterCacheTS) >= filterCacheTTL {
+		filterCache = make(map[string]filterCacheEntry)
+		filterCacheTS = now
+	}
+	if entry, ok := filterCache[path]; ok && now.Before(entry.expiresAt) {
+		filterCacheMu.Unlock()
+		return entry.result
+	}
+	filterCacheMu.Unlock()
+
+	result := matchPathFilters(path, include, exclude)
+
+	filterCacheMu.Lock()
+	filterCache[path] = filterCacheEntry{result: result, expiresAt: now.Add(filterCacheTTL)}
+	filterCacheMu.Unlock()
+	return result
+}
 
 type KopiaMetrics struct {
 	TotalSize       *prometheus.GaugeVec
@@ -150,7 +191,7 @@ func matchPathFilters(path string, include, exclude []*regexp.Regexp) bool {
 }
 
 func (k *KopiaClient) setSnapshotMetrics(m *snapshot.Manifest, keepAllRetentions bool) {
-	if !matchPathFilters(m.Source.Path, k.cfg.Filters.Include.PathRegex, k.cfg.Filters.Exclude.PathRegex) {
+	if !matchPathFiltersCached(m.Source.Path, k.cfg.Filters.Include.PathRegex, k.cfg.Filters.Exclude.PathRegex) {
 		return
 	}
 	for _, rr := range m.RetentionReasons {

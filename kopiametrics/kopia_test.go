@@ -505,6 +505,40 @@ func TestMatchPathFilters(t *testing.T) {
 	}
 }
 
+func TestMatchPathFiltersCached(t *testing.T) {
+	filterCacheMu.Lock()
+	filterCache = make(map[string]filterCacheEntry)
+	filterCacheTS = time.Now()
+	filterCacheMu.Unlock()
+
+	include := mustRegexes(t, ".*keep.*")
+	exclude := mustRegexes(t, "/data/tmp.*")
+
+	assert.True(t, matchPathFiltersCached("/data/keep", include, exclude))
+	assert.False(t, matchPathFiltersCached("/data/tmp/drop", include, exclude))
+
+	// Second calls should hit the cache and return identical results.
+	assert.True(t, matchPathFiltersCached("/data/keep", include, exclude))
+	assert.False(t, matchPathFiltersCached("/data/tmp/drop", include, exclude))
+}
+
+func TestMatchPathFiltersCached_InvalidatesAfterTTL(t *testing.T) {
+	filterCacheMu.Lock()
+	filterCache = make(map[string]filterCacheEntry)
+	filterCacheTS = time.Now().Add(-(filterCacheTTL + time.Second))
+	filterCacheMu.Unlock()
+
+	include := mustRegexes(t, ".*keep.*")
+
+	// Cache is stale, so a fresh entry is computed (no panic, correct result).
+	assert.True(t, matchPathFiltersCached("/data/keep", include, nil))
+
+	filterCacheMu.Lock()
+	_, ok := filterCache["/data/keep"]
+	filterCacheMu.Unlock()
+	assert.True(t, ok, "path should be present in cache after a fresh computation")
+}
+
 func mustRegexes(t *testing.T, patterns ...string) []*regexp.Regexp {
 	t.Helper()
 	res := make([]*regexp.Regexp, 0, len(patterns))
