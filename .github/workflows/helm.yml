@@ -73,4 +73,4 @@ jobs:
         run: helm package ./charts/kopia_go_exporter
 
       - name: Push chart to GHCR
-        run: helm push kopia_go_exporter-*.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+        run: helm push kopia-go-exporter-*.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
