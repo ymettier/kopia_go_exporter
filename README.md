@@ -85,8 +85,6 @@ The chart is located in `charts/kopia_go_exporter`.
          repositoryURL: "https://host:port"
          hostname: "myhost"
          username: "myuser"
-       retentionstoextract:
-         - "latest-1"
    EOF
    ```
 
@@ -94,7 +92,7 @@ The chart is located in `charts/kopia_go_exporter`.
 
 **Install:**
 ```sh
-helm upgrade --install kopia-go-exporter ./charts/kopia_go_exporter -f myvalues.yaml
+helm upgrade --install --rollback-on-failure kopia-go-exporter ./charts/kopia_go_exporter -f myvalues.yaml
 ```
 
 Note: Helm 3 users need `--atomic` instead of `--rollback-on-failure`.
