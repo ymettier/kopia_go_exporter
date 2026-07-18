@@ -133,9 +133,10 @@ The project is licensed under the [MIT License](LICENSE).
 - Use optional environment variables for configuration (e.g., `KGE_KOPIA_PASSWORD`...)
 - Environment variables should override values from the config file
 - Environment variable names should be in uppercase with underscores (e.g., `KGE_KOPIA_PASSWORD`)
-- Environment variables should be documented in the `config.yaml.sample`
+- Environment variables should not be documented in the `config.yaml.sample` except `KGE_KOPIA_APISERVER_FINGERPRINT` and `KGE_KOPIA_PASSWORD`.
 - Environment variables should be prefixed with `KGE_` (e.g., `KGE_EXPORTER_PORT`, `KGE_KOPIA_PASSWORD`, `KGE_LOGGER_LOG_LEVEL`)
 - The mapping converts uppercase underscores to dots: `KGE_KOPIA_APISERVER_FINGERPRINT` → `kopia.apiserver.fingerprint`
+- README.md explains how to forge an environment variable from its definition on config.yaml.sample (e.g. a `KGE_` prefix, flatten the path of the variable and replace dots with underscores).
 
 ### config.yaml.sample
 - Every option must be present and commented with a short inline comment

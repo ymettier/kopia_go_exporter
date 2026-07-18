@@ -61,8 +61,25 @@ ghcr.io/ymettier/kopia_go_exporter:0.1.0-rc3
      ghcr.io/ymettier/kopia_go_exporter:0.1.0-rc3 \
      --config /config.yaml
    ```
-   Sensitive values (password, fingerprint) are passed as environment variables using the `KGE_` prefix. See the [config.yaml.sample](config.yaml.sample) for the full list of options and their corresponding environment variable names.
+   Sensitive values (password, fingerprint) are passed preferably as environment variables.
 3. **Verify**: Open `http://localhost:9090/metrics` in your browser or use `curl http://localhost:9090/metrics` to confirm metrics are being exported.
+
+## Configuration
+
+The file `config.yaml.sample` contains all the configuration.
+
+Kopia-go-exporter can use such a configuration file: run it with `--config /path/to/config.yaml` or `-c /path/to/config.yaml` where the `config.yaml` file is based on `config.yaml.sample` and modified as you wish.
+
+You can also override this configuration with environment variables. They are forged on the configuration items in `config.yaml.sample`, with `KGE_` prefix, the path of the item, flattened, uppercase, with underscores as a separator. Example:
+```
+kopia:
+  apiserver:
+    repositoryURL: "https://some.url:port"
+```
+can be overridden with
+```
+KGE_KOPIA_APISERVER_REPOSITORYURL=https://some.url:port
+```
 
 ## Building
 
