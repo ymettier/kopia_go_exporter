@@ -64,6 +64,41 @@ ghcr.io/ymettier/kopia_go_exporter:0.1.0
    Sensitive values (password, fingerprint) are passed preferably as environment variables.
 3. **Verify**: Open `http://localhost:9090/metrics` in your browser or use `curl http://localhost:9090/metrics` to confirm metrics are being exported.
 
+## Kubernetes
+
+The chart is located in `charts/kopia_go_exporter`.
+
+**Configuration:**
+1. Create the Kopia credentials Secret:
+   ```sh
+    kubectl create secret generic kopia-config \
+     --from-literal=password='your-kopia-password' \
+      --from-literal=fingerprint='your-server-fingerprint'
+   ```
+2. Create a custom values file with your configuration:
+
+   ```sh
+   cat <<EOF > myvalues.yaml
+   config:
+     kopia:
+       apiserver:
+         repositoryURL: "https://host:port"
+         hostname: "myhost"
+         username: "myuser"
+       retentionstoextract:
+         - "latest-1"
+   EOF
+   ```
+
+   See `charts/kopia_go_exporter/values.yaml` and `config.yaml.sample` for all available options.
+
+**Install:**
+```sh
+helm upgrade --install kopia-go-exporter ./charts/kopia_go_exporter -f myvalues.yaml
+```
+
+Note: Helm 3 users need `--atomic` instead of `--rollback-on-failure`.
+
 ## Configuration
 
 The file `config.yaml.sample` contains all the configuration.

@@ -1,0 +1,89 @@
+# values.yaml
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/ymettier/kopia_go_exporter
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+
+service:
+  type: ClusterIP
+  port: 9090
+
+serviceMonitor:
+  enabled: false
+  labels: {}
+  interval: 30s
+  scrapeTimeout: 10s
+
+resources: {}
+
+livenessProbe:
+  httpGet:
+    path: /metrics
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 30
+
+readinessProbe:
+  httpGet:
+    path: /metrics
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+extraVolumes: []
+extraVolumeMounts: []
+extraEnv: []
+kopiaConfigSecret: kopia-config
+
+# Configuration served from the ConfigMap at /config/config.yaml
+# ref: config.yaml.sample at the root of the repository
+config:
+  exporter:
+    port: 9090
+    metrics:
+      prefix: "kopia_go_exporter"
+    interval: 300
+  kopia:
+    # Example API server connection. Password and fingerprint are injected via
+    # KGE_KOPIA_PASSWORD and KGE_KOPIA_APISERVER_FINGERPRINT env vars from the kopia Secret.
+    apiserver:
+      repositoryURL: "https://some.url:port"
+      hostname: "myhostname"
+      username: "mybackup"
+    retentionstoextract:
+      - "latest-1"
+  logger:
+    log_level: "info"
+    json: true
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
