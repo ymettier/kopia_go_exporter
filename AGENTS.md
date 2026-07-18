@@ -61,6 +61,7 @@ The project is licensed under the [MIT License](LICENSE).
 │       ├── go.yml                 # Go build and test
 │       ├── golangci-lint.yml      # Linting
 │       ├── docker-build.yml       # Container image build
+│       ├── helm.yml               # Helm chart lint and release to GHCR
 │       └── release.yml            # GoReleaser-based release
 ├── .gitignore
 ├── .golangci.yml             # golangci-lint v2 configuration
@@ -113,6 +114,7 @@ The project is licensed under the [MIT License](LICENSE).
 - `values.yaml` includes `kopiaConfigSecret: kopia-config` for the Kopia credentials Secret name
 - Deployment template injects `KGE_KOPIA_PASSWORD` and `KGE_KOPIA_APISERVER_FINGERPRINT` from the Secret defined in `kopiaConfigSecret` (e.g. `kopia-config`) as environment variables
 - ConfigMap serves the application config at `/config/config.yaml`
+- ServiceMonitor supports `relabelings`, `metricRelabelings`, and `namespaceSelector`
 
 ## Development Guidelines
 
@@ -232,6 +234,7 @@ The project is licensed under the [MIT License](LICENSE).
 - `go.yml`: Builds and tests on push/PR.
 - `golangci-lint.yml`: Runs golangci-lint on push/PR.
 - `docker-build.yml`: Builds and pushes the container image to `ghcr.io/ymettier/kopia_go_exporter:<version>`.
+- `helm.yml`: Lints the Helm chart (Helm 3 & 4) and pushes to GHCR as OCI on `helm-v*` tags.
 - `release.yml`: Uses GoReleaser to create a draft release with binary artifacts on tag push. Changelog categories are configured in `.github/release.yml`.
 
 ## Dependencies
