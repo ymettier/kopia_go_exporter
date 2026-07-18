@@ -235,6 +235,55 @@ func TestRun_LoggerJSONFromEnvVar(t *testing.T) {
 	}
 }
 
+func TestRun_NewKopiaClientFails(t *testing.T) {
+	cfgFile := writeTestMainConfig(t, `kopia:
+  password: "secret"
+  apiserver:
+    repositoryURL: "https://127.0.0.1:1"
+    hostname: "localhost"
+    username: "kopia"
+    fingerprint: "0000000000000000000000000000000000000000000000000000000000000000"
+`)
+	t.Setenv("TMPDIR", "/nonexistent-kopia-tmp-dir")
+
+	err := run(context.Background(), []string{"--config", cfgFile})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to create temp directory")
+}
+
+func TestRun_LoopDecrementsInterval(t *testing.T) {
+	cfgFile := writeTestMainConfig(t, `exporter:
+  port: 9092
+  interval: 2
+kopia:
+  password: "secret"
+  apiserver:
+    repositoryURL: "https://127.0.0.1:1"
+    hostname: "localhost"
+    username: "kopia"
+    fingerprint: "0000000000000000000000000000000000000000000000000000000000000000"
+log_level: "error"
+`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- run(ctx, []string{"--config", cfgFile})
+	}()
+
+	// Let the loop iterate past the first iteration so the interval
+	// decrement branch (sleepInterval > 0) is exercised, then cancel.
+	time.Sleep(1500 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not exit after context cancellation")
+	}
+}
+
 func writeTestMainConfig(t *testing.T, content string) string {
 	t.Helper()
 	tmpFile := filepath.Join(t.TempDir(), "test.yaml")
