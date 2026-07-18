@@ -1,21 +1,21 @@
 # Copyright 2024-2026 The kopia-go-exporter Authors. All rights reserved.
 # SPDX-License-Identifier: MIT
 
-name: goreleaser
+name: release
 
 on:
   push:
-    # run only against tags
     tags:
       - "v*.*.*"
+      - "helm-v*"
 
 permissions:
   contents: write
-  # packages: write
-  # issues: write
+  packages: write
 
 jobs:
   goreleaser:
+    if: startsWith(github.ref_name, 'v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -25,8 +25,6 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: "1.26.5"
-      # More assembly might be required: Docker logins, GPG, etc.
-      # It all depends on your needs.
 
       - uses: goreleaser/goreleaser-action@v7
         with:
@@ -35,3 +33,25 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  helm-release:
+    if: startsWith(github.ref_name, 'helm-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#helm-v}
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "kopia-go-exporter $VERSION" \
+            --draft \
+            --notes "**Helm chart version**: $VERSION
+
+          **Install**:
+          \`\`\`sh
+          helm upgrade --install --rollback-on-failure kopia-go-exporter oci://ghcr.io/ymettier/charts/kopia-go-exporter --version $VERSION -f myvalues.yaml
+          \`\`\`"
