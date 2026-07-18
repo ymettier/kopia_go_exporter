@@ -84,7 +84,8 @@ The project is licensed under the [MIT License](LICENSE).
 - Koanf layered loading: YAML file → environment variables (KGE_ prefix) → pflag values
 - Environment variable mapping: `KGE_KOPIA_PASSWORD` → `kopia.password` (uppercase, underscores → dots)
 - Config validation in `CheckConfig()`: returns error on missing required fields
-- Config struct: `config.Cfg` (global, populated at startup) with `Exporter`, `Kopia`, and `Logger` sub-structs
+- Config struct: `config.Cfg` (global, populated at startup) with `Exporter`, `Filters`, `Kopia`, and `Logger` sub-structs
+- `Filters` holds `Include`/`Exclude` `FilterConfig` entries, each with a `Path []string` list and the compiled `PathRegex []*regexp.Regexp`. Patterns are compiled to regexes at load time (see `readFiltersConfig`) so invalid patterns fail fast.
 - `GetVersionInfo()` returns `VersionInfo` struct with version, revision, time, dirty, goVersion from build info
 - `ReadBuildInfo` is an exported variable holding `debug.ReadBuildInfo`, mockable for testing
 - Helper functions: `lookupConfigKey`, `getConfigString`, `getConfigInt`, `getConfigBool`
@@ -102,6 +103,7 @@ The project is licensed under the [MIT License](LICENSE).
 - Seven Prometheus gauge vectors: `total_size`, `file_count`, `dir_count`, `error_count`, `backup_duration`, `backup_start_time`, `backup_end_time`
 - All metrics use labels: `host`, `path`, `user`, `retention`
 - Metrics namespace prefix is configurable (default: `kopia_go_exporter`)
+- Snapshot source paths are filtered before metrics are emitted: exclude regexes (`filters.exclude.path`) are checked first; an excluded path is still emitted if it matches an include regex (`filters.include.path`). Filtering happens in `matchPathFilters()` called from `setSnapshotMetrics()`.
 
 ### Main Loop (main.go)
 - Configures logger, creates exporter and Kopia client
@@ -197,7 +199,7 @@ The project is licensed under the [MIT License](LICENSE).
 
 ### Adding a New Configuration Option
 1. Add field to `Config` struct in `config/config.go`
-2. Add parsing logic in `readConfig()` or `CheckConfig()`
+2. Add parsing logic in `readConfig()` or `CheckConfig()` (per-value reader functions like `readFiltersConfig()` may return an error for load-time validation, e.g. regex compilation)
 3. Add test case in `config/config_test.go`
 4. Update `config.yaml.sample` with example value and short comment
 
@@ -268,6 +270,7 @@ The project is licensed under the [MIT License](LICENSE).
 - Packages `config`, `exporter`, and `logger` should be covered at 100%.
 - Package `main` should be covered at least at 70%.
 - Package `kopiametrics` should be covered at least at 80%.
+- `kopiametrics` coverage relies on integration tests that start a real Kopia server via the downloaded `kopia_test` binary. These run only without `-short`, so run `go test ./kopiametrics/` (full mode) to measure the real coverage; `-short` mode skips them and reports a lower, non-representative number.
 
 ## Linting
 - Run: `golangci-lint run ./...`
