@@ -1,5 +1,5 @@
 apiVersion: v2
-name: kopia_go_exporter
+name: kopia-go-exporter
 description: Prometheus exporter for Kopia backup repositories
 
 type: application
