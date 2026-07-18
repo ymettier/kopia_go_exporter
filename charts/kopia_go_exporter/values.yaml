@@ -41,6 +41,9 @@ serviceMonitor:
   labels: {}
   interval: 30s
   scrapeTimeout: 10s
+  relabelings: []
+  metricRelabelings: []
+  namespaceSelector: {}
 
 resources: {}
 
