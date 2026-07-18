@@ -37,8 +37,8 @@
    ```sh
    echo "version=${VERSION}"
    git switch main && git pull
-   git tag "${VERSION}"
-   git push origin "${VERSION}"
+    git tag "v${VERSION}"
+    git push origin "v${VERSION}"
    ```
 9. **Build and publish**: The CI workflow creates a draft release with binary artifacts on the [GitHub releases page](https://github.com/ymettier/kopia_go_exporter/releases) and publishes the container image to `ghcr.io/ymettier/kopia_go_exporter:<version>`.
 10. **Publish the release**: review the release draft on the [GitHub releases page](https://github.com/ymettier/kopia_go_exporter/releases) and publish it.
