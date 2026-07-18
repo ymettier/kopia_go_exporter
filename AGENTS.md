@@ -268,8 +268,8 @@ The project is licensed under the [MIT License](LICENSE).
 
 ## Code coverage
 - Packages `config`, `exporter`, and `logger` should be covered at 100%.
-- Package `main` should be covered at least at 70%.
-- Package `kopiametrics` should be covered at least at 80%.
+- Package `main` should be covered at least at 75%.
+- Package `kopiametrics` should be covered at least at 85%.
 - `kopiametrics` coverage relies on integration tests that start a real Kopia server via the downloaded `kopia_test` binary. These run only without `-short`, so run `go test ./kopiametrics/` (full mode) to measure the real coverage; `-short` mode skips them and reports a lower, non-representative number.
 
 ## Linting
