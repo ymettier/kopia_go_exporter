@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 
 	"github.com/kopia/kopia/repo"
@@ -124,7 +125,34 @@ func (k *KopiaClient) Connect(ctx context.Context) error {
 	return nil
 }
 
+// matchPathFilters decides whether a snapshot source path should produce metrics.
+// Exclude filters are applied first: if any exclude regex matches, the path is
+// rejected. Then include filters are applied: if at least one include regex
+// matches, the path is accepted. When there are no include filters, every path
+// that was not excluded is accepted.
+func matchPathFilters(path string, include, exclude []*regexp.Regexp) bool {
+	matches := true
+	for _, re := range exclude {
+		if re.MatchString(path) {
+			matches = false
+			break
+		}
+	}
+	if len(include) == 0 {
+		return matches
+	}
+	for _, re := range include {
+		if re.MatchString(path) {
+			return true
+		}
+	}
+	return matches
+}
+
 func (k *KopiaClient) setSnapshotMetrics(m *snapshot.Manifest, keepAllRetentions bool) {
+	if !matchPathFilters(m.Source.Path, k.cfg.Filters.Include.PathRegex, k.cfg.Filters.Exclude.PathRegex) {
+		return
+	}
 	for _, rr := range m.RetentionReasons {
 		if !slices.Contains(k.cfg.Kopia.Retentions, rr) && !keepAllRetentions {
 			continue
