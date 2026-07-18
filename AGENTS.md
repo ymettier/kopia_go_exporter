@@ -43,6 +43,18 @@ The project is licensed under the [MIT License](LICENSE).
 │   ├── kopia_tests_helpers_test.go  # Helpers to download/verify the kopia CLI binary for tests
 │   └── test_assets/
 │       └── kopia_test           # Downloaded kopia executable.
+├── charts/
+│   └── kopia_go_exporter/         # Helm chart for Kubernetes deployment
+│       ├── Chart.yaml
+│       ├── values.yaml
+│       ├── .helmignore
+│       └── templates/
+│           ├── _helpers.tpl
+│           ├── configmap.yaml
+│           ├── deployment.yaml
+│           ├── service.yaml
+│           ├── serviceaccount.yaml
+│           └── servicemonitor.yaml
 ├── .github/
 │   ├── release.yml               # GitHub release changelog categories
 │   └── workflows/
@@ -95,6 +107,12 @@ The project is licensed under the [MIT License](LICENSE).
 - Runs exporter HTTP server in a goroutine
 - Main loop sleeps `interval` seconds between runs of `k.RunOnce()` (default 300)
 - Graceful shutdown via SIGTERM/SIGINT → context cancellation → `k.Disconnect()`
+
+### Helm Chart (charts/kopia_go_exporter/)
+- Standard Helm chart for Kubernetes deployment
+- `values.yaml` includes `kopiaConfigSecret: kopia-config` for the Kopia credentials Secret name
+- Deployment template injects `KGE_KOPIA_PASSWORD` and `KGE_KOPIA_APISERVER_FINGERPRINT` from the Secret defined in `kopiaConfigSecret` (e.g. `kopia-config`) as environment variables
+- ConfigMap serves the application config at `/config/config.yaml`
 
 ## Development Guidelines
 
@@ -204,6 +222,11 @@ The project is licensed under the [MIT License](LICENSE).
 2. Update the runtime base image in Dockerfile
 3. Test with `podman build -t kopia-go-exporter .`
 
+### Modifying Helm Chart
+1. Edit templates in `charts/kopia_go_exporter/templates/`
+2. Update `values.yaml` for new configuration options
+3. Test with `helm template ./charts/kopia_go_exporter`
+
 ## CI/CD (GitHub Actions)
 
 - `go.yml`: Builds and tests on push/PR.
@@ -233,6 +256,11 @@ The project is licensed under the [MIT License](LICENSE).
 - Run: `./kopia-go-exporter --config config.yaml`
 - CLI flags: `--config` (config file), `--exporter-port` (exporter HTTP server port), `--log_level` (log level), `--version` (print version), `--help` (print help).
 
+## Helm Chart
+- Chart location: `charts/kopia_go_exporter/`
+- Template test: `helm template ./charts/kopia_go_exporter`
+- The chart requires a pre-created Secret named `kopia-config` (configurable via `kopiaConfigSecret` in values.yaml) containing `password` and `fingerprint` keys
+
 ## Code coverage
 - Packages `config`, `exporter`, and `logger` should be covered at 100%.
 - Package `main` should be covered at least at 70%.
@@ -252,3 +280,4 @@ The project is licensed under the [MIT License](LICENSE).
 ## Important Notes
 - The Kopia password and API server fingerprint are sensitive — they should be provided via environment variables (`KGE_KOPIA_PASSWORD`, `KGE_KOPIA_APISERVER_FINGERPRINT`), not committed to the repository.
 - The main loop sleeps 1 second at a time in a busy-wait pattern, counting down `sleepInterval` to the next `RunOnce()` call.
+- Always use locally installed tools (e.g. `git`, `golangci-lint`, `go`, `gofmt`, `goimports`, `helm`...). Only `golangci-lint` may be run in a container if the local version mismatches with the local version of `go`.
