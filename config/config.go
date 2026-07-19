@@ -182,6 +182,8 @@ func getConfigInt(koanfInstance *koanf.Koanf, camelKey string, defaultValue int)
 		if _, err := fmt.Sscanf(val, "%d", &i); err == nil {
 			return i
 		}
+		l := logger.Get()
+		l.Warn("Invalid integer value, using default", "key", camelKey, "value", val, "default", defaultValue)
 	}
 	return defaultValue
 }
