@@ -90,6 +90,7 @@ The project is licensed under the [MIT License](LICENSE).
 - `GetVersionInfo()` returns `VersionInfo` struct with version, revision, time, dirty, goVersion from build info
 - `ReadBuildInfo` is an exported variable holding `debug.ReadBuildInfo`, mockable for testing
 - Helper functions: `lookupConfigKey`, `getConfigString`, `getConfigInt`, `getConfigBool`
+- After config is fully parsed, `logConfig()` logs every key at INFO level, one message per key. When `logger.redact_sensitive` is true (default), password and fingerprint values are replaced with `****`.
 
 ### Exporter (exporter/exporter.go)
 - Constructor `NewExporter(cfg config.ExporterConfig)` receives the exporter config directly
