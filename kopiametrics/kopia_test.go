@@ -1063,3 +1063,53 @@ func assertMetricLabels(t *testing.T, name, sourceDir string, familyMap map[stri
 	assert.Equal(t, sourceDir, labels["path"], "%s: unexpected path label", name)
 	assert.NotEmpty(t, labels["retention"], "%s: retention label should not be empty", name)
 }
+
+// Connects to a running test API server, stops it, then calls RunOnce
+// and expects ListSnapshotManifests to fail with an error.
+func TestRunOnce_ListSnapshotManifestsFails(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	cleanup, fingerprint, ip, port := setupTestKopia(t)
+	defer cleanup()
+
+	configFile := filepath.Join(t.TempDir(), "repo.config")
+
+	cfg := &config.Config{
+		Kopia: config.KopiaConfig{
+			Password:   "kopiapwd",
+			Retentions: []string{},
+			APIServer: config.APIServerConfig{
+				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
+				Fingerprint:   fingerprint,
+				Hostname:      "localhost",
+				Username:      "kopia",
+			},
+		},
+	}
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+
+	logger.Reset(nil)
+
+	k, err := NewKopiaClient(cfg)
+	require.NoError(t, err)
+	k.configFile = configFile
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
+
+	// Connect successfully first
+	err = k.Connect(context.Background())
+	require.NoError(t, err, "Connect should succeed")
+
+	// Register metrics (required for RunOnce).
+	reg := prometheus.NewPedanticRegistry()
+	k.RegisterKopiaMetrics(reg)
+
+	// Now stop the server to make subsequent operations fail
+	cleanup()
+
+	// RunOnce should fail because the repo is now disconnected
+	err = k.RunOnce(context.Background())
+	assert.Error(t, err, "RunOnce should fail when server is stopped")
+	assert.False(t, k.isConnected, "isConnected should be false after RunOnce error")
+}
