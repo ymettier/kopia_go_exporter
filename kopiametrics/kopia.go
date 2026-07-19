@@ -262,7 +262,9 @@ func (k *KopiaClient) Disconnect(ctx context.Context) {
 	l.Debug("Disconnected from server", "ConfigFile", k.configFile)
 	k.isConnected = false
 	if k.tempDir != "" {
-		_ = os.RemoveAll(k.tempDir)
+		if err := os.RemoveAll(k.tempDir); err != nil {
+			l.Debug("Failed to remove temporary directory", "tempDir", k.tempDir, "err", err)
+		}
 		k.tempDir = ""
 	}
 }
