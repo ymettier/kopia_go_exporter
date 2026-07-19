@@ -159,12 +159,13 @@ func TestNewLogger_LumberjackFile(t *testing.T) {
 	l.Info("test lumberjack output")
 }
 
-func TestReset_Concurrent(_ *testing.T) {
+func TestReset_Concurrent(t *testing.T) {
 	done := make(chan bool)
 	for i := 0; i < 10; i++ {
 		go func() {
 			Reset(&LogOptions{Level: "info"})
-			_ = Get()
+			l := Get()
+			assert.NotNil(t, l, "Get should return a non-nil logger after concurrent resets")
 			done <- true
 		}()
 	}
