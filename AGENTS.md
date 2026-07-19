@@ -188,7 +188,7 @@ The project is licensed under the [MIT License](LICENSE).
 - File rotation via lumberjack.v2
 - Configurable levels: INFO, DEBUG, ERROR, WARN
 - JSON and text output formats
-- Configuration through config.yaml: `logger.log_level`, `logger.json`, `logger.filename`, `logger.maxsize`, `logger.maxbackups`, `logger.maxage`, `logger.compress`
+- Configuration through config.yaml: `logger.log_level`, `logger.json`, `logger.filename`, `logger.log_file.maxsize`, `logger.log_file.maxbackups`, `logger.log_file.maxage`, `logger.log_file.compress`
 
 ### Testing Conventions
 - Write tests alongside features in `*_test.go` files
