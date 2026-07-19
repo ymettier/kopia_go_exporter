@@ -81,7 +81,8 @@ The project is licensed under the [MIT License](LICENSE).
 - The configuration file (read with `--config`/`-c`) is optional.
 - CLI flag parsing via `ParseFlags()`: `--config`/`-c`, `--exporter-port`, `--log_level`/`-l`, `--version`/`-V`, `--help`/`-h`
 - `New()` constructor: parses flags, loads YAML via Koanf, overlays env vars, validates, returns error
-- Koanf layered loading: YAML file → environment variables (KGE_ prefix) → pflag values
+- `config.default.yaml` is embedded in the binary via `//go:embed` in `main.go` and provides all configuration defaults. It is loaded first as the base layer. The `--config` file, environment variables, and CLI flags overlay it.
+- Koanf layered loading: embedded defaults (`config.default.yaml`) → YAML file → environment variables (KGE_ prefix) → pflag values
 - Environment variable mapping: `KGE_KOPIA_PASSWORD` → `kopia.password` (uppercase, underscores → dots)
 - Config validation in `CheckConfig()`: returns error on missing required fields
 - Config struct: `config.Cfg` (global, populated at startup) with `Exporter`, `Filters`, `Kopia`, and `Logger` sub-structs

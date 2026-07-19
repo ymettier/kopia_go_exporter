@@ -12,19 +12,18 @@ exporter:
 # If both include and exclude pathes are empty, include everything.
 filters:
   include:
-    path:
-      - ".*"
+    path: []
   exclude:
     path: []
 
 # Kopia connection settings.
 kopia:
-  password: "set me in KGE_KOPIA_PASSWORD env var" # repository password
+  password: "<set me in KGE_KOPIA_PASSWORD env var>" # repository password
   apiserver:
-    repositoryURL: "https://some.url:port" # API server URL
-    hostname: "myhostname"                 # client hostname
-    username: "mybackup"                   # client username
-    fingerprint: "set me in KGE_KOPIA_APISERVER_FINGERPRINT env var" # server cert SHA256
+    repositoryURL: "<https://some.url:port>" # API server URL
+    hostname: "<myhostname>"                 # client hostname
+    username: "<mybackup>"                   # client username
+    fingerprint: "<set me in KGE_KOPIA_APISERVER_FINGERPRINT env var>" # server cert SHA256
   retentionstoextract: # retention reasons to export metrics for
     - "latest-1"
 
