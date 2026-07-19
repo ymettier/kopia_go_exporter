@@ -262,6 +262,7 @@ The project is licensed under the [MIT License](LICENSE).
 - Docker: `podman build -t kopia-go-exporter .`
 - Run: `./kopia-go-exporter --config config.yaml`
 - CLI flags: `--config` (config file), `--exporter-port` (exporter HTTP server port), `--log_level` (log level), `--version` (print version), `--help` (print help).
+- When `version.txt` may have been modified. Always run `git restore version.txt` after each command.
 
 ## Helm Chart
 - Chart location: `charts/kopia_go_exporter/`
