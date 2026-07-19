@@ -796,3 +796,23 @@ func TestReadLoggerConfig_EnvVarOverrideRedactSensitive(t *testing.T) {
 	cfg := readLoggerConfig(k)
 	assert.False(t, cfg.RedactSensitive)
 }
+
+// Loads a config with logger.redact_sensitive set to false and expects
+// readConfig (and its logConfig call) to run the non-redacting branch
+// without error.
+func TestLogConfig_NoRedact(t *testing.T) {
+	tmpFile := writeTestConfig(t, `kopia:
+  password: secret
+  apiserver:
+    repositoryURL: "https://example.com:51515"
+    hostname: myhost
+    username: myuser
+    fingerprint: abc123
+logger:
+  redact_sensitive: false
+`)
+
+	err := readConfig(tmpFile, nil, loadDefaultConfig(t))
+	require.NoError(t, err)
+	assert.False(t, Cfg.Logger.RedactSensitive)
+}
