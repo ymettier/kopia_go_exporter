@@ -305,6 +305,26 @@ func TestKopiaClient_Disconnect(t *testing.T) {
 	assert.False(t, k.isConnected)
 }
 
+// Disconnects a client whose temp directory cannot be removed and expects
+// the removal error to be logged without panicking and isConnected to be false.
+func TestKopiaClient_DisconnectTempDirRemovalFails(t *testing.T) {
+	logger.Reset(nil)
+
+	k, err := NewKopiaClient(&config.Config{})
+	require.NoError(t, err)
+
+	// Point tempDir at a path whose parent is a regular file, so
+	// os.RemoveAll fails with a "not a directory" error even as root.
+	parentFile := filepath.Join(t.TempDir(), "afile")
+	require.NoError(t, os.WriteFile(parentFile, []byte("x"), 0o600))
+
+	k.tempDir = filepath.Join(parentFile, "unremovable")
+	k.isConnected = true
+	k.Disconnect(context.Background())
+	assert.False(t, k.isConnected)
+	assert.Equal(t, "", k.tempDir)
+}
+
 // TestKopiaBinaryPresent verifies that the kopia test
 // executable already exists in the kopiametrics/ directory. When it is
 // missing, the test downloads the configured kopia release instead of
