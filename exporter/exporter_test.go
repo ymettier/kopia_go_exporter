@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
+	"strconv"
 	"testing"
 	"time"
 
@@ -127,11 +128,12 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 }
 
 func TestExporter_Run(t *testing.T) {
-	t.Run("Test the exporter on port 12345", func(t *testing.T) {
+	t.Run("Test the exporter on a free port", func(t *testing.T) {
 		logger.Reset(nil)
+		port := freePort(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		ex := Exporter{
-			Port: 12345,
+			Port: port,
 			Reg:  prometheus.NewRegistry(),
 		}
 
@@ -139,7 +141,7 @@ func TestExporter_Run(t *testing.T) {
 
 		time.Sleep(200 * time.Millisecond)
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:12345/metrics", http.NoBody)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:"+strconv.Itoa(port)+"/metrics", http.NoBody)
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
@@ -153,12 +155,13 @@ func TestExporter_Run(t *testing.T) {
 func TestExporter_Run_AlreadyInUse(t *testing.T) {
 	logger.Reset(nil)
 
-	blocker, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:12399")
+	port := freePort(t)
+	blocker, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:"+strconv.Itoa(port))
 	require.NoError(t, err)
 	defer func() { _ = blocker.Close() }()
 
 	ex := Exporter{
-		Port: 12399,
+		Port: port,
 		Reg:  prometheus.NewRegistry(),
 	}
 
@@ -173,6 +176,16 @@ func TestExporter_Run_AlreadyInUse(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run() did not return after server error")
 	}
+}
+
+// freePort returns a currently-free TCP port by binding to :0 and releasing it.
+func freePort(t *testing.T) int {
+	t.Helper()
+	l, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := l.Addr().(*net.TCPAddr).Port
+	require.NoError(t, l.Close())
+	return port
 }
 
 type fakeShutdowner struct {
