@@ -242,9 +242,9 @@ func (k *KopiaClient) RunOnce(ctx context.Context) error {
 		pol, _, _, err := policy.GetEffectivePolicy(ctx, k.repo, src)
 		if err != nil {
 			l.Error("Unable to determine effective policy", "err", err, "Source", src)
-		} else {
-			pol.RetentionPolicy.ComputeRetentionReasons(snapshotGroup)
+			continue
 		}
+		pol.RetentionPolicy.ComputeRetentionReasons(snapshotGroup)
 
 		for _, m := range snapshotGroup {
 			k.setSnapshotMetrics(m, keepAllRetentions)
