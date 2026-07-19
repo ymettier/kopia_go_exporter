@@ -235,9 +235,7 @@ func TestReadExporterConfig(t *testing.T) {
 	cfgFile := writeTestConfig(t, "exporter:\n  port: 8080\n  metrics:\n    prefix: custom_prefix\n  interval: 60\n")
 	k = koanfNew(t, cfgFile)
 
-	l := slog.Default()
-
-	cfg := readExporterConfig(k, l)
+	cfg := readExporterConfig(k)
 	assert.Equal(t, 8080, cfg.Port)
 	assert.Equal(t, "custom_prefix", cfg.Metrics.Prefix)
 	assert.Equal(t, 60, cfg.Interval)
@@ -254,16 +252,14 @@ func TestReadExporterConfig_FlagOverride(t *testing.T) {
 	require.NoError(t, k.Load(
 		posflag.ProviderWithValue(fs, ".", k, flagKeyMapper), nil))
 
-	l := slog.Default()
-	cfg := readExporterConfig(k, l)
+	cfg := readExporterConfig(k)
 	assert.Equal(t, 7777, cfg.Port)
 }
 
 func TestReadExporterConfig_Defaults(t *testing.T) {
 	k = koanf.New(".")
-	l := slog.Default()
 
-	cfg := readExporterConfig(k, l)
+	cfg := readExporterConfig(k)
 	assert.Equal(t, 9090, cfg.Port)
 	assert.Equal(t, "kopia_go_exporter", cfg.Metrics.Prefix)
 	assert.Equal(t, 300, cfg.Interval)
@@ -728,7 +724,6 @@ func TestReadLoggerConfig_EnvVarOverride(t *testing.T) {
 	k = koanf.New(".")
 	t.Setenv("KGE_LOGGER_LOG_LEVEL", "debug")
 
-	l := slog.Default()
-	cfg := readLoggerConfig(k, l)
+	cfg := readLoggerConfig(k)
 	assert.Equal(t, "debug", cfg.Level)
 }

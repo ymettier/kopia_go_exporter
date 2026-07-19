@@ -31,6 +31,7 @@ kopia:
 logger:
   log_level: "debug"      # Log level: debug, info, warn, error
   json: false             # use JSON format instead of text
+  redact_sensitive: true  # redact password and fingerprint in config log
   filename: ""            # log file path (empty = stderr)
   # Parameters below are used only if filename is neither stdout nor stderr.
   maxsize: 100            # max size in MB before rotation
