@@ -44,7 +44,7 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
 			cfg: `kopia:
   password: ""
   apiserver:
-    repositoryURL: "https://example.com:51515"
+    repositoryURL: "http://127.0.0.1:1"
     hostname: "localhost"
     username: "kopia"
     fingerprint: "abc123"
@@ -68,7 +68,7 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
 			cfg: `kopia:
   password: "secret"
   apiserver:
-    repositoryURL: "https://example.com:51515"
+    repositoryURL: "http://127.0.0.1:1"
     hostname: "localhost"
     username: "kopia"
     fingerprint: ""
@@ -80,7 +80,7 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
 			cfg: `kopia:
   password: "secret"
   apiserver:
-    repositoryURL: "https://example.com:51515"
+    repositoryURL: "http://127.0.0.1:1"
     hostname: ""
     username: "kopia"
     fingerprint: "abc123"
@@ -92,7 +92,7 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
 			cfg: `kopia:
   password: "secret"
   apiserver:
-    repositoryURL: "https://example.com:51515"
+    repositoryURL: "http://127.0.0.1:1"
     hostname: "localhost"
     username: ""
     fingerprint: "abc123"
@@ -111,7 +111,14 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
 }
 
 func TestRun_ContextCancel(t *testing.T) {
-	cfgFile := writeTestMainConfig(t, `exporter:
+	cfgFile := writeTestMainConfig(t, `kopia:
+  password: "test"
+  apiserver:
+    repositoryURL: "http://127.0.0.1:1"
+    hostname: "localhost"
+    username: "kopia"
+    fingerprint: "abc123"
+exporter:
   port: 9091
   interval: 1
 `)
@@ -137,7 +144,14 @@ func TestRun_ContextCancel(t *testing.T) {
 func TestRun_LoggerConfigFromEnvVar(t *testing.T) {
 	t.Setenv("KGE_LOGGER_LOG_LEVEL", "debug")
 
-	cfgFile := writeTestMainConfig(t, `exporter:
+	cfgFile := writeTestMainConfig(t, `kopia:
+  password: "test"
+  apiserver:
+    repositoryURL: "http://127.0.0.1:1"
+    hostname: "localhost"
+    username: "kopia"
+    fingerprint: "abc123"
+exporter:
   interval: 1
 `)
 
@@ -162,7 +176,14 @@ func TestRun_LoggerConfigFromEnvVar(t *testing.T) {
 }
 
 func TestRun_LoggerConfigFromFile(t *testing.T) {
-	cfgFile := writeTestMainConfig(t, `logger:
+	cfgFile := writeTestMainConfig(t, `kopia:
+  password: "test"
+  apiserver:
+    repositoryURL: "http://127.0.0.1:1"
+    hostname: "localhost"
+    username: "kopia"
+    fingerprint: "abc123"
+logger:
   log_level: "warn"
 exporter:
   interval: 1
@@ -192,7 +213,14 @@ exporter:
 func TestRun_LoggerJSONFromEnvVar(t *testing.T) {
 	t.Setenv("KGE_LOGGER_JSON", "true")
 
-	cfgFile := writeTestMainConfig(t, `exporter:
+	cfgFile := writeTestMainConfig(t, `kopia:
+  password: "test"
+  apiserver:
+    repositoryURL: "http://127.0.0.1:1"
+    hostname: "localhost"
+    username: "kopia"
+    fingerprint: "abc123"
+exporter:
   interval: 1
 `)
 
@@ -218,15 +246,30 @@ func TestRun_LoggerJSONFromEnvVar(t *testing.T) {
 }
 
 func TestRun_NewKopiaClientFails(t *testing.T) {
+	cfgFile := writeTestMainConfig(t, `kopia:
+  password: "test"
+  apiserver:
+    repositoryURL: "http://127.0.0.1:1"
+    hostname: "localhost"
+    username: "kopia"
+    fingerprint: "abc123"
+`)
 	t.Setenv("TMPDIR", "/nonexistent-kopia-tmp-dir")
 
-	err := run(context.Background(), []string{})
+	err := run(context.Background(), []string{"--config", cfgFile})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to create temp directory")
 }
 
 func TestRun_LoopDecrementsInterval(t *testing.T) {
-	cfgFile := writeTestMainConfig(t, `exporter:
+	cfgFile := writeTestMainConfig(t, `kopia:
+  password: "test"
+  apiserver:
+    repositoryURL: "http://127.0.0.1:1"
+    hostname: "localhost"
+    username: "kopia"
+    fingerprint: "abc123"
+exporter:
   port: 9092
   interval: 2
 `)

@@ -31,6 +31,7 @@ func (r *rawBytesProvider) ReadBytes() ([]byte, error) {
 	return r.data, nil
 }
 
+// Read implements koanf.Provider but is unused; koanf loads via ReadBytes() + yaml.Parser().
 func (r *rawBytesProvider) Read() (map[string]any, error) {
 	return nil, fmt.Errorf("Read() not implemented, use ReadBytes() with yaml.Parser()")
 }
@@ -387,7 +388,7 @@ func flagKeyMapper(key, value string) (mapped string, mappedValue any) {
 	mappedValue = value
 	return mapped, mappedValue
 }
-func CheckConfig() error {
+func CheckConfig(defaultConfig []byte) error {
 	if Cfg.Kopia.Password == "" {
 		return fmt.Errorf("kopia.password is not set")
 	}
@@ -403,6 +404,45 @@ func CheckConfig() error {
 	if Cfg.Kopia.APIServer.Username == "" {
 		return fmt.Errorf("kopia.apiserver.username is not set")
 	}
+	if err := checkPlaceholders(defaultConfig); err != nil {
+		return err
+	}
+	return nil
+}
+
+// isPlaceholder returns true if val matches the ^<.*>$ pattern used in
+// config.default.yaml for values that must be overridden by the user.
+func isPlaceholder(val string) bool {
+	return strings.HasPrefix(val, "<") && strings.HasSuffix(val, ">")
+}
+
+// checkPlaceholders parses the embedded default config to find keys whose
+// values match the ^<.*>$ placeholder pattern, then verifies that those
+// same keys have been overridden (no longer matching ^<.*>$) in the final
+// configuration. Values like "xx<xx>xx" are intentionally allowed.
+func checkPlaceholders(defaultConfig []byte) error {
+	if len(defaultConfig) == 0 {
+		return nil
+	}
+
+	defaultK := koanf.New(".")
+	if err := defaultK.Load(&rawBytesProvider{data: defaultConfig}, yaml.Parser()); err != nil {
+		return fmt.Errorf("failed to parse default config for placeholder check: %w", err)
+	}
+
+	for _, key := range defaultK.Keys() {
+		defaultVal := defaultK.String(key)
+		if !isPlaceholder(defaultVal) {
+			continue
+		}
+		currentVal := getConfigString(k, key, "")
+		if isPlaceholder(currentVal) {
+			return fmt.Errorf(
+				"configuration key %q still has placeholder value %q; override it in config file, env var, or CLI flag",
+				key, currentVal,
+			)
+		}
+	}
 	return nil
 }
 
@@ -415,5 +455,5 @@ func New(version string, args []string, defaultConfig []byte) error {
 	if err := readConfig(configFile, fs, defaultConfig); err != nil {
 		return err
 	}
-	return CheckConfig()
+	return CheckConfig(defaultConfig)
 }
