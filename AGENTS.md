@@ -199,6 +199,7 @@ The project is licensed under the [MIT License](LICENSE).
 - Unused test data files must be removed
 - Table-driven tests with struct-based test cases
 - Each `Test*` function is preceded by a short comment describing what it tests and the expected outcome; lines are wrapped at about 70 characters.
+- For integration tests requiring a Kopia API server, use `setupTestKopia()`. For tests using a local filesystem repository without a server, use `setupTestRepo()`. Both helpers manage the kopia test binary automatically.
 
 ## Common Tasks
 
@@ -273,10 +274,9 @@ The project is licensed under the [MIT License](LICENSE).
 - The chart requires a pre-created Secret named `kopia-config` (configurable via `kopiaConfigSecret` in values.yaml) containing `password` and `fingerprint` keys
 
 ## Code coverage
-- Packages `config`, `exporter`, and `logger` should be covered at 100%.
+- Packages `config`, `exporter` and `logger` should be covered at 100%.
 - Package `main` should be covered at least at 75%.
-- Package `kopiametrics` should be covered at least at 85%.
-- `kopiametrics` coverage relies on integration tests that start a real Kopia server via the downloaded `kopia_test` binary. These run only without `-short`, so run `go test ./kopiametrics/` (full mode) to measure the real coverage; `-short` mode skips them and reports a lower, non-representative number.
+- Package `kopiametrics` should be covered at 100%. Coverage for `kopiametrics` relies on integration tests that require a real Kopia server. Run `go test ./kopiametrics/` without `-short` to measure real coverage; `-short` mode skips them.
 
 ## Linting
 - Run: `golangci-lint run ./...`
