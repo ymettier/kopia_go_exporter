@@ -372,14 +372,15 @@ func TestKopiaVersion(t *testing.T) {
 }
 
 // Sets snapshot metrics for a retention that is filtered out and expects
-// no metrics to be emitted.
+// no snapshot metrics to be emitted but up metric to exist.
 func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
+	prefix := "kopia_go_exporter" //nolint:goconst
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Retentions: []string{"daily"}, //nolint:goconst
 		},
 	}
-	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter" //nolint:goconst
+	cfg.Exporter.Metrics.Prefix = prefix
 
 	logger.Reset(nil)
 
@@ -407,7 +408,23 @@ func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 	families, err := reg.Gather()
 	require.NoError(t, err)
 	logGatheredMetrics(t, families)
-	assert.Empty(t, families, "no metrics should be set when retention is filtered out")
+
+	// up metric should exist but snapshot metrics should be empty
+	familyMap := make(map[string]*dto.MetricFamily)
+	for _, f := range families {
+		familyMap[f.GetName()] = f
+	}
+	up := familyMap[prefix+"_up"]
+	require.NotNil(t, up, "up metric should be registered")
+	// up is 0 because setSnapshotMetrics doesn't set it
+	assert.Equal(t, 0.0, up.GetMetric()[0].GetGauge().GetValue())
+
+	// No snapshot metrics should be set when retention is filtered out
+	for _, f := range families {
+		if f.GetName() != prefix+"_up" {
+			assert.Empty(t, f.GetMetric(), "snapshot metric %s should have no samples when retention is filtered out", f.GetName())
+		}
+	}
 }
 
 // Sets snapshot metrics with keepAllRetentions and expects the
@@ -595,8 +612,9 @@ func mustRegexes(t *testing.T, patterns ...string) []*regexp.Regexp {
 }
 
 // Sets snapshot metrics for a path matching the exclude filter and
-// expects no metrics to be emitted.
+// expects no snapshot metrics to be emitted but up metric to exist.
 func TestSetSnapshotMetrics_PathFilterExcludes(t *testing.T) {
+	prefix := "kopia_go_exporter"
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
 			Retentions: []string{"daily"},
@@ -605,7 +623,7 @@ func TestSetSnapshotMetrics_PathFilterExcludes(t *testing.T) {
 			Exclude: config.FilterConfig{PathRegex: mustRegexes(t, ".*secret.*")},
 		},
 	}
-	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = prefix
 
 	logger.Reset(nil)
 
@@ -628,7 +646,23 @@ func TestSetSnapshotMetrics_PathFilterExcludes(t *testing.T) {
 
 	families, err := reg.Gather()
 	require.NoError(t, err)
-	assert.Empty(t, families, "no metrics should be set when path is excluded")
+
+	// up metric should exist but snapshot metrics should be empty
+	familyMap := make(map[string]*dto.MetricFamily)
+	for _, f := range families {
+		familyMap[f.GetName()] = f
+	}
+	up := familyMap[prefix+"_up"]
+	require.NotNil(t, up, "up metric should be registered")
+	// up is 0 because setSnapshotMetrics doesn't set it
+	assert.Equal(t, 0.0, up.GetMetric()[0].GetGauge().GetValue())
+
+	// No snapshot metrics should be set when path is excluded
+	for _, f := range families {
+		if f.GetName() != prefix+"_up" {
+			assert.Empty(t, f.GetMetric(), "snapshot metric %s should have no samples when path is excluded", f.GetName())
+		}
+	}
 }
 
 // Sets snapshot metrics for a path matching the include filter and
@@ -678,9 +712,10 @@ func TestSetSnapshotMetrics_PathFilterIncludes(t *testing.T) {
 	assert.Equal(t, float64(10), gauge.GetMetric()[0].GetGauge().GetValue())
 }
 
-// Runs RunOnce when Connect fails and expects an error and isConnected
-// to remain false.
+// Runs RunOnce when Connect fails and expects an error, isConnected to remain
+// false, and the up metric to be set to 0.
 func TestRunOnce_ConnectFails(t *testing.T) {
+	prefix := "kopia_go_exporter"
 	logger.Reset(nil)
 
 	cfg := &config.Config{
@@ -694,20 +729,34 @@ func TestRunOnce_ConnectFails(t *testing.T) {
 			},
 		},
 	}
+	cfg.Exporter.Metrics.Prefix = prefix
 
 	k, err := NewKopiaClient(cfg)
 	require.NoError(t, err)
 	k.configFile = filepath.Join(t.TempDir(), "nonexistent.config")
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
+	reg := prometheus.NewRegistry()
+	k.RegisterKopiaMetrics(reg)
 
 	err = k.RunOnce(context.Background())
 	assert.Error(t, err, "RunOnce should fail when Connect fails")
 	assert.False(t, k.isConnected)
+
+	families, err := reg.Gather()
+	require.NoError(t, err)
+	familyMap := make(map[string]*dto.MetricFamily)
+	for _, f := range families {
+		familyMap[f.GetName()] = f
+	}
+	up := familyMap[prefix+"_up"]
+	require.NotNil(t, up, "up metric should be registered")
+	assert.Equal(t, float64(0), up.GetMetric()[0].GetGauge().GetValue(), "up should be 0 on connect failure")
 }
 
 // Runs RunOnce against an empty repository and expects success with no
-// metrics emitted.
+// snapshot metrics emitted but up metric set to 1.
 func TestRunOnce_EmptyRepo(t *testing.T) {
+	prefix := "kopia_go_exporter"
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -748,7 +797,7 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 			Retentions: []string{},
 		},
 	}
-	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = prefix
 
 	k := &KopiaClient{
 		isConnected: false,
@@ -768,7 +817,22 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 	families, err := reg.Gather()
 	require.NoError(t, err)
 	logGatheredMetrics(t, families)
-	assert.Empty(t, families, "no metrics should be set for an empty repo")
+
+	// up metric should be set to 1 on successful run
+	familyMap := make(map[string]*dto.MetricFamily)
+	for _, f := range families {
+		familyMap[f.GetName()] = f
+	}
+	up := familyMap[prefix+"_up"]
+	require.NotNil(t, up, "up metric should be registered")
+	assert.Equal(t, float64(1), up.GetMetric()[0].GetGauge().GetValue(), "up should be 1 on successful run")
+
+	// No snapshot metrics should be set for an empty repo
+	for _, f := range families {
+		if f.GetName() != prefix+"_up" {
+			assert.Empty(t, f.GetMetric(), "snapshot metric %s should have no samples for empty repo", f.GetName())
+		}
+	}
 }
 
 // Connects to a running test API server and expects success with
@@ -867,8 +931,9 @@ func TestConnect_OpenFails(t *testing.T) {
 }
 
 // Calls RunOnce on a disconnected client and expects it to auto-connect,
-// set the repo, and leave isConnected true.
+// set the repo, and leave isConnected true. Also expects up metric to be 1.
 func TestRunOnce_ConnectsAutomatically(t *testing.T) {
+	prefix := "kopia_go_exporter"
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -890,7 +955,7 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 			},
 		},
 	}
-	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = prefix
 
 	logger.Reset(nil)
 
@@ -905,6 +970,16 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 	require.NoError(t, k.RunOnce(context.Background()), "RunOnce should succeed with auto-connect")
 	assert.True(t, k.isConnected, "RunOnce should have connected the client")
 	require.NotNil(t, k.repo, "Repo should be set after auto-connect")
+
+	families, err := reg.Gather()
+	require.NoError(t, err)
+	familyMap := make(map[string]*dto.MetricFamily)
+	for _, f := range families {
+		familyMap[f.GetName()] = f
+	}
+	up := familyMap[prefix+"_up"]
+	require.NotNil(t, up, "up metric should be registered")
+	assert.Equal(t, float64(1), up.GetMetric()[0].GetGauge().GetValue(), "up should be 1 on successful connect")
 }
 
 // setupTestRepo creates a local Kopia filesystem repository
@@ -966,6 +1041,7 @@ func setupTestRepo(t *testing.T) (configFile, sourceDir, password string) {
 // Runs RunOnce against a repo with a known snapshot and expects the
 // seven metrics with correct labels, counts, sizes, and timestamps.
 func TestRunOnceMetrics(t *testing.T) {
+	prefix := "kopia_go_exporter"
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -981,7 +1057,7 @@ func TestRunOnceMetrics(t *testing.T) {
 			Retentions: []string{},
 		},
 	}
-	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = prefix
 
 	logger.Reset(nil)
 
@@ -1011,13 +1087,13 @@ func TestRunOnceMetrics(t *testing.T) {
 	}
 
 	expectedMetrics := []string{
-		"kopia_go_exporter_total_size",
-		"kopia_go_exporter_file_count",
-		"kopia_go_exporter_dir_count",
-		"kopia_go_exporter_error_count",
-		"kopia_go_exporter_backup_duration",
-		"kopia_go_exporter_backup_start_time",
-		"kopia_go_exporter_backup_end_time",
+		prefix + "_total_size",
+		prefix + "_file_count",
+		prefix + "_dir_count",
+		prefix + "_error_count",
+		prefix + "_backup_duration",
+		prefix + "_backup_start_time",
+		prefix + "_backup_end_time",
 	}
 
 	for _, name := range expectedMetrics {
@@ -1027,25 +1103,29 @@ func TestRunOnceMetrics(t *testing.T) {
 	expectedStart := time.Date(2025, 5, 1, 15, 20, 1, 0, time.UTC).Unix()
 	expectedEnd := time.Date(2025, 5, 1, 16, 10, 2, 0, time.UTC).Unix()
 
-	startTime := familyMap["kopia_go_exporter_backup_start_time"].GetMetric()[0].GetGauge().GetValue()
-	endTime := familyMap["kopia_go_exporter_backup_end_time"].GetMetric()[0].GetGauge().GetValue()
+	startTime := familyMap[prefix+"_backup_start_time"].GetMetric()[0].GetGauge().GetValue()
+	endTime := familyMap[prefix+"_backup_end_time"].GetMetric()[0].GetGauge().GetValue()
 	assert.InDelta(t, float64(expectedStart), startTime, 1, "backup_start_time should match hardcoded start time")
 	assert.InDelta(t, float64(expectedEnd), endTime, 1, "backup_end_time should match hardcoded end time")
 
-	duration := familyMap["kopia_go_exporter_backup_duration"].GetMetric()[0].GetGauge().GetValue()
+	duration := familyMap[prefix+"_backup_duration"].GetMetric()[0].GetGauge().GetValue()
 	assert.Greater(t, duration, float64(0), "backup_duration should be positive")
 
-	fileCount := familyMap["kopia_go_exporter_file_count"].GetMetric()[0].GetGauge().GetValue()
+	fileCount := familyMap[prefix+"_file_count"].GetMetric()[0].GetGauge().GetValue()
 	assert.Equal(t, float64(3), fileCount, "file_count should be 3 (file1.txt, file2.txt, file3.txt)")
 
-	dirCount := familyMap["kopia_go_exporter_dir_count"].GetMetric()[0].GetGauge().GetValue()
+	dirCount := familyMap[prefix+"_dir_count"].GetMetric()[0].GetGauge().GetValue()
 	assert.Equal(t, float64(2), dirCount, "dir_count should be 2 (root + subdir)")
 
-	totalSize := familyMap["kopia_go_exporter_total_size"].GetMetric()[0].GetGauge().GetValue()
+	totalSize := familyMap[prefix+"_total_size"].GetMetric()[0].GetGauge().GetValue()
 	assert.Equal(t, float64(81), totalSize, "total_size should be 81 bytes")
 
-	errorCount := familyMap["kopia_go_exporter_error_count"].GetMetric()[0].GetGauge().GetValue()
+	errorCount := familyMap[prefix+"_error_count"].GetMetric()[0].GetGauge().GetValue()
 	assert.Equal(t, float64(0), errorCount, "error_count should be 0")
+
+	up := familyMap[prefix+"_up"]
+	require.NotNil(t, up, "up metric should be registered")
+	assert.Equal(t, float64(1), up.GetMetric()[0].GetGauge().GetValue(), "up should be 1 on successful run")
 }
 
 func assertMetricLabels(t *testing.T, name, sourceDir string, familyMap map[string]*dto.MetricFamily) {
@@ -1110,8 +1190,9 @@ func TestConnect_RepoOpenFails(t *testing.T) {
 }
 
 // Connects to a running test API server, then stubs loadSnapshotsFunc to fail
-// and expects RunOnce to return the error.
+// and expects RunOnce to return the error and up metric to be 0.
 func TestRunOnce_LoadSnapshotsFails(t *testing.T) {
+	prefix := "kopia_go_exporter"
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -1133,7 +1214,7 @@ func TestRunOnce_LoadSnapshotsFails(t *testing.T) {
 			},
 		},
 	}
-	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = prefix
 
 	logger.Reset(nil)
 
@@ -1161,6 +1242,16 @@ func TestRunOnce_LoadSnapshotsFails(t *testing.T) {
 	assert.Error(t, err, "RunOnce should fail when LoadSnapshots fails")
 	assert.Contains(t, err.Error(), "simulated")
 	assert.False(t, k.isConnected, "isConnected should be false after RunOnce error")
+
+	families, err := reg.Gather()
+	require.NoError(t, err)
+	familyMap := make(map[string]*dto.MetricFamily)
+	for _, f := range families {
+		familyMap[f.GetName()] = f
+	}
+	up := familyMap[prefix+"_up"]
+	require.NotNil(t, up, "up metric should be registered")
+	assert.Equal(t, float64(0), up.GetMetric()[0].GetGauge().GetValue(), "up should be 0 on LoadSnapshots failure")
 }
 
 // Connects successfully, then stubs getEffectivePolicyFunc to return an error
@@ -1226,8 +1317,9 @@ func TestRunOnce_PolicyError(t *testing.T) {
 }
 
 // Connects to a running test API server, stops it, then calls RunOnce
-// and expects ListSnapshotManifests to fail with an error.
+// and expects ListSnapshotManifests to fail with an error and up metric to be 0.
 func TestRunOnce_ListSnapshotManifestsFails(t *testing.T) {
+	prefix := "kopia_go_exporter"
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -1249,7 +1341,7 @@ func TestRunOnce_ListSnapshotManifestsFails(t *testing.T) {
 			},
 		},
 	}
-	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = prefix
 
 	logger.Reset(nil)
 
@@ -1273,4 +1365,14 @@ func TestRunOnce_ListSnapshotManifestsFails(t *testing.T) {
 	err = k.RunOnce(context.Background())
 	assert.Error(t, err, "RunOnce should fail when server is stopped")
 	assert.False(t, k.isConnected, "isConnected should be false after RunOnce error")
+
+	families, err := reg.Gather()
+	require.NoError(t, err)
+	familyMap := make(map[string]*dto.MetricFamily)
+	for _, f := range families {
+		familyMap[f.GetName()] = f
+	}
+	up := familyMap[prefix+"_up"]
+	require.NotNil(t, up, "up metric should be registered")
+	assert.Equal(t, float64(0), up.GetMetric()[0].GetGauge().GetValue(), "up should be 0 on ListSnapshotManifests failure")
 }
