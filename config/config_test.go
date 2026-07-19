@@ -87,11 +87,9 @@ func TestParseFlags_CustomValues(t *testing.T) {
 }
 
 func TestNew_NoConfigFile(t *testing.T) {
-	// No --config flag: embedded defaults loaded, CheckConfig passes
-	// because placeholder values are non-empty
 	err := New("test", []string{}, loadDefaultConfig(t))
-	assert.NoError(t, err)
-	assert.Equal(t, "set me in KGE_KOPIA_PASSWORD env var", Cfg.Kopia.Password)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "still has placeholder value")
 }
 
 func TestNew_NoConfigFile_WithEnv(t *testing.T) {
@@ -447,6 +445,7 @@ func TestCheckConfig_ValidConfig(t *testing.T) {
 	origCfg := Cfg
 	defer func() { Cfg = origCfg }()
 
+	k = koanf.New(".")
 	Cfg = Config{
 		Kopia: KopiaConfig{
 			Password: "test", //nolint:goconst
@@ -458,7 +457,7 @@ func TestCheckConfig_ValidConfig(t *testing.T) {
 			},
 		},
 	}
-	assert.NoError(t, CheckConfig())
+	assert.NoError(t, CheckConfig(nil))
 }
 
 func TestCheckConfig_MissingPassword(t *testing.T) {
@@ -476,7 +475,7 @@ func TestCheckConfig_MissingPassword(t *testing.T) {
 			},
 		},
 	}
-	err := CheckConfig()
+	err := CheckConfig(nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "kopia.password is not set")
 }
@@ -495,7 +494,7 @@ func TestCheckConfig_MissingRepositoryURL(t *testing.T) {
 			},
 		},
 	}
-	err := CheckConfig()
+	err := CheckConfig(nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "kopia.apiserver.repositoryURL is not set")
 }
@@ -514,7 +513,7 @@ func TestCheckConfig_MissingFingerprint(t *testing.T) {
 			},
 		},
 	}
-	err := CheckConfig()
+	err := CheckConfig(nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "kopia.apiserver.fingerprint is not set")
 }
@@ -533,7 +532,7 @@ func TestCheckConfig_MissingHostname(t *testing.T) {
 			},
 		},
 	}
-	err := CheckConfig()
+	err := CheckConfig(nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "kopia.apiserver.hostname is not set")
 }
@@ -552,7 +551,7 @@ func TestCheckConfig_MissingUsername(t *testing.T) {
 			},
 		},
 	}
-	err := CheckConfig()
+	err := CheckConfig(nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "kopia.apiserver.username is not set")
 }
@@ -564,9 +563,35 @@ func TestNew_MissingFile(t *testing.T) {
 }
 
 func TestNew_ValidConfig(t *testing.T) {
-	err := New("test", []string{"--config", "../config.default.yaml"}, loadDefaultConfig(t))
+	cfgFile := writeTestConfig(t, `kopia:
+  password: "test"
+  apiserver:
+    repositoryURL: "https://example.com:51515"
+    hostname: "myhost"
+    username: "myuser"
+    fingerprint: "abc123"
+`)
+	err := New("test", []string{"--config", cfgFile}, loadDefaultConfig(t))
 	assert.NoError(t, err)
 	assert.Equal(t, 9090, Cfg.Exporter.Port)
+}
+
+func TestNew_FilterIncludeWithAngleBrackets(t *testing.T) {
+	cfgFile := writeTestConfig(t, `kopia:
+  password: "test"
+  apiserver:
+    repositoryURL: "https://example.com:51515"
+    hostname: "myhost"
+    username: "myuser"
+    fingerprint: "abc123"
+filters:
+  include:
+    path:
+      - "<ok>"
+`)
+	err := New("test", []string{"--config", cfgFile}, loadDefaultConfig(t))
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"<ok>"}, Cfg.Filters.Include.Path)
 }
 
 func TestNew_VersionFlag(t *testing.T) {
