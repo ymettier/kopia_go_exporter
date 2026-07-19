@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/posflag"
 	"github.com/knadh/koanf/v2"
@@ -724,6 +725,18 @@ func TestReadLoggerConfig_EnvVarOverride(t *testing.T) {
 	k = koanf.New(".")
 	t.Setenv("KGE_LOGGER_LOG_LEVEL", "debug")
 
+	loadConfigLayer(k, env.Provider("KGE_", ".", kgeKeyMapper), "Failed to load environment variable overrides")
+
 	cfg := readLoggerConfig(k)
 	assert.Equal(t, "debug", cfg.Level)
+}
+
+func TestReadLoggerConfig_EnvVarOverrideRedactSensitive(t *testing.T) {
+	k = koanf.New(".")
+	t.Setenv("KGE_LOGGER_REDACT_SENSITIVE", "false")
+
+	loadConfigLayer(k, env.Provider("KGE_", ".", kgeKeyMapper), "Failed to load environment variable overrides")
+
+	cfg := readLoggerConfig(k)
+	assert.False(t, cfg.RedactSensitive)
 }
