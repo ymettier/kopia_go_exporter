@@ -52,13 +52,14 @@ type KopiaConfig struct {
 }
 
 type LoggerConfig struct {
-	Level      string
-	JSON       bool
-	Filename   string
-	MaxSize    int
-	MaxBackups int
-	MaxAge     int
-	Compress   bool
+	Level           string
+	JSON            bool
+	Filename        string
+	MaxSize         int
+	MaxBackups      int
+	MaxAge          int
+	Compress        bool
+	RedactSensitive bool
 }
 
 type FilterConfig struct {
@@ -195,17 +196,14 @@ func getConfigBool(koanfInstance *koanf.Koanf, camelKey string, defaultValue boo
 	return defaultValue
 }
 
-func readExporterConfig(koanfInstance *koanf.Koanf, l *slog.Logger) ExporterConfig {
+func readExporterConfig(koanfInstance *koanf.Koanf) ExporterConfig {
 	var cfg ExporterConfig
 
 	cfg.Port = getConfigInt(koanfInstance, "exporter.port", 9090) //nolint:mnd
-	l.Info("Config: exporter.port", "port", cfg.Port)
 
 	cfg.Metrics.Prefix = getConfigString(koanfInstance, "exporter.metrics.prefix", "kopia_go_exporter")
-	l.Info("Config: exporter.metrics.prefix", "prefix", cfg.Metrics.Prefix)
 
 	cfg.Interval = getConfigInt(koanfInstance, "exporter.interval", 300) //nolint:mnd
-	l.Info("Config: exporter.interval", "interval", cfg.Interval)
 
 	return cfg
 }
@@ -236,7 +234,6 @@ func readFilterGroup(koanfInstance *koanf.Koanf, key string, l *slog.Logger) (Fi
 			l.Warn("Failed to unmarshal "+key+".path", "err", err)
 		}
 	}
-	l.Info("Config: "+key+".path", "path", cfg.Path)
 
 	regexes, err := compileRegexes(cfg.Path)
 	if err != nil {
@@ -263,19 +260,14 @@ func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
 	var cfg KopiaConfig
 
 	cfg.Password = getConfigString(koanfInstance, "kopia.password", "")
-	l.Info("Config: kopia.password", "password", "****")
 
 	cfg.APIServer.RepositoryURL = getConfigString(koanfInstance, "kopia.apiserver.repositoryURL", "")
-	l.Info("Config: kopia.apiserver.repositoryURL", "repositoryURL", cfg.APIServer.RepositoryURL)
 
 	cfg.APIServer.Hostname = getConfigString(koanfInstance, "kopia.apiserver.hostname", "")
-	l.Info("Config: kopia.apiserver.hostname", "hostname", cfg.APIServer.Hostname)
 
 	cfg.APIServer.Username = getConfigString(koanfInstance, "kopia.apiserver.username", "")
-	l.Info("Config: kopia.apiserver.username", "username", cfg.APIServer.Username)
 
 	cfg.APIServer.Fingerprint = getConfigString(koanfInstance, "kopia.apiserver.fingerprint", "")
-	l.Info("Config: kopia.apiserver.fingerprint", "fingerprint", "****")
 
 	// Read retentions list
 	cfg.Retentions = make([]string, 0)
@@ -284,37 +276,31 @@ func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
 			l.Warn("Failed to unmarshal retentions", "err", err)
 		}
 	}
-	l.Info("Config: kopia.retentionstoextract", "retentions", cfg.Retentions)
 
 	return cfg
 }
 
-func readLoggerConfig(koanfInstance *koanf.Koanf, l *slog.Logger) LoggerConfig {
+func readLoggerConfig(koanfInstance *koanf.Koanf) LoggerConfig {
 	var cfg LoggerConfig
 
 	cfg.Level = getConfigString(koanfInstance, "logger.log_level", "info")
 	if envLevel := os.Getenv("KGE_LOGGER_LOG_LEVEL"); envLevel != "" {
 		cfg.Level = envLevel
 	}
-	l.Info("Config: log_level", "log_level", cfg.Level)
 
 	cfg.JSON = getConfigBool(koanfInstance, "logger.json", false)
-	l.Info("Config: logger.json", "json", cfg.JSON)
 
 	cfg.Filename = getConfigString(koanfInstance, "logger.filename", "")
-	l.Info("Config: logger.filename", "filename", cfg.Filename)
 
 	cfg.MaxSize = getConfigInt(koanfInstance, "logger.maxsize", 100) //nolint:mnd
-	l.Info("Config: logger.maxsize", "maxsize", cfg.MaxSize)
 
 	cfg.MaxBackups = getConfigInt(koanfInstance, "logger.maxbackups", 3)
-	l.Info("Config: logger.maxbackups", "maxbackups", cfg.MaxBackups)
 
 	cfg.MaxAge = getConfigInt(koanfInstance, "logger.maxage", 28) //nolint:mnd
-	l.Info("Config: logger.maxage", "maxage", cfg.MaxAge)
 
 	cfg.Compress = getConfigBool(koanfInstance, "logger.compress", false)
-	l.Info("Config: logger.compress", "compress", cfg.Compress)
+
+	cfg.RedactSensitive = getConfigBool(koanfInstance, "logger.redact_sensitive", true)
 
 	return cfg
 }
@@ -355,14 +341,16 @@ func readConfig(filename string, fs *pflag.FlagSet, defaultConfig []byte) error 
 		)
 	}
 
-	Cfg.Exporter = readExporterConfig(k, l)
+	Cfg.Exporter = readExporterConfig(k)
 	var err error
 	Cfg.Filters, err = readFiltersConfig(k, l)
 	if err != nil {
 		return err
 	}
 	Cfg.Kopia = readKopiaConfig(k, l)
-	Cfg.Logger = readLoggerConfig(k, l)
+	Cfg.Logger = readLoggerConfig(k)
+
+	logConfig(l)
 
 	return nil
 }
@@ -374,6 +362,37 @@ func loadConfigLayer(k *koanf.Koanf, loader koanf.Provider, msg string) {
 	if err := k.Load(loader, nil); err != nil {
 		l.Warn(msg, "err", err)
 	}
+}
+
+// logConfig logs every configuration key at INFO level, one message per key.
+// When logger.redact is true (the default), password and fingerprint values
+// are replaced with "****".
+func logConfig(l *slog.Logger) {
+	redact := func(val string) string {
+		if Cfg.Logger.RedactSensitive {
+			return "****"
+		}
+		return val
+	}
+	l.Info("Config: exporter.port", "port", Cfg.Exporter.Port)
+	l.Info("Config: exporter.metrics.prefix", "prefix", Cfg.Exporter.Metrics.Prefix)
+	l.Info("Config: exporter.interval", "interval", Cfg.Exporter.Interval)
+	l.Info("Config: filters.include.path", "path", Cfg.Filters.Include.Path)
+	l.Info("Config: filters.exclude.path", "path", Cfg.Filters.Exclude.Path)
+	l.Info("Config: kopia.password", "password", redact(Cfg.Kopia.Password))
+	l.Info("Config: kopia.apiserver.repositoryURL", "repositoryURL", Cfg.Kopia.APIServer.RepositoryURL)
+	l.Info("Config: kopia.apiserver.hostname", "hostname", Cfg.Kopia.APIServer.Hostname)
+	l.Info("Config: kopia.apiserver.username", "username", Cfg.Kopia.APIServer.Username)
+	l.Info("Config: kopia.apiserver.fingerprint", "fingerprint", redact(Cfg.Kopia.APIServer.Fingerprint))
+	l.Info("Config: kopia.retentionstoextract", "retentions", Cfg.Kopia.Retentions)
+	l.Info("Config: logger.log_level", "log_level", Cfg.Logger.Level)
+	l.Info("Config: logger.json", "json", Cfg.Logger.JSON)
+	l.Info("Config: logger.filename", "filename", Cfg.Logger.Filename)
+	l.Info("Config: logger.maxsize", "maxsize", Cfg.Logger.MaxSize)
+	l.Info("Config: logger.maxbackups", "maxbackups", Cfg.Logger.MaxBackups)
+	l.Info("Config: logger.maxage", "maxage", Cfg.Logger.MaxAge)
+	l.Info("Config: logger.compress", "compress", Cfg.Logger.Compress)
+	l.Info("Config: logger.redact_sensitive", "redact_sensitive", Cfg.Logger.RedactSensitive)
 }
 
 // flagKeyMapper converts a pflag key (using dashes) into the dotted koanf key
