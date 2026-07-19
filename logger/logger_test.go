@@ -58,32 +58,32 @@ func TestReset_JSON(t *testing.T) {
 }
 
 func TestGetWriter_NilOptions(t *testing.T) {
-	w, ok := getLogWriter(nil)
+	w, lj := getLogWriter(nil)
 	assert.Equal(t, os.Stderr, w)
-	assert.False(t, ok)
+	assert.Nil(t, lj)
 }
 
 func TestGetWriter_EmptyFilename(t *testing.T) {
-	w, ok := getLogWriter(&LogOptions{Filename: ""})
+	w, lj := getLogWriter(&LogOptions{Filename: ""})
 	assert.Equal(t, os.Stderr, w)
-	assert.False(t, ok)
+	assert.Nil(t, lj)
 }
 
 func TestGetWriter_Stdout(t *testing.T) {
-	w, ok := getLogWriter(&LogOptions{Filename: "stdout"})
+	w, lj := getLogWriter(&LogOptions{Filename: "stdout"})
 	assert.Equal(t, os.Stdout, w)
-	assert.False(t, ok)
+	assert.Nil(t, lj)
 }
 
 func TestGetWriter_Stderr(t *testing.T) {
-	w, ok := getLogWriter(&LogOptions{Filename: "stderr"})
+	w, lj := getLogWriter(&LogOptions{Filename: "stderr"})
 	assert.Equal(t, os.Stderr, w)
-	assert.False(t, ok)
+	assert.Nil(t, lj)
 }
 
 func TestGetWriter_Lumberjack(t *testing.T) {
 	tmpFile := t.TempDir() + "/test.log"
-	w, ok := getLogWriter(&LogOptions{
+	w, lj := getLogWriter(&LogOptions{
 		Filename:   tmpFile,
 		MaxSize:    10,
 		MaxBackups: 5,
@@ -91,16 +91,16 @@ func TestGetWriter_Lumberjack(t *testing.T) {
 		Compress:   true,
 	})
 	require.NotNil(t, w)
-	assert.True(t, ok)
+	assert.NotNil(t, lj)
 }
 
 func TestGetWriter_LumberjackDefaults(t *testing.T) {
 	tmpFile := t.TempDir() + "/test_defaults.log"
-	w, ok := getLogWriter(&LogOptions{
+	w, lj := getLogWriter(&LogOptions{
 		Filename: tmpFile,
 	})
 	require.NotNil(t, w)
-	assert.True(t, ok)
+	assert.NotNil(t, lj)
 }
 
 func TestNewLogger_DefaultLevel(t *testing.T) {
@@ -157,6 +157,25 @@ func TestNewLogger_LumberjackFile(t *testing.T) {
 	l := Get()
 	require.NotNil(t, l)
 	l.Info("test lumberjack output")
+}
+
+func TestReset_ClosesPreviousLumberjack(t *testing.T) {
+	tmpFile := t.TempDir() + "/reset_close.log"
+	Reset(&LogOptions{
+		Filename: tmpFile,
+		MaxSize:  1,
+	})
+	l := Get()
+	require.NotNil(t, l)
+	l.Info("first logger output")
+
+	Reset(&LogOptions{Filename: "stdout"})
+	l = Get()
+	require.NotNil(t, l)
+	l.Info("second logger output")
+
+	_, err := os.Stat(tmpFile)
+	assert.NoError(t, err, "previous lumberjack file should still exist after close")
 }
 
 func TestReset_Concurrent(t *testing.T) {
