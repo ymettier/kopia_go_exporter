@@ -176,14 +176,16 @@ func TestExporter_Run_AlreadyInUse(t *testing.T) {
 }
 
 type fakeShutdowner struct {
-	err      error
-	called   bool
-	captured error
+	err             error
+	called          bool
+	captured        error
+	capturedContext context.Context
 }
 
-func (f *fakeShutdowner) Shutdown(_ context.Context) error {
+func (f *fakeShutdowner) Shutdown(ctx context.Context) error {
 	f.called = true
 	f.captured = f.err
+	f.capturedContext = ctx
 	return f.err
 }
 
@@ -200,5 +202,15 @@ func TestShutdownServer(t *testing.T) {
 		shutdownServer(f, 9090)
 		assert.True(t, f.called, "Shutdown should be called even on error")
 		assert.Error(t, f.captured, "the shutdown error should be observed by the helper")
+	})
+
+	t.Run("context has timeout", func(t *testing.T) {
+		f := &fakeShutdowner{}
+		shutdownServer(f, 9090)
+		require.NotNil(t, f.capturedContext, "context should be passed to Shutdown")
+		deadline, ok := f.capturedContext.Deadline()
+		assert.True(t, ok, "context should have a deadline")
+		assert.WithinDuration(t, deadline, time.Now(), 6*time.Second,
+			"deadline should be approximately now + 5s")
 	})
 }

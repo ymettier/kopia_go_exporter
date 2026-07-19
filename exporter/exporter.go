@@ -92,7 +92,9 @@ type Shutdowner interface {
 // shutdownServer gracefully shuts down the HTTP server, logging an error if it fails.
 func shutdownServer(s Shutdowner, port int) {
 	l := logger.Get()
-	if err := s.Shutdown(context.Background()); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) //nolint:mnd
+	defer cancel()
+	if err := s.Shutdown(ctx); err != nil {
 		l.Error("HTTP server shutdown error", "port", port, "err", err)
 	}
 }
