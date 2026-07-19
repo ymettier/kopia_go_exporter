@@ -288,9 +288,6 @@ func readLoggerConfig(koanfInstance *koanf.Koanf) LoggerConfig {
 	var cfg LoggerConfig
 
 	cfg.Level = getConfigString(koanfInstance, "logger.log_level", "info")
-	if envLevel := os.Getenv("KGE_LOGGER_LOG_LEVEL"); envLevel != "" {
-		cfg.Level = envLevel
-	}
 
 	cfg.JSON = getConfigBool(koanfInstance, "logger.json", false)
 
@@ -329,12 +326,7 @@ func readConfig(filename string, fs *pflag.FlagSet, defaultConfig []byte) error 
 	}
 
 	// Load environment variables with KGE_ prefix (overrides YAML values)
-	loadConfigLayer(k, env.Provider("KGE_", ".", func(s string) string {
-		s = strings.TrimPrefix(s, "KGE_")
-		s = strings.ToLower(s)
-		s = strings.ReplaceAll(s, "_", ".")
-		return s
-	}), "Failed to load environment variable overrides")
+	loadConfigLayer(k, env.Provider("KGE_", ".", kgeKeyMapper), "Failed to load environment variable overrides")
 
 	// Load pflag values, converting dashes to dots for koanf key matching.
 	// Only flags explicitly set by the user override YAML/env values.
@@ -357,6 +349,20 @@ func readConfig(filename string, fs *pflag.FlagSet, defaultConfig []byte) error 
 	logConfig(l)
 
 	return nil
+}
+
+// kgeKeyMapper maps a KGE_-prefixed environment variable name to its
+// corresponding koanf config key by stripping the prefix, lowercasing, and
+// replacing underscores with dots. The logger.log_level and
+// logger.redact_sensitive keys keep their trailing underscores as part of
+// the name, so they are restored after flattening.
+func kgeKeyMapper(s string) string {
+	s = strings.TrimPrefix(s, "KGE_")
+	s = strings.ToLower(s)
+	s = strings.ReplaceAll(s, "_", ".")
+	s = strings.ReplaceAll(s, "logger.log.level", "logger.log_level")
+	s = strings.ReplaceAll(s, "logger.redact.sensitive", "logger.redact_sensitive")
+	return s
 }
 
 // loadConfigLayer loads a koanf provider, logging a warning instead of failing
