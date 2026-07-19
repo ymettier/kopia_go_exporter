@@ -34,10 +34,10 @@ func run(ctx context.Context, args []string) error {
 		Level:      config.Cfg.Logger.Level,
 		JSON:       config.Cfg.Logger.JSON,
 		Filename:   config.Cfg.Logger.Filename,
-		MaxSize:    config.Cfg.Logger.MaxSize,
-		MaxBackups: config.Cfg.Logger.MaxBackups,
-		MaxAge:     config.Cfg.Logger.MaxAge,
-		Compress:   config.Cfg.Logger.Compress,
+		MaxSize:    config.Cfg.Logger.LogFile.MaxSize,
+		MaxBackups: config.Cfg.Logger.LogFile.MaxBackups,
+		MaxAge:     config.Cfg.Logger.LogFile.MaxAge,
+		Compress:   config.Cfg.Logger.LogFile.Compress,
 	})
 	l := logger.Get()
 	l.Debug("Debug logging enabled")

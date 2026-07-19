@@ -51,15 +51,19 @@ type KopiaConfig struct {
 	Retentions []string
 }
 
+type LogFileConfig struct {
+	MaxSize    int
+	MaxBackups int
+	MaxAge     int
+	Compress   bool
+}
+
 type LoggerConfig struct {
 	Level           string
 	JSON            bool
 	Filename        string
-	MaxSize         int
-	MaxBackups      int
-	MaxAge          int
-	Compress        bool
 	RedactSensitive bool
+	LogFile         LogFileConfig
 }
 
 type FilterConfig struct {
@@ -292,15 +296,15 @@ func readLoggerConfig(koanfInstance *koanf.Koanf) LoggerConfig {
 
 	cfg.Filename = getConfigString(koanfInstance, "logger.filename", "")
 
-	cfg.MaxSize = getConfigInt(koanfInstance, "logger.maxsize", 100) //nolint:mnd
-
-	cfg.MaxBackups = getConfigInt(koanfInstance, "logger.maxbackups", 3)
-
-	cfg.MaxAge = getConfigInt(koanfInstance, "logger.maxage", 28) //nolint:mnd
-
-	cfg.Compress = getConfigBool(koanfInstance, "logger.compress", false)
-
 	cfg.RedactSensitive = getConfigBool(koanfInstance, "logger.redact_sensitive", true)
+
+	cfg.LogFile.MaxSize = getConfigInt(koanfInstance, "logger.log_file.maxsize", 100) //nolint:mnd
+
+	cfg.LogFile.MaxBackups = getConfigInt(koanfInstance, "logger.log_file.maxbackups", 3)
+
+	cfg.LogFile.MaxAge = getConfigInt(koanfInstance, "logger.log_file.maxage", 28) //nolint:mnd
+
+	cfg.LogFile.Compress = getConfigBool(koanfInstance, "logger.log_file.compress", false)
 
 	return cfg
 }
@@ -365,8 +369,8 @@ func loadConfigLayer(k *koanf.Koanf, loader koanf.Provider, msg string) {
 }
 
 // logConfig logs every configuration key at INFO level, one message per key.
-// When logger.redact is true (the default), password and fingerprint values
-// are replaced with "****".
+// When logger.redact_sensitive is true (the default), password and fingerprint
+// values are replaced with "****".
 func logConfig(l *slog.Logger) {
 	redact := func(val string) string {
 		if Cfg.Logger.RedactSensitive {
@@ -388,11 +392,11 @@ func logConfig(l *slog.Logger) {
 	l.Info("Config: logger.log_level", "log_level", Cfg.Logger.Level)
 	l.Info("Config: logger.json", "json", Cfg.Logger.JSON)
 	l.Info("Config: logger.filename", "filename", Cfg.Logger.Filename)
-	l.Info("Config: logger.maxsize", "maxsize", Cfg.Logger.MaxSize)
-	l.Info("Config: logger.maxbackups", "maxbackups", Cfg.Logger.MaxBackups)
-	l.Info("Config: logger.maxage", "maxage", Cfg.Logger.MaxAge)
-	l.Info("Config: logger.compress", "compress", Cfg.Logger.Compress)
 	l.Info("Config: logger.redact_sensitive", "redact_sensitive", Cfg.Logger.RedactSensitive)
+	l.Info("Config: logger.log_file.maxsize", "maxsize", Cfg.Logger.LogFile.MaxSize)
+	l.Info("Config: logger.log_file.maxbackups", "maxbackups", Cfg.Logger.LogFile.MaxBackups)
+	l.Info("Config: logger.log_file.maxage", "maxage", Cfg.Logger.LogFile.MaxAge)
+	l.Info("Config: logger.log_file.compress", "compress", Cfg.Logger.LogFile.Compress)
 }
 
 // flagKeyMapper converts a pflag key (using dashes) into the dotted koanf key

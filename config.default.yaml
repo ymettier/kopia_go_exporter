@@ -33,8 +33,9 @@ logger:
   json: false             # use JSON format instead of text
   redact_sensitive: true  # redact password and fingerprint in config log
   filename: ""            # log file path (empty = stderr)
-  # Parameters below are used only if filename is neither stdout nor stderr.
-  maxsize: 100            # max size in MB before rotation
-  maxbackups: 3           # max number of old log files to keep
-  maxage: 28              # max number of days to retain old log files
-  compress: false         # compress rotated files with gzip
+  # Log file management settings (used when filename is set).
+  log_file:
+    maxsize: 100          # max size in MB before rotation
+    maxbackups: 3         # max number of old log files to keep
+    maxage: 28            # max number of days to retain old log files
+    compress: false       # compress rotated files with gzip
