@@ -166,6 +166,7 @@ The project is licensed under the [MIT License](LICENSE).
 - Comments should be as short as possible (a few words)
 - Group related options under section comments
 - Avoid dead options
+- Values wrapped in `< >` (e.g., `<set me in KGE_KOPIA_PASSWORD env var>`) are **placeholders** that must be overridden by the user via config file, environment variables, or CLI flags. The binary embeds `config.default.yaml` at build time; at startup, `checkPlaceholders()` parses the embedded defaults to find keys whose values match `^<.*>$`, then verifies those keys have been overridden in the final config. Values like `xx<xx>xx` are intentionally allowed — only the `^<.*>$` pattern triggers the check. When adding a new placeholder, use `<description>` format as the value in `config.default.yaml`. Placeholders that were not initially in `config.default.yaml` are also allowed.
 
 ### Metrics
 - Use `prometheus.NewGaugeVec` for snapshot-derived metrics
