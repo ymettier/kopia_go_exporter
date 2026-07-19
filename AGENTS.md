@@ -198,7 +198,7 @@ The project is licensed under the [MIT License](LICENSE).
 - The downloaded kopia CLI binary is kept in `kopiametrics/test_assets/` between runs
 - Unused test data files must be removed
 - Table-driven tests with struct-based test cases
-- Each test function should be preceded by a brief comment stating the specific behavior or scenario it verifies (e.g. which input, error path, or config it exercises).
+- Each `Test*` function is preceded by a short comment describing what it tests and the expected outcome; lines are wrapped at about 70 characters.
 
 ## Common Tasks
 
