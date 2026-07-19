@@ -16,25 +16,12 @@ import (
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/posflag"
+	"github.com/knadh/koanf/providers/rawbytes"
 	"github.com/knadh/koanf/v2"
 	"github.com/spf13/pflag"
 
 	"kopia-go-exporter/logger"
 )
-
-// rawBytesProvider is a simple koanf.Provider that wraps raw bytes.
-type rawBytesProvider struct {
-	data []byte
-}
-
-func (r *rawBytesProvider) ReadBytes() ([]byte, error) {
-	return r.data, nil
-}
-
-// Read implements koanf.Provider but is unused; koanf loads via ReadBytes() + yaml.Parser().
-func (r *rawBytesProvider) Read() (map[string]any, error) {
-	return nil, fmt.Errorf("Read() not implemented, use ReadBytes() with yaml.Parser()")
-}
 
 var k = koanf.New(".")
 
@@ -331,7 +318,7 @@ func readConfig(filename string, fs *pflag.FlagSet, defaultConfig []byte) error 
 
 	// Load embedded default configuration first
 	if len(defaultConfig) > 0 {
-		if err := k.Load(&rawBytesProvider{data: defaultConfig}, yaml.Parser()); err != nil {
+		if err := k.Load(rawbytes.Provider(defaultConfig), yaml.Parser()); err != nil {
 			l.Warn("Failed to load embedded default configuration", "err", err)
 		}
 	}
@@ -426,7 +413,7 @@ func checkPlaceholders(defaultConfig []byte) error {
 	}
 
 	defaultK := koanf.New(".")
-	if err := defaultK.Load(&rawBytesProvider{data: defaultConfig}, yaml.Parser()); err != nil {
+	if err := defaultK.Load(rawbytes.Provider(defaultConfig), yaml.Parser()); err != nil {
 		return fmt.Errorf("failed to parse default config for placeholder check: %w", err)
 	}
 
