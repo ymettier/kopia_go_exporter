@@ -54,7 +54,7 @@ func run(ctx context.Context, args []string) error {
 	for {
 		select {
 		case <-ctx.Done():
-			k.Disconnect(ctx)
+			k.Disconnect(context.Background()) // use fresh context: ctx is already canceled here
 			return nil
 		default:
 			if sleepInterval == 0 {
