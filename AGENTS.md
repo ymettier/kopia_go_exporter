@@ -66,7 +66,7 @@ The project is licensed under the [MIT License](LICENSE).
 ├── .gitignore
 ├── .golangci.yml             # golangci-lint v2 configuration
 ├── .goreleaser.yaml          # GoReleaser release configuration
-├── config.yaml.sample        # Example configuration (all options commented)
+├── config.default.yaml        # Example configuration (all options commented)
 ├── Dockerfile                # Multi-stage build (golang builder + distroless runtime)
 ├── go.mod / go.sum
 ├── version.txt               # Embedded at build time (//go:embed)
@@ -155,12 +155,12 @@ The project is licensed under the [MIT License](LICENSE).
 - Use optional environment variables for configuration (e.g., `KGE_KOPIA_PASSWORD`...)
 - Environment variables should override values from the config file
 - Environment variable names should be in uppercase with underscores (e.g., `KGE_KOPIA_PASSWORD`)
-- Environment variables should not be documented in the `config.yaml.sample` except `KGE_KOPIA_APISERVER_FINGERPRINT` and `KGE_KOPIA_PASSWORD`.
+- Environment variables should not be documented in the `config.default.yaml` except `KGE_KOPIA_APISERVER_FINGERPRINT` and `KGE_KOPIA_PASSWORD`.
 - Environment variables should be prefixed with `KGE_` (e.g., `KGE_EXPORTER_PORT`, `KGE_KOPIA_PASSWORD`, `KGE_LOGGER_LOG_LEVEL`)
 - The mapping converts uppercase underscores to dots: `KGE_KOPIA_APISERVER_FINGERPRINT` → `kopia.apiserver.fingerprint`
-- README.md explains how to forge an environment variable from its definition on config.yaml.sample (e.g. a `KGE_` prefix, flatten the path of the variable and replace dots with underscores).
+- README.md explains how to forge an environment variable from its definition on config.default.yaml (e.g. a `KGE_` prefix, flatten the path of the variable and replace dots with underscores).
 
-### config.yaml.sample
+### config.default.yaml
 - Every option must be present and commented with a short inline comment
 - Comments should be as short as possible (a few words)
 - Group related options under section comments
@@ -201,7 +201,7 @@ The project is licensed under the [MIT License](LICENSE).
 1. Add field to `Config` struct in `config/config.go`
 2. Add parsing logic in `readConfig()` or `CheckConfig()` (per-value reader functions like `readFiltersConfig()` may return an error for load-time validation, e.g. regex compilation)
 3. Add test case in `config/config_test.go`
-4. Update `config.yaml.sample` with example value and short comment
+4. Update `config.default.yaml` with example value and short comment
 
 ### Adding a New Metric
 1. Define in `KopiaMetrics` struct in `kopiametrics/kopia.go`

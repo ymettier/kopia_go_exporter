@@ -67,7 +67,7 @@ extraEnv: []
 kopiaConfigSecret: kopia-config
 
 # Configuration served from the ConfigMap at /config/config.yaml
-# ref: config.yaml.sample at the root of the repository
+# ref: config.default.yaml at the root of the repository
 config:
   exporter:
     port: 9090

@@ -14,7 +14,7 @@ See the [Motivations](#motivations) section below for background on why this pro
 ## Getting Started
 
 1. **Download**: Get the latest binary for your platform from the [GitHub releases page](https://github.com/ymettier/kopia_go_exporter/releases).
-2. **Configure**: Create a `config.yaml` file with the following contents. All options are documented with comments in the [config.yaml.sample](config.yaml.sample) file.
+2. **Configure**: Create a `config.yaml` file with the following contents. All options are documented with comments in the [config.default.yaml](config.default.yaml) file.
    ```yaml
    exporter:
      port: 9090
@@ -88,7 +88,7 @@ The chart is located in `charts/kopia_go_exporter`.
    EOF
    ```
 
-   See `charts/kopia_go_exporter/values.yaml` and `config.yaml.sample` for all available options.
+   See `charts/kopia_go_exporter/values.yaml` and `config.default.yaml` for all available options.
 
 **Install:**
 ```sh
@@ -99,11 +99,11 @@ Note: Helm 3 users need `--atomic` instead of `--rollback-on-failure`.
 
 ## Configuration
 
-The file `config.yaml.sample` contains all the configuration.
+The file `config.default.yaml` contains all the configuration.
 
-Kopia-go-exporter can use such a configuration file: run it with `--config /path/to/config.yaml` or `-c /path/to/config.yaml` where the `config.yaml` file is based on `config.yaml.sample` and modified as you wish.
+Kopia-go-exporter can use such a configuration file: run it with `--config /path/to/config.yaml` or `-c /path/to/config.yaml` where the `config.yaml` file is based on `config.default.yaml` and modified as you wish.
 
-You can also override this configuration with environment variables. They are forged on the configuration items in `config.yaml.sample`, with `KGE_` prefix, the path of the item, flattened, uppercase, with underscores as a separator. Example:
+You can also override this configuration with environment variables. They are forged on the configuration items in `config.default.yaml`, with `KGE_` prefix, the path of the item, flattened, uppercase, with underscores as a separator. Example:
 ```
 kopia:
   apiserver:
