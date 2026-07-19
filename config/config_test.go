@@ -87,10 +87,11 @@ func TestParseFlags_CustomValues(t *testing.T) {
 }
 
 func TestNew_NoConfigFile(t *testing.T) {
-	// No --config flag: config file is not read, CheckConfig fails on missing fields
-	err := New("test", []string{})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.password is not set")
+	// No --config flag: embedded defaults loaded, CheckConfig passes
+	// because placeholder values are non-empty
+	err := New("test", []string{}, loadDefaultConfig(t))
+	assert.NoError(t, err)
+	assert.Equal(t, "set me in KGE_KOPIA_PASSWORD env var", Cfg.Kopia.Password)
 }
 
 func TestNew_NoConfigFile_WithEnv(t *testing.T) {
@@ -101,7 +102,7 @@ func TestNew_NoConfigFile_WithEnv(t *testing.T) {
 	t.Setenv("KGE_KOPIA_APISERVER_HOSTNAME", "myhost")
 	t.Setenv("KGE_KOPIA_APISERVER_USERNAME", "myuser")
 
-	err := New("test", []string{})
+	err := New("test", []string{}, loadDefaultConfig(t))
 	assert.NoError(t, err)
 	assert.Equal(t, "secret", Cfg.Kopia.Password)
 }
@@ -125,6 +126,13 @@ func writeTestConfig(t *testing.T, content string) string {
 	err := os.WriteFile(tmpFile, []byte(content), 0o600)
 	require.NoError(t, err)
 	return tmpFile
+}
+
+func loadDefaultConfig(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile("../config.default.yaml")
+	require.NoError(t, err, "failed to read config.default.yaml for test")
+	return data
 }
 
 func TestLookupConfigKey(t *testing.T) {
@@ -326,7 +334,7 @@ func TestReadFiltersConfig_InvalidExcludeStructure(t *testing.T) {
 func TestReadConfig_InvalidFilters(t *testing.T) {
 	tmpFile := writeTestConfig(t, "filters:\n  include:\n    path:\n      - \"[\"\n")
 
-	err := readConfig(tmpFile, nil)
+	err := readConfig(tmpFile, nil, loadDefaultConfig(t))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid filters.include.path regex")
 }
@@ -348,7 +356,7 @@ func TestReadFiltersConfig_EnvOverride(t *testing.T) {
 	t.Setenv("KGE_FILTERS_INCLUDE_PATH", ".*")
 	t.Setenv("KGE_FILTERS_EXCLUDE_PATH", "/tmp/.*")
 
-	err := readConfig(tmpFile, nil)
+	err := readConfig(tmpFile, nil, loadDefaultConfig(t))
 	require.NoError(t, err)
 	assert.Equal(t, []string{".*"}, Cfg.Filters.Include.Path)
 	assert.Len(t, Cfg.Filters.Include.PathRegex, 1)
@@ -395,7 +403,7 @@ func TestReadKopiaConfig_Defaults(t *testing.T) {
 
 func TestReadConfig_MissingFile(t *testing.T) {
 	k = koanf.New(".")
-	err := readConfig("/nonexistent/config.yaml", nil)
+	err := readConfig("/nonexistent/config.yaml", nil, loadDefaultConfig(t))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read configuration file")
 }
@@ -406,7 +414,7 @@ func TestReadConfig_EnvOverride(t *testing.T) {
 	t.Setenv("KGE_EXPORTER_PORT", "7777")
 
 	k = koanf.New(".")
-	err := readConfig(tmpFile, nil)
+	err := readConfig(tmpFile, nil, loadDefaultConfig(t))
 	require.NoError(t, err)
 	assert.Equal(t, 7777, Cfg.Exporter.Port)
 }
@@ -550,24 +558,24 @@ func TestCheckConfig_MissingUsername(t *testing.T) {
 }
 
 func TestNew_MissingFile(t *testing.T) {
-	err := New("test", []string{"--config", "/nonexistent/file.yaml"})
+	err := New("test", []string{"--config", "/nonexistent/file.yaml"}, loadDefaultConfig(t))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read configuration file")
 }
 
 func TestNew_ValidConfig(t *testing.T) {
-	err := New("test", []string{"--config", "../config.default.yaml"})
+	err := New("test", []string{"--config", "../config.default.yaml"}, loadDefaultConfig(t))
 	assert.NoError(t, err)
 	assert.Equal(t, 9090, Cfg.Exporter.Port)
 }
 
 func TestNew_VersionFlag(t *testing.T) {
-	err := New("test", []string{"--version"})
+	err := New("test", []string{"--version"}, loadDefaultConfig(t))
 	assert.Equal(t, flag.ErrHelp, err)
 }
 
 func TestNew_HelpFlag(t *testing.T) {
-	err := New("test", []string{"--help"})
+	err := New("test", []string{"--help"}, loadDefaultConfig(t))
 	assert.Equal(t, flag.ErrHelp, err)
 }
 

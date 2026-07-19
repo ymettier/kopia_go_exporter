@@ -22,9 +22,12 @@ import (
 //go:embed version.txt
 var version string
 
+//go:embed config.default.yaml
+var defaultConfig []byte
+
 func run(ctx context.Context, args []string) error {
 	logger.Reset(logger.OptionsFromEnv())
-	if err := config.New(strings.TrimSpace(version), args); err != nil {
+	if err := config.New(strings.TrimSpace(version), args, defaultConfig); err != nil {
 		return err
 	}
 	logger.Reset(&logger.LogOptions{
