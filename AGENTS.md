@@ -288,5 +288,5 @@ The project is licensed under the [MIT License](LICENSE).
 
 ## Important Notes
 - The Kopia password and API server fingerprint are sensitive — they should be provided via environment variables (`KGE_KOPIA_PASSWORD`, `KGE_KOPIA_APISERVER_FINGERPRINT`), not committed to the repository.
-- The main loop sleeps 1 second at a time in a busy-wait pattern, counting down `sleepInterval` to the next `RunOnce()` call.
+- The main loop sleeps 1 second at a time in a busy-wait pattern, counting down `sleepInterval` to the next `RunOnce()` call. This is intentional and must not be replaced with `time.After` or `time.Ticker` — the 1-second granularity allows the shutdown signal to be checked frequently and keeps the countdown logic simple and deterministic.
 - Always use locally installed tools (e.g. `git`, `golangci-lint`, `go`, `gofmt`, `goimports`, `helm`...). Only `golangci-lint` may be run in a container if the local version mismatches with the local version of `go`.
