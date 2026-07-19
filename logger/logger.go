@@ -18,6 +18,9 @@ import (
 var (
 	mu     sync.RWMutex
 	global *slog.Logger
+	// writer is the underlying lumberjack writer of the global logger,
+	// if file rotation is enabled. It is kept so Reset can close it.
+	writer *lumberjack.Logger
 )
 
 type LogOptions struct {
@@ -30,31 +33,31 @@ type LogOptions struct {
 	Compress   bool
 }
 
-func getLogWriter(opts *LogOptions) (io.Writer, bool) {
+func getLogWriter(opts *LogOptions) (io.Writer, *lumberjack.Logger) {
 	filename := ""
 	if opts != nil && opts.Filename != "" {
 		filename = opts.Filename
 	}
 
 	if filename == "" {
-		return os.Stderr, false
+		return os.Stderr, nil
 	}
 
 	switch filename {
 	case "stdout": //nolint:goconst
-		return os.Stdout, false
+		return os.Stdout, nil
 	case "stderr":
-		return os.Stderr, false
+		return os.Stderr, nil
 	}
 
 	l := &lumberjack.Logger{
-		Filename: filename,
+		Filename:   filename,
+		MaxSize:    opts.MaxSize,
+		MaxBackups: opts.MaxBackups,
+		MaxAge:     opts.MaxAge,
+		Compress:   opts.Compress,
 	}
-	l.MaxSize = opts.MaxSize
-	l.MaxBackups = opts.MaxBackups
-	l.MaxAge = opts.MaxAge
-	l.Compress = opts.Compress
-	return l, true
+	return l, l
 }
 
 func parseLogLevel(opts *LogOptions) slog.Level {
@@ -99,7 +102,8 @@ func logConfig(l *slog.Logger, opts *LogOptions, usingLumberjack bool) {
 func newLogger(opts *LogOptions) *slog.Logger {
 	level := parseLogLevel(opts)
 
-	w, usingLumberjack := getLogWriter(opts)
+	w, lj := getLogWriter(opts)
+	writer = lj
 
 	var handler slog.Handler
 	if opts != nil && opts.JSON {
@@ -109,7 +113,7 @@ func newLogger(opts *LogOptions) *slog.Logger {
 	}
 	l := slog.New(handler)
 
-	logConfig(l, opts, usingLumberjack)
+	logConfig(l, opts, lj != nil)
 
 	return l
 }
@@ -150,8 +154,14 @@ func OptionsFromEnv() *LogOptions {
 }
 
 // Reset re-initializes the global logger with the provided options.
+// It closes the previous lumberjack file handle if one was in use to
+// avoid leaking the underlying file descriptor.
 func Reset(opts *LogOptions) {
 	mu.Lock()
 	defer mu.Unlock()
+	if writer != nil {
+		_ = writer.Close()
+		writer = nil
+	}
 	global = newLogger(opts)
 }
