@@ -161,6 +161,7 @@ The project is licensed under the [MIT License](LICENSE).
 - Environment variables should be prefixed with `KGE_` (e.g., `KGE_EXPORTER_PORT`, `KGE_KOPIA_PASSWORD`, `KGE_LOGGER_LOG_LEVEL`)
 - The mapping converts uppercase underscores to dots: `KGE_KOPIA_APISERVER_FINGERPRINT` → `kopia.apiserver.fingerprint`
 - README.md explains how to forge an environment variable from its definition on config.default.yaml (e.g. a `KGE_` prefix, flatten the path of the variable and replace dots with underscores).
+- Config keys that contain an underscore as part of their name (not a path separator) must be mapped explicitly. The generic flattening turns `KGE_LOGGER_LOG_LEVEL` into `logger.log.level` and `KGE_LOGGER_REDACT_SENSITIVE` into `logger.redact.sensitive`, which do not match the real keys `logger.log_level` / `logger.redact_sensitive`. `kgeKeyMapper` (config/config.go) restores these keys after flattening; any new config key with an internal underscore must be added there too, and the manual `os.Getenv` override in `readLoggerConfig` must NOT be reintroduced (the env provider already handles it).
 
 ### config.default.yaml
 - Every option must be present and commented with a short inline comment
