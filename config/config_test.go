@@ -562,6 +562,21 @@ func TestNew_MissingFile(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to read configuration file")
 }
 
+func TestNew_BrokenDefaultConfig(t *testing.T) {
+	cfgFile := writeTestConfig(t, `kopia:
+  password: "test"
+  apiserver:
+    repositoryURL: "https://example.com:51515"
+    hostname: "myhost"
+    username: "myuser"
+    fingerprint: "abc123"
+`)
+	broken := []byte("{{{{not valid yaml")
+	err := New("test", []string{"--config", cfgFile}, broken)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to parse default config for placeholder check")
+}
+
 func TestNew_ValidConfig(t *testing.T) {
 	cfgFile := writeTestConfig(t, `kopia:
   password: "test"
