@@ -445,112 +445,88 @@ func TestCheckConfig_ValidConfig(t *testing.T) {
 	k = koanf.New(".")
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			Password: "test", //nolint:goconst
+			Password: "test",
 			APIServer: APIServerConfig{
-				RepositoryURL: "https://example.com:51515", //nolint:goconst
-				Hostname:      "localhost",                 //nolint:goconst
-				Username:      "kopia",                     //nolint:goconst
-				Fingerprint:   "abc123",                    //nolint:goconst
+				RepositoryURL: "https://example.com:51515",
+				Hostname:      "localhost",
+				Username:      "kopia",
+				Fingerprint:   "abc123", //nolint:goconst
 			},
 		},
 	}
 	assert.NoError(t, CheckConfig(nil))
 }
 
-func TestCheckConfig_MissingPassword(t *testing.T) {
-	origCfg := Cfg
-	defer func() { Cfg = origCfg }()
+// TestCheckConfig_MissingFields verifies that CheckConfig reports an error
+// when each required Kopia field is missing.
+func TestCheckConfig_MissingFields(t *testing.T) {
+	validAPIServer := func() APIServerConfig {
+		return APIServerConfig{
+			RepositoryURL: "https://example.com:51515",
+			Hostname:      "localhost",
+			Username:      "kopia",
+			Fingerprint:   "abc123",
+		}
+	}
 
-	Cfg = Config{
-		Kopia: KopiaConfig{
-			Password: "",
-			APIServer: APIServerConfig{
-				RepositoryURL: "https://example.com:51515",
-				Hostname:      "localhost",
-				Username:      "kopia",
-				Fingerprint:   "abc123",
+	tests := []struct {
+		name        string
+		mutate      func(*Config)
+		expectedErr string
+	}{
+		{
+			name:        "missing password",
+			mutate:      func(c *Config) { c.Kopia.Password = "" },
+			expectedErr: "kopia.password is not set",
+		},
+		{
+			name: "missing repositoryURL",
+			mutate: func(c *Config) {
+				c.Kopia.APIServer.RepositoryURL = ""
 			},
+			expectedErr: "kopia.apiserver.repositoryURL is not set",
+		},
+		{
+			name: "missing fingerprint",
+			mutate: func(c *Config) {
+				c.Kopia.APIServer.Fingerprint = ""
+			},
+			expectedErr: "kopia.apiserver.fingerprint is not set",
+		},
+		{
+			name: "missing hostname",
+			mutate: func(c *Config) {
+				c.Kopia.APIServer.Hostname = ""
+			},
+			expectedErr: "kopia.apiserver.hostname is not set",
+		},
+		{
+			name: "missing username",
+			mutate: func(c *Config) {
+				c.Kopia.APIServer.Username = ""
+			},
+			expectedErr: "kopia.apiserver.username is not set",
 		},
 	}
-	err := CheckConfig(nil)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.password is not set")
-}
 
-func TestCheckConfig_MissingRepositoryURL(t *testing.T) {
-	origCfg := Cfg
-	defer func() { Cfg = origCfg }()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			origCfg := Cfg
+			defer func() { Cfg = origCfg }()
 
-	Cfg = Config{
-		Kopia: KopiaConfig{
-			Password: "test",
-			APIServer: APIServerConfig{
-				Hostname:    "localhost",
-				Username:    "kopia",
-				Fingerprint: "abc123",
-			},
-		},
+			Cfg = Config{
+				Kopia: KopiaConfig{
+					Password:  "test",
+					APIServer: validAPIServer(),
+				},
+			}
+			tt.mutate(&Cfg)
+
+			err := CheckConfig(nil)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectedErr)
+		})
 	}
-	err := CheckConfig(nil)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.apiserver.repositoryURL is not set")
-}
-
-func TestCheckConfig_MissingFingerprint(t *testing.T) {
-	origCfg := Cfg
-	defer func() { Cfg = origCfg }()
-
-	Cfg = Config{
-		Kopia: KopiaConfig{
-			Password: "test",
-			APIServer: APIServerConfig{
-				RepositoryURL: "https://example.com:51515",
-				Hostname:      "localhost",
-				Username:      "kopia",
-			},
-		},
-	}
-	err := CheckConfig(nil)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.apiserver.fingerprint is not set")
-}
-
-func TestCheckConfig_MissingHostname(t *testing.T) {
-	origCfg := Cfg
-	defer func() { Cfg = origCfg }()
-
-	Cfg = Config{
-		Kopia: KopiaConfig{
-			Password: "test",
-			APIServer: APIServerConfig{
-				RepositoryURL: "https://example.com:51515",
-				Username:      "kopia",
-				Fingerprint:   "abc123",
-			},
-		},
-	}
-	err := CheckConfig(nil)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.apiserver.hostname is not set")
-}
-
-func TestCheckConfig_MissingUsername(t *testing.T) {
-	origCfg := Cfg
-	defer func() { Cfg = origCfg }()
-
-	Cfg = Config{
-		Kopia: KopiaConfig{
-			Password: "test",
-			APIServer: APIServerConfig{
-				RepositoryURL: "https://example.com:51515",
-				Fingerprint:   "abc123",
-				Hostname:      "localhost",
-			},
-		},
-	}
-	err := CheckConfig(nil)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "kopia.apiserver.username is not set")
 }
 
 func TestNew_MissingFile(t *testing.T) {
