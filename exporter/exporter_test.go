@@ -176,14 +176,29 @@ func TestExporter_Run_AlreadyInUse(t *testing.T) {
 }
 
 type fakeShutdowner struct {
-	err error
+	err      error
+	called   bool
+	captured error
 }
 
-func (f fakeShutdowner) Shutdown(_ context.Context) error {
+func (f *fakeShutdowner) Shutdown(_ context.Context) error {
+	f.called = true
+	f.captured = f.err
 	return f.err
 }
 
-func TestShutdownServer(_ *testing.T) {
-	shutdownServer(fakeShutdowner{}, 9090)
-	shutdownServer(fakeShutdowner{err: errors.New("boom")}, 9090)
+func TestShutdownServer(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		f := &fakeShutdowner{}
+		shutdownServer(f, 9090)
+		assert.True(t, f.called, "Shutdown should be called")
+		assert.NoError(t, f.captured)
+	})
+
+	t.Run("error is logged", func(t *testing.T) {
+		f := &fakeShutdowner{err: errors.New("boom")} //nolint:err113
+		shutdownServer(f, 9090)
+		assert.True(t, f.called, "Shutdown should be called even on error")
+		assert.Error(t, f.captured, "the shutdown error should be observed by the helper")
+	})
 }
