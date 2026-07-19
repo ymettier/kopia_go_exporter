@@ -18,6 +18,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// waitReady blocks until run signals that its first loop iteration is done,
+// or fails the test after a timeout. It replaces fragile time.Sleep-based
+// synchronization.
+func waitReady(t *testing.T, ch <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-ch:
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not reach its first loop iteration")
+	}
+}
+
 func TestVersionEmbedded(t *testing.T) {
 	assert.NotEmpty(t, version, "version.txt should be embedded")
 }
@@ -124,13 +136,14 @@ exporter:
 `)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	testReady = make(chan struct{})
 
 	done := make(chan error, 1)
 	go func() {
 		done <- run(ctx, []string{"--config", cfgFile})
 	}()
 
-	time.Sleep(500 * time.Millisecond)
+	waitReady(t, testReady)
 	cancel()
 
 	select {
@@ -156,13 +169,14 @@ exporter:
 `)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	testReady = make(chan struct{})
 
 	done := make(chan error, 1)
 	go func() {
 		done <- run(ctx, []string{"--config", cfgFile})
 	}()
 
-	time.Sleep(500 * time.Millisecond)
+	waitReady(t, testReady)
 	l := logger.Get()
 	assert.True(t, l.Enabled(context.Background(), slog.LevelDebug))
 	cancel()
@@ -190,13 +204,14 @@ exporter:
 `)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	testReady = make(chan struct{})
 
 	done := make(chan error, 1)
 	go func() {
 		done <- run(ctx, []string{"--config", cfgFile})
 	}()
 
-	time.Sleep(500 * time.Millisecond)
+	waitReady(t, testReady)
 	l := logger.Get()
 	assert.True(t, l.Enabled(context.Background(), slog.LevelWarn))
 	assert.False(t, l.Enabled(context.Background(), slog.LevelInfo))
@@ -225,13 +240,14 @@ exporter:
 `)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	testReady = make(chan struct{})
 
 	done := make(chan error, 1)
 	go func() {
 		done <- run(ctx, []string{"--config", cfgFile})
 	}()
 
-	time.Sleep(500 * time.Millisecond)
+	waitReady(t, testReady)
 	l := logger.Get()
 	_, isJSON := l.Handler().(*slog.JSONHandler)
 	assert.True(t, isJSON, "logger handler should be JSONHandler when KGE_LOGGER_JSON=true")
@@ -273,16 +289,17 @@ exporter:
   port: 9092
   interval: 2
 `)
-
 	ctx, cancel := context.WithCancel(context.Background())
+	testReady = make(chan struct{})
+
 	done := make(chan error, 1)
 	go func() {
 		done <- run(ctx, []string{"--config", cfgFile})
 	}()
 
-	// Let the loop iterate past the first iteration so the interval
-	// decrement branch (sleepInterval > 0) is exercised, then cancel.
-	time.Sleep(1500 * time.Millisecond)
+	// Wait until the loop has performed its first iteration (which exercises
+	// the interval reset branch), then cancel.
+	waitReady(t, testReady)
 	cancel()
 
 	select {
