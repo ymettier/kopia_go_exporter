@@ -230,7 +230,7 @@ func (k *KopiaClient) RunOnce(ctx context.Context) error {
 
 	manifests, err := snapshot.LoadSnapshots(ctx, k.repo, manifestsIds)
 	if err != nil {
-		l.Error("failed to snapshot manifests", "err", err, "ConfigFile", k.configFile)
+		l.Error("failed to load snapshot manifests", "err", err, "ConfigFile", k.configFile)
 		k.isConnected = false
 		return err
 	}
