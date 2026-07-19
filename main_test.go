@@ -18,9 +18,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// waitReady blocks until run signals that its first loop iteration is done,
-// or fails the test after a timeout. It replaces fragile time.Sleep-based
-// synchronization.
+// waitReady blocks until run signals that its first loop
+// iteration is done, or fails the test after a timeout. It replaces
+// fragile time.Sleep-based synchronization.
 func waitReady(t *testing.T, ch <-chan struct{}) {
 	t.Helper()
 	select {
@@ -30,21 +30,27 @@ func waitReady(t *testing.T, ch <-chan struct{}) {
 	}
 }
 
+// Checks that the embedded version string is non-empty.
 func TestVersionEmbedded(t *testing.T) {
 	assert.NotEmpty(t, version, "version.txt should be embedded")
 }
 
+// Runs with a nonexistent config file and expects an error mentioning
+// the failure to read the configuration file.
 func TestRun_MissingConfigFile(t *testing.T) {
 	err := run(context.Background(), []string{"--config", "/nonexistent/config.yaml"}) //nolint:goconst
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read configuration file")
 }
 
+// Runs with --help and expects flag.ErrHelp to be returned.
 func TestRun_HelpFlag(t *testing.T) {
 	err := run(context.Background(), []string{"--help"})
 	assert.Equal(t, flag.ErrHelp, err)
 }
 
+// Runs with each required kopia field missing and expects an error
+// naming the missing field.
 func TestRun_MissingRequiredConfig(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -122,6 +128,8 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
 	}
 }
 
+// Runs the main loop, cancels the context, and expects run to return
+// without error after cancellation.
 func TestRun_ContextCancel(t *testing.T) {
 	cfgFile := writeTestMainConfig(t, `kopia:
   password: "test"
@@ -154,6 +162,8 @@ exporter:
 	}
 }
 
+// Runs with KGE_LOGGER_LOG_LEVEL=debug and expects the active logger to
+// enable the debug level.
 func TestRun_LoggerConfigFromEnvVar(t *testing.T) {
 	t.Setenv("KGE_LOGGER_LOG_LEVEL", "debug")
 
@@ -189,6 +199,8 @@ exporter:
 	}
 }
 
+// Runs with log_level=warn in the config file and expects the logger to
+// enable warn and disable info.
 func TestRun_LoggerConfigFromFile(t *testing.T) {
 	cfgFile := writeTestMainConfig(t, `kopia:
   password: "test"
@@ -225,6 +237,8 @@ exporter:
 	}
 }
 
+// Runs with KGE_LOGGER_JSON=true and expects the logger handler to be a
+// JSON handler.
 func TestRun_LoggerJSONFromEnvVar(t *testing.T) {
 	t.Setenv("KGE_LOGGER_JSON", "true")
 
@@ -261,6 +275,8 @@ exporter:
 	}
 }
 
+// Runs with an invalid TMPDIR and expects an error mentioning the
+// failure to create the temp directory.
 func TestRun_NewKopiaClientFails(t *testing.T) {
 	cfgFile := writeTestMainConfig(t, `kopia:
   password: "test"
@@ -277,6 +293,8 @@ func TestRun_NewKopiaClientFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to create temp directory")
 }
 
+// Runs the main loop, lets it complete one iteration, then cancels, and
+// expects run to exit without error.
 func TestRun_LoopDecrementsInterval(t *testing.T) {
 	cfgFile := writeTestMainConfig(t, `kopia:
   password: "test"
