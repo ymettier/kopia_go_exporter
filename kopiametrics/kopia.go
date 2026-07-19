@@ -83,6 +83,7 @@ type KopiaMetrics struct {
 	BackupDuration  *prometheus.GaugeVec
 	BackupStartTime *prometheus.GaugeVec
 	BackupEndTime   *prometheus.GaugeVec
+	Up              prometheus.Gauge
 }
 
 type KopiaClient struct {
@@ -132,6 +133,12 @@ func (k *KopiaClient) RegisterKopiaMetrics(reg *prometheus.Registry) {
 	k.metrics.BackupDuration = newGaugeVec(reg, prefix, "backup_duration", "Duration of the backup")
 	k.metrics.BackupStartTime = newGaugeVec(reg, prefix, "backup_start_time", "Start time of the backup")
 	k.metrics.BackupEndTime = newGaugeVec(reg, prefix, "backup_end_time", "End time of the backup")
+	k.metrics.Up = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: prefix,
+		Name:      "up",
+		Help:      "Connection status to Kopia repository (1 = connected, 0 = disconnected)",
+	})
+	reg.MustRegister(k.metrics.Up)
 }
 
 // GenerateConfigFile connects to the Kopia API server and writes a config file to the temp directory.
@@ -228,16 +235,17 @@ func (k *KopiaClient) RunOnce(ctx context.Context) error {
 	keepAllRetentions := len(k.cfg.Kopia.Retentions) == 0
 	if !k.isConnected {
 		if err := k.Connect(ctx); err != nil {
+			k.metrics.Up.Set(0)
 			return err
 		}
 	}
-	// FIXME : if isConnected == false, set error status to 1 (in metrics) and return
 
 	// List all snapshot manifests (nil -> all sources)
 	manifestsIds, err := snapshot.ListSnapshotManifests(ctx, k.repo, nil, nil)
 	if err != nil {
 		l.Error("failed to list snapshot manifests", "err", err, "ConfigFile", k.configFile)
 		k.isConnected = false
+		k.metrics.Up.Set(0)
 		return err
 	}
 
@@ -245,8 +253,11 @@ func (k *KopiaClient) RunOnce(ctx context.Context) error {
 	if err != nil {
 		l.Error("failed to load snapshot manifests", "err", err, "ConfigFile", k.configFile)
 		k.isConnected = false
+		k.metrics.Up.Set(0)
 		return err
 	}
+
+	k.metrics.Up.Set(1)
 
 	for _, snapshotGroup := range snapshot.GroupBySource(manifests) {
 		snapshotGroup = snapshot.SortByTime(snapshotGroup, true)
