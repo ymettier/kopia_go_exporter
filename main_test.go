@@ -42,6 +42,7 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
 		{
 			name: "password",
 			cfg: `kopia:
+  password: ""
   apiserver:
     repositoryURL: "https://example.com:51515"
     hostname: "localhost"
@@ -55,6 +56,7 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
 			cfg: `kopia:
   password: "secret"
   apiserver:
+    repositoryURL: ""
     hostname: "localhost"
     username: "kopia"
     fingerprint: "abc123"
@@ -69,6 +71,7 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
     repositoryURL: "https://example.com:51515"
     hostname: "localhost"
     username: "kopia"
+    fingerprint: ""
 `,
 			wantErr: "kopia.apiserver.fingerprint is not set",
 		},
@@ -78,6 +81,7 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
   password: "secret"
   apiserver:
     repositoryURL: "https://example.com:51515"
+    hostname: ""
     username: "kopia"
     fingerprint: "abc123"
 `,
@@ -90,6 +94,7 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
   apiserver:
     repositoryURL: "https://example.com:51515"
     hostname: "localhost"
+    username: ""
     fingerprint: "abc123"
 `,
 			wantErr: "kopia.apiserver.username is not set",
@@ -109,14 +114,6 @@ func TestRun_ContextCancel(t *testing.T) {
 	cfgFile := writeTestMainConfig(t, `exporter:
   port: 9091
   interval: 1
-kopia:
-  password: "secret"
-  apiserver:
-    repositoryURL: "https://127.0.0.1:1"
-    hostname: "localhost"
-    username: "kopia"
-    fingerprint: "0000000000000000000000000000000000000000000000000000000000000000"
-log_level: "error"
 `)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -140,13 +137,8 @@ log_level: "error"
 func TestRun_LoggerConfigFromEnvVar(t *testing.T) {
 	t.Setenv("KGE_LOGGER_LOG_LEVEL", "debug")
 
-	cfgFile := writeTestMainConfig(t, `kopia:
-  password: "secret"
-  apiserver:
-    repositoryURL: "https://127.0.0.1:1"
-    hostname: "localhost"
-    username: "kopia"
-    fingerprint: "0000000000000000000000000000000000000000000000000000000000000000"
+	cfgFile := writeTestMainConfig(t, `exporter:
+  interval: 1
 `)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -172,13 +164,8 @@ func TestRun_LoggerConfigFromEnvVar(t *testing.T) {
 func TestRun_LoggerConfigFromFile(t *testing.T) {
 	cfgFile := writeTestMainConfig(t, `logger:
   log_level: "warn"
-kopia:
-  password: "secret"
-  apiserver:
-    repositoryURL: "https://127.0.0.1:1"
-    hostname: "localhost"
-    username: "kopia"
-    fingerprint: "0000000000000000000000000000000000000000000000000000000000000000"
+exporter:
+  interval: 1
 `)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -205,13 +192,8 @@ kopia:
 func TestRun_LoggerJSONFromEnvVar(t *testing.T) {
 	t.Setenv("KGE_LOGGER_JSON", "true")
 
-	cfgFile := writeTestMainConfig(t, `kopia:
-  password: "secret"
-  apiserver:
-    repositoryURL: "https://127.0.0.1:1"
-    hostname: "localhost"
-    username: "kopia"
-    fingerprint: "0000000000000000000000000000000000000000000000000000000000000000"
+	cfgFile := writeTestMainConfig(t, `exporter:
+  interval: 1
 `)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -236,17 +218,9 @@ func TestRun_LoggerJSONFromEnvVar(t *testing.T) {
 }
 
 func TestRun_NewKopiaClientFails(t *testing.T) {
-	cfgFile := writeTestMainConfig(t, `kopia:
-  password: "secret"
-  apiserver:
-    repositoryURL: "https://127.0.0.1:1"
-    hostname: "localhost"
-    username: "kopia"
-    fingerprint: "0000000000000000000000000000000000000000000000000000000000000000"
-`)
 	t.Setenv("TMPDIR", "/nonexistent-kopia-tmp-dir")
 
-	err := run(context.Background(), []string{"--config", cfgFile})
+	err := run(context.Background(), []string{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to create temp directory")
 }
@@ -255,14 +229,6 @@ func TestRun_LoopDecrementsInterval(t *testing.T) {
 	cfgFile := writeTestMainConfig(t, `exporter:
   port: 9092
   interval: 2
-kopia:
-  password: "secret"
-  apiserver:
-    repositoryURL: "https://127.0.0.1:1"
-    hostname: "localhost"
-    username: "kopia"
-    fingerprint: "0000000000000000000000000000000000000000000000000000000000000000"
-log_level: "error"
 `)
 
 	ctx, cancel := context.WithCancel(context.Background())

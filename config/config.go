@@ -22,6 +22,19 @@ import (
 	"kopia-go-exporter/logger"
 )
 
+// rawBytesProvider is a simple koanf.Provider that wraps raw bytes.
+type rawBytesProvider struct {
+	data []byte
+}
+
+func (r *rawBytesProvider) ReadBytes() ([]byte, error) {
+	return r.data, nil
+}
+
+func (r *rawBytesProvider) Read() (map[string]any, error) {
+	return nil, fmt.Errorf("Read() not implemented, use ReadBytes() with yaml.Parser()")
+}
+
 var k = koanf.New(".")
 
 var givenVersion string
@@ -310,10 +323,19 @@ func readLoggerConfig(koanfInstance *koanf.Koanf, l *slog.Logger) LoggerConfig {
 	return cfg
 }
 
-func readConfig(filename string, fs *pflag.FlagSet) error {
+func readConfig(filename string, fs *pflag.FlagSet, defaultConfig []byte) error {
 	l := logger.Get()
 
 	k = koanf.New(".")
+
+	// Load embedded default configuration first
+	if len(defaultConfig) > 0 {
+		if err := k.Load(&rawBytesProvider{data: defaultConfig}, yaml.Parser()); err != nil {
+			l.Warn("Failed to load embedded default configuration", "err", err)
+		}
+	}
+
+	// Load user configuration file (overrides defaults)
 	if filename != "" {
 		if err := k.Load(file.Provider(filename), yaml.Parser()); err != nil {
 			return fmt.Errorf("failed to read configuration file %s: %w", filename, err)
@@ -385,12 +407,12 @@ func CheckConfig() error {
 }
 
 // New parses flags, loads the config file, and validates all required fields.
-func New(version string, args []string) error {
+func New(version string, args []string, defaultConfig []byte) error {
 	configFile, fs, err := ParseFlags(version, args)
 	if err != nil {
 		return err
 	}
-	if err := readConfig(configFile, fs); err != nil {
+	if err := readConfig(configFile, fs, defaultConfig); err != nil {
 		return err
 	}
 	return CheckConfig()
