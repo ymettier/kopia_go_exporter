@@ -15,6 +15,7 @@ import (
 
 	"github.com/kopia/kopia/repo"
 	"github.com/kopia/kopia/repo/content"
+	"github.com/kopia/kopia/repo/manifest"
 	"github.com/kopia/kopia/snapshot"
 	"github.com/kopia/kopia/snapshot/policy"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,6 +23,18 @@ import (
 	"kopia-go-exporter/config"
 	"kopia-go-exporter/logger"
 )
+
+// openRepo is a test hook for repo.Open. In production it uses the real repo.Open.
+// In tests, it can be replaced to simulate errors.
+var openRepo func(context.Context, string, string, *repo.Options) (repo.Repository, error) = repo.Open
+
+// loadSnapshotsFunc is a test hook for snapshot.LoadSnapshots. In production it uses
+// the real function. In tests, it can be replaced to simulate errors.
+var loadSnapshotsFunc func(context.Context, repo.Repository, []manifest.ID) ([]*snapshot.Manifest, error) = snapshot.LoadSnapshots
+
+// getEffectivePolicyFunc is a test hook for policy.GetEffectivePolicy. In production
+// it uses the real function. In tests, it can be replaced to simulate errors.
+var getEffectivePolicyFunc = policy.GetEffectivePolicy
 
 // filterCacheTTL is the lifetime of cached path-filter results. The cache is
 // invalidated after this duration to drop entries that are no longer used.
@@ -156,7 +169,7 @@ func (k *KopiaClient) Connect(ctx context.Context) error {
 		return err
 	}
 	l.Debug("Try to connect to server", "ConfigFile", k.configFile)
-	k.repo, err = repo.Open(ctx, k.configFile, k.cfg.Kopia.Password, nil)
+	k.repo, err = openRepo(ctx, k.configFile, k.cfg.Kopia.Password, nil)
 	if err != nil {
 		l.Error("Failed to open repository", "err", err, "ConfigFile", k.configFile)
 		k.isConnected = false
@@ -228,7 +241,7 @@ func (k *KopiaClient) RunOnce(ctx context.Context) error {
 		return err
 	}
 
-	manifests, err := snapshot.LoadSnapshots(ctx, k.repo, manifestsIds)
+	manifests, err := loadSnapshotsFunc(ctx, k.repo, manifestsIds)
 	if err != nil {
 		l.Error("failed to load snapshot manifests", "err", err, "ConfigFile", k.configFile)
 		k.isConnected = false
@@ -239,7 +252,7 @@ func (k *KopiaClient) RunOnce(ctx context.Context) error {
 		snapshotGroup = snapshot.SortByTime(snapshotGroup, true)
 		src := snapshotGroup[0].Source
 
-		pol, _, _, err := policy.GetEffectivePolicy(ctx, k.repo, src)
+		pol, _, _, err := getEffectivePolicyFunc(ctx, k.repo, src)
 		if err != nil {
 			l.Error("Unable to determine effective policy", "err", err, "Source", src)
 			continue

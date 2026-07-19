@@ -21,7 +21,9 @@ import (
 
 	"github.com/kopia/kopia/fs"
 	"github.com/kopia/kopia/repo"
+	"github.com/kopia/kopia/repo/manifest"
 	"github.com/kopia/kopia/snapshot"
+	"github.com/kopia/kopia/snapshot/policy"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
@@ -1062,6 +1064,165 @@ func assertMetricLabels(t *testing.T, name, sourceDir string, familyMap map[stri
 	assert.NotEmpty(t, labels["user"], "%s: user label should not be empty", name)
 	assert.Equal(t, sourceDir, labels["path"], "%s: unexpected path label", name)
 	assert.NotEmpty(t, labels["retention"], "%s: retention label should not be empty", name)
+}
+
+// Connects and expects repo.Open to fail via the openRepo test hook.
+func TestConnect_RepoOpenFails(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	cleanup, fingerprint, ip, port := setupTestKopia(t)
+	defer cleanup()
+
+	configFile := filepath.Join(t.TempDir(), "repo.config")
+
+	cfg := &config.Config{
+		Kopia: config.KopiaConfig{
+			Password: "kopiapwd",
+			APIServer: config.APIServerConfig{
+				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
+				Fingerprint:   fingerprint,
+				Hostname:      "localhost",
+				Username:      "kopia",
+			},
+		},
+	}
+
+	logger.Reset(nil)
+
+	// Stub openRepo to return an error, simulating repo.Open failure
+	originalOpenRepo := openRepo
+	openRepo = func(_ context.Context, _ string, _ string, _ *repo.Options) (repo.Repository, error) {
+		return nil, fmt.Errorf("simulated repo.Open failure")
+	}
+	t.Cleanup(func() { openRepo = originalOpenRepo })
+
+	k, err := NewKopiaClient(cfg)
+	require.NoError(t, err)
+	k.configFile = configFile
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
+
+	err = k.Connect(context.Background())
+	assert.Error(t, err, "Connect should fail when repo.Open returns error")
+	assert.Contains(t, err.Error(), "simulated")
+	assert.False(t, k.isConnected, "isConnected should remain false on Connect error")
+}
+
+// Connects to a running test API server, then stubs loadSnapshotsFunc to fail
+// and expects RunOnce to return the error.
+func TestRunOnce_LoadSnapshotsFails(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	cleanup, fingerprint, ip, port := setupTestKopia(t)
+	defer cleanup()
+
+	configFile := filepath.Join(t.TempDir(), "repo.config")
+
+	cfg := &config.Config{
+		Kopia: config.KopiaConfig{
+			Password:   "kopiapwd",
+			Retentions: []string{},
+			APIServer: config.APIServerConfig{
+				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
+				Fingerprint:   fingerprint,
+				Hostname:      "localhost",
+				Username:      "kopia",
+			},
+		},
+	}
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+
+	logger.Reset(nil)
+
+	k, err := NewKopiaClient(cfg)
+	require.NoError(t, err)
+	k.configFile = configFile
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
+
+	// Connect successfully first
+	err = k.Connect(context.Background())
+	require.NoError(t, err, "Connect should succeed")
+
+	// Register metrics (required for RunOnce).
+	reg := prometheus.NewPedanticRegistry()
+	k.RegisterKopiaMetrics(reg)
+
+	// Stub loadSnapshotsFunc to return an error
+	originalLoadSnapshots := loadSnapshotsFunc
+	loadSnapshotsFunc = func(_ context.Context, _ repo.Repository, _ []manifest.ID) ([]*snapshot.Manifest, error) {
+		return nil, fmt.Errorf("simulated LoadSnapshots failure")
+	}
+	t.Cleanup(func() { loadSnapshotsFunc = originalLoadSnapshots })
+
+	err = k.RunOnce(context.Background())
+	assert.Error(t, err, "RunOnce should fail when LoadSnapshots fails")
+	assert.Contains(t, err.Error(), "simulated")
+	assert.False(t, k.isConnected, "isConnected should be false after RunOnce error")
+}
+
+// Connects successfully, then stubs getEffectivePolicyFunc to return an error
+// and expects RunOnce to handle the error gracefully (continue, not return).
+func TestRunOnce_PolicyError(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	cleanup, fingerprint, ip, port := setupTestKopia(t)
+	defer cleanup()
+
+	configFile := filepath.Join(t.TempDir(), "repo.config")
+
+	cfg := &config.Config{
+		Kopia: config.KopiaConfig{
+			Password:   "kopiapwd",
+			Retentions: []string{},
+			APIServer: config.APIServerConfig{
+				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
+				Fingerprint:   fingerprint,
+				Hostname:      "localhost",
+				Username:      "kopia",
+			},
+		},
+	}
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+
+	logger.Reset(nil)
+
+	k, err := NewKopiaClient(cfg)
+	require.NoError(t, err)
+	k.configFile = configFile
+	t.Cleanup(func() { k.Disconnect(context.Background()) })
+
+	// Connect successfully first
+	err = k.Connect(context.Background())
+	require.NoError(t, err, "Connect should succeed")
+
+	// Register metrics (required for RunOnce).
+	reg := prometheus.NewPedanticRegistry()
+	k.RegisterKopiaMetrics(reg)
+
+	// Stub loadSnapshotsFunc to return a dummy manifest so the loop runs,
+	// AND stub getEffectivePolicyFunc to return an error.
+	originalLoadSnapshots := loadSnapshotsFunc
+	loadSnapshotsFunc = func(_ context.Context, _ repo.Repository, _ []manifest.ID) ([]*snapshot.Manifest, error) {
+		return []*snapshot.Manifest{{Source: snapshot.SourceInfo{Path: "/test/path"}}}, nil
+	}
+	t.Cleanup(func() { loadSnapshotsFunc = originalLoadSnapshots })
+
+	originalGetPolicy := getEffectivePolicyFunc
+	getEffectivePolicyFunc = func(_ context.Context, _ repo.Repository, _ snapshot.SourceInfo) (
+		*policy.Policy, *policy.Definition, []*policy.Policy, error,
+	) {
+		return nil, nil, nil, fmt.Errorf("simulated policy error")
+	}
+	t.Cleanup(func() { getEffectivePolicyFunc = originalGetPolicy })
+
+	// RunOnce should succeed despite the policy error (it continues the loop)
+	err = k.RunOnce(context.Background())
+	assert.NoError(t, err, "RunOnce should succeed when policy error is handled")
 }
 
 // Connects to a running test API server, stops it, then calls RunOnce
