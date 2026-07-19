@@ -21,6 +21,8 @@ import (
 	"kopia-go-exporter/logger"
 )
 
+// Constructs a new exporter with build info available and expects a
+// non-nil exporter with the configured port and registry.
 func TestNewExporter(t *testing.T) {
 	origReadBuildInfo := config.ReadBuildInfo
 	defer func() { config.ReadBuildInfo = origReadBuildInfo }()
@@ -47,6 +49,8 @@ func TestNewExporter(t *testing.T) {
 	assert.NotNil(t, ex.Reg)
 }
 
+// Constructs a new exporter when build info is unavailable and expects a
+// non-nil exporter to be returned.
 func TestNewExporter_BuildInfoUnavailable(t *testing.T) {
 	origReadBuildInfo := config.ReadBuildInfo
 	defer func() { config.ReadBuildInfo = origReadBuildInfo }()
@@ -65,6 +69,8 @@ func TestNewExporter_BuildInfoUnavailable(t *testing.T) {
 	require.NotNil(t, ex)
 }
 
+// Sets the build_info metric and expects it to be registered with the
+// provided version/commit/date labels and a value of 1.
 func TestExporter_SetBuildInfo(t *testing.T) {
 	cfg := config.ExporterConfig{
 		Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
@@ -127,6 +133,8 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 	}
 }
 
+// Starts the exporter HTTP server on a free port and expects a 200 OK
+// response from the /metrics endpoint.
 func TestExporter_Run(t *testing.T) {
 	t.Run("Test the exporter on a free port", func(t *testing.T) {
 		logger.Reset(nil)
@@ -152,6 +160,8 @@ func TestExporter_Run(t *testing.T) {
 	})
 }
 
+// Starts the exporter on a port already bound by another listener and
+// expects Run to return promptly with a server error.
 func TestExporter_Run_AlreadyInUse(t *testing.T) {
 	logger.Reset(nil)
 
@@ -178,7 +188,8 @@ func TestExporter_Run_AlreadyInUse(t *testing.T) {
 	}
 }
 
-// freePort returns a currently-free TCP port by binding to :0 and releasing it.
+// freePort returns a currently-free TCP port by binding to :0 and
+// releasing it.
 func freePort(t *testing.T) int {
 	t.Helper()
 	l, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
@@ -202,6 +213,8 @@ func (f *fakeShutdowner) Shutdown(ctx context.Context) error {
 	return f.err
 }
 
+// Shuts down a fake server and expects Shutdown to be called, errors to
+// be observed, and a 5s timeout context to be passed.
 func TestShutdownServer(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		f := &fakeShutdowner{}

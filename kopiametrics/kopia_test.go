@@ -46,11 +46,12 @@ func hashSHA256(pemContent []byte) (string, error) {
 	return fmt.Sprintf("%x", fingerprint), nil
 }
 
-// freeTestPort returns an available TCP port on the loopback interface. It asks
-// the operating system to assign a free port (by binding to :0), confirms the
-// chosen port is not already in use, and returns it as a string. There is a
-// small window between releasing the probe listener and the test binding it,
-// but this avoids the hardcoded port colliding with other local services.
+// freeTestPort returns an available TCP port on the loopback
+// interface. It asks the operating system to assign a free port (by
+// binding to :0), confirms the chosen port is not already in use, and
+// returns it as a string. There is a small window between releasing the
+// probe listener and the test binding it, but this avoids the hardcoded
+// port colliding with other local services.
 func freeTestPort(t *testing.T) string {
 	t.Helper()
 
@@ -72,15 +73,16 @@ func freeTestPort(t *testing.T) string {
 	return port
 }
 
-// setupTestKopia starts a real Kopia API server on the local machine using the
-// downloaded kopia test binary (see kopia_tests_helpers_test.go). It creates a
-// filesystem repository, takes a snapshot, adds a server user, and starts the
-// server listening on 127.0.0.1:51515 with a freshly generated TLS certificate.
-// It returns a cleanup function that shuts the server down, together with the
-// server certificate fingerprint, the bind IP and the listening port.
-//
-// No container runtime (Docker/testcontainers) is used; the server runs as a
-// local subprocess so the tests can run anywhere the binary can be executed.
+// setupTestKopia starts a real Kopia API server on the local
+// machine using the downloaded kopia test binary (see
+// kopia_tests_helpers_test.go). It creates a filesystem repository,
+// takes a snapshot, adds a server user, and starts the server listening
+// on 127.0.0.1:51515 with a freshly generated TLS certificate. It
+// returns a cleanup function that shuts the server down, together with
+// the server certificate fingerprint, the bind IP and the listening
+// port. No container runtime (Docker/testcontainers) is used; the server
+// runs as a local subprocess so the tests can run anywhere the binary
+// can be executed.
 func setupTestKopia(t *testing.T) (cleanup func(), fingerprint, ip, port string) {
 	t.Helper()
 	ctx := context.Background()
@@ -201,6 +203,8 @@ func logGatheredMetrics(t *testing.T, families []*dto.MetricFamily) {
 	}
 }
 
+// Constructs a new kopia client and expects a non-nil client that is
+// initially not connected.
 func TestNewKopiaClient(t *testing.T) {
 	cfg := &config.Config{}
 	k, err := NewKopiaClient(cfg)
@@ -210,12 +214,16 @@ func TestNewKopiaClient(t *testing.T) {
 	assert.False(t, k.isConnected)
 }
 
+// Constructs a kopia client when TMPDIR points to a nonexistent
+// directory and expects an error creating the temp directory.
 func TestNewKopiaClient_TempDirFailure(t *testing.T) {
 	t.Setenv("TMPDIR", "/nonexistent-kopia-tmp-dir")
 	_, err := NewKopiaClient(&config.Config{})
 	assert.Error(t, err)
 }
 
+// Registers kopia metrics and expects each of the seven gauge metrics to
+// already be registered (re-registration errors).
 func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 	metricNames := []string{
 		"total_size",
@@ -243,6 +251,8 @@ func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 	}
 }
 
+// Connects a kopia client to a running test API server and expects
+// isConnected to become true.
 func TestKopiaClient_Connect(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -281,6 +291,8 @@ func TestKopiaClient_Connect(t *testing.T) {
 	assert.True(t, k.isConnected)
 }
 
+// Disconnects a connected kopia client and expects isConnected to become
+// false and no panic.
 func TestKopiaClient_Disconnect(t *testing.T) {
 	logger.Reset(nil)
 
@@ -293,10 +305,11 @@ func TestKopiaClient_Disconnect(t *testing.T) {
 	assert.False(t, k.isConnected)
 }
 
-// TestKopiaBinaryPresent verifies that the kopia test executable already exists
-// in the kopiametrics/ directory. When it is missing, the test downloads the
-// configured kopia release instead of failing the suite, so the binary is only
-// fetched once and reused on later runs.
+// TestKopiaBinaryPresent verifies that the kopia test
+// executable already exists in the kopiametrics/ directory. When it is
+// missing, the test downloads the configured kopia release instead of
+// failing the suite, so the binary is only fetched once and reused on
+// later runs.
 func TestKopiaBinaryPresent(t *testing.T) {
 	if _, err := os.Stat(kopiaTestBinaryPath); err == nil {
 		t.Logf("kopia test binary already present at %s", kopiaTestBinaryPath)
@@ -307,11 +320,12 @@ func TestKopiaBinaryPresent(t *testing.T) {
 	require.NoError(t, downloadKopiaBinary(t), "failed to download kopia binary")
 }
 
-// TestKopiaVersion ensures the downloaded kopia executable runs at the expected
-// version. If the version does not match (for example an outdated binary was
-// left behind), the test re-downloads the configured kopia release rather than
-// failing outright. The test only fails when the binary cannot be obtained or
-// is still incorrect after the download.
+// TestKopiaVersion ensures the downloaded kopia executable
+// runs at the expected version. If the version does not match (for
+// example an outdated binary was left behind), the test re-downloads the
+// configured kopia release rather than failing outright. The test only
+// fails when the binary cannot be obtained or is still incorrect after
+// the download.
 func TestKopiaVersion(t *testing.T) {
 	if _, err := os.Stat(kopiaTestBinaryPath); err != nil {
 		t.Logf("kopia test binary missing at %s, downloading %s", kopiaTestBinaryPath, kopiaTestVersion)
@@ -335,6 +349,8 @@ func TestKopiaVersion(t *testing.T) {
 	t.Logf("kopia test binary is at expected version %s", kopiaTestVersion)
 }
 
+// Sets snapshot metrics for a retention that is filtered out and expects
+// no metrics to be emitted.
 func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
@@ -372,6 +388,8 @@ func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 	assert.Empty(t, families, "no metrics should be set when retention is filtered out")
 }
 
+// Sets snapshot metrics with keepAllRetentions and expects the
+// file_count gauge to be 10.
 func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
@@ -419,6 +437,8 @@ func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
 	assert.Equal(t, float64(10), gauge.GetMetric()[0].GetGauge().GetValue())
 }
 
+// Exercises matchPathFilters with various include/exclude regex
+// combinations and expects the documented accept/reject results.
 func TestMatchPathFilters(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -505,6 +525,8 @@ func TestMatchPathFilters(t *testing.T) {
 	}
 }
 
+// Calls matchPathFiltersCached twice and expects identical results and
+// that the second calls hit the cache.
 func TestMatchPathFiltersCached(t *testing.T) {
 	filterCacheMu.Lock()
 	filterCache = make(map[string]filterCacheEntry)
@@ -522,6 +544,8 @@ func TestMatchPathFiltersCached(t *testing.T) {
 	assert.False(t, matchPathFiltersCached("/data/tmp/drop", include, exclude))
 }
 
+// Calls matchPathFiltersCached with a stale cache and expects a fresh
+// computation and the path to be present in the cache.
 func TestMatchPathFiltersCached_InvalidatesAfterTTL(t *testing.T) {
 	filterCacheMu.Lock()
 	filterCache = make(map[string]filterCacheEntry)
@@ -548,6 +572,8 @@ func mustRegexes(t *testing.T, patterns ...string) []*regexp.Regexp {
 	return res
 }
 
+// Sets snapshot metrics for a path matching the exclude filter and
+// expects no metrics to be emitted.
 func TestSetSnapshotMetrics_PathFilterExcludes(t *testing.T) {
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
@@ -583,6 +609,8 @@ func TestSetSnapshotMetrics_PathFilterExcludes(t *testing.T) {
 	assert.Empty(t, families, "no metrics should be set when path is excluded")
 }
 
+// Sets snapshot metrics for a path matching the include filter and
+// expects the file_count gauge to be 10.
 func TestSetSnapshotMetrics_PathFilterIncludes(t *testing.T) {
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
@@ -628,6 +656,8 @@ func TestSetSnapshotMetrics_PathFilterIncludes(t *testing.T) {
 	assert.Equal(t, float64(10), gauge.GetMetric()[0].GetGauge().GetValue())
 }
 
+// Runs RunOnce when Connect fails and expects an error and isConnected
+// to remain false.
 func TestRunOnce_ConnectFails(t *testing.T) {
 	logger.Reset(nil)
 
@@ -653,6 +683,8 @@ func TestRunOnce_ConnectFails(t *testing.T) {
 	assert.False(t, k.isConnected)
 }
 
+// Runs RunOnce against an empty repository and expects success with no
+// metrics emitted.
 func TestRunOnce_EmptyRepo(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -717,6 +749,8 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 	assert.Empty(t, families, "no metrics should be set for an empty repo")
 }
 
+// Connects to a running test API server and expects success with
+// isConnected true and a non-nil repo.
 func TestConnect(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -752,6 +786,8 @@ func TestConnect(t *testing.T) {
 	assert.NotNil(t, k.repo)
 }
 
+// Connects, stops the server, then connects again and expects the second
+// Connect to fail and isConnected to stay false.
 func TestConnect_OpenFails(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -808,6 +844,8 @@ func TestConnect_OpenFails(t *testing.T) {
 	assert.False(t, k2.isConnected)
 }
 
+// Calls RunOnce on a disconnected client and expects it to auto-connect,
+// set the repo, and leave isConnected true.
 func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -847,12 +885,13 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 	require.NotNil(t, k.repo, "Repo should be set after auto-connect")
 }
 
-// setupTestRepo creates a local Kopia filesystem repository and a separate
-// data directory with a known structure (1 subdir, 3 non-empty files), then
-// takes a snapshot of the data directory with explicit start/end times. It
-// returns the config file path, the data directory path, and the repository
-// password. This helper does NOT start a Kopia API server — it is intended
-// for tests that connect directly to the repository via the Go API.
+// setupTestRepo creates a local Kopia filesystem repository
+// and a separate data directory with a known structure (1 subdir, 3 non-
+// empty files), then takes a snapshot of the data directory with
+// explicit start/end times. It returns the config file path, the data
+// directory path, and the repository password. This helper does NOT
+// start a Kopia API server — it is intended for tests that connect
+// directly to the repository via the Go API.
 func setupTestRepo(t *testing.T) (configFile, sourceDir, password string) {
 	t.Helper()
 	ctx := context.Background()
@@ -902,6 +941,8 @@ func setupTestRepo(t *testing.T) (configFile, sourceDir, password string) {
 	return configFile, sourceDir, password
 }
 
+// Runs RunOnce against a repo with a known snapshot and expects the
+// seven metrics with correct labels, counts, sizes, and timestamps.
 func TestRunOnceMetrics(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")

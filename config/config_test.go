@@ -21,6 +21,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Parses CLI flags and checks that defaults, version/help error paths,
+// and custom --config, --exporter-port and --log_level values are
+// handled as expected.
 func TestParseFlags(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -81,18 +84,24 @@ func TestParseFlags(t *testing.T) {
 	}
 }
 
+// Parses custom flag values and expects the returned config file path
+// and parsed flags to match the provided arguments.
 func TestParseFlags_CustomValues(t *testing.T) {
 	configFile, _, err := ParseFlags("test", []string{"--config", "/tmp/custom.yaml", "--exporter-port", "8080", "--log_level", "warn"})
 	require.NoError(t, err)
 	assert.Equal(t, "/tmp/custom.yaml", configFile)
 }
 
+// Calls New with no --config flag and expects an error because the
+// embedded default config still contains placeholder values.
 func TestNew_NoConfigFile(t *testing.T) {
 	err := New("test", []string{}, loadDefaultConfig(t))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "still has placeholder value")
 }
 
+// Calls New with no --config and only environment variables set, and
+// expects success with the password read from the env vars.
 func TestNew_NoConfigFile_WithEnv(t *testing.T) {
 	// No --config flag but all required values via env vars
 	t.Setenv("KGE_KOPIA_PASSWORD", "secret")
@@ -106,6 +115,8 @@ func TestNew_NoConfigFile_WithEnv(t *testing.T) {
 	assert.Equal(t, "secret", Cfg.Kopia.Password)
 }
 
+// Builds version info and expects the given version and a non-empty Go
+// version.
 func TestGetVersionInfo(t *testing.T) {
 	givenVersion = "testVersion"
 	vi := GetVersionInfo()
@@ -113,6 +124,8 @@ func TestGetVersionInfo(t *testing.T) {
 	assert.NotEmpty(t, vi.GoVersion)
 }
 
+// Builds version info with build info unavailable and expects the
+// version to fall back to the given value.
 func TestGetVersionInfo_ReturnsVCSData(t *testing.T) {
 	givenVersion = "1.0.0" //nolint:goconst
 	vi := GetVersionInfo()
@@ -134,6 +147,8 @@ func loadDefaultConfig(t *testing.T) []byte {
 	return data
 }
 
+// Looks up lowercase, camelCase, and nonexistent config keys and expects
+// the value (or absence) to be reported correctly.
 func TestLookupConfigKey(t *testing.T) {
 	cfgFile := writeTestConfig(t, "exporter:\n  port: 9090\n  metrics:\n    prefix: test_prefix\n")
 	k = koanf.New(".")
@@ -158,6 +173,8 @@ func TestLookupConfigKey(t *testing.T) {
 	})
 }
 
+// Looks up a key written with an underscore format in the config and
+// expects it to resolve to the dotted config path.
 func TestLookupConfigKey_UnderscoreFormat(t *testing.T) {
 	cfgFile := writeTestConfig(t, "exporter_metrics_prefix: underscore_prefix\n")
 	k = koanfNew(t, cfgFile)
@@ -167,6 +184,8 @@ func TestLookupConfigKey_UnderscoreFormat(t *testing.T) {
 	assert.Equal(t, "underscore_prefix", val)
 }
 
+// Reads a string config value and expects the existing value, or the
+// default when the key is missing.
 func TestGetConfigString(t *testing.T) {
 	cfgFile := writeTestConfig(t, "existing:\n  key: value\n")
 	k = koanfNew(t, cfgFile)
@@ -182,6 +201,8 @@ func TestGetConfigString(t *testing.T) {
 	})
 }
 
+// Reads an int config value and expects the parsed value, or the default
+// for a missing key or a non-numeric value.
 func TestGetConfigInt(t *testing.T) {
 	cfgFile := writeTestConfig(t, "port: 8080\ninvalid: not_a_number\n")
 	k = koanfNew(t, cfgFile)
@@ -202,6 +223,8 @@ func TestGetConfigInt(t *testing.T) {
 	})
 }
 
+// Reads a bool config value and expects true/false for
+// "true"/"false"/"1", and the default for missing or invalid values.
 func TestGetConfigBool(t *testing.T) {
 	cfgFile := writeTestConfig(t, "enabled: true\ndisabled: \"false\"\none: \"1\"\ninvalid_bool: maybe\n")
 	k = koanfNew(t, cfgFile)
@@ -232,6 +255,8 @@ func TestGetConfigBool(t *testing.T) {
 	})
 }
 
+// Reads the exporter config section and expects port, metrics prefix,
+// and interval to match the YAML.
 func TestReadExporterConfig(t *testing.T) {
 	cfgFile := writeTestConfig(t, "exporter:\n  port: 8080\n  metrics:\n    prefix: custom_prefix\n  interval: 60\n")
 	k = koanfNew(t, cfgFile)
@@ -242,6 +267,8 @@ func TestReadExporterConfig(t *testing.T) {
 	assert.Equal(t, 60, cfg.Interval)
 }
 
+// Reads the exporter config with a flag override and expects the flag
+// value to take precedence over the YAML value.
 func TestReadExporterConfig_FlagOverride(t *testing.T) {
 	cfgFile := writeTestConfig(t, "exporter:\n  port: 8080\n")
 
@@ -257,6 +284,8 @@ func TestReadExporterConfig_FlagOverride(t *testing.T) {
 	assert.Equal(t, 7777, cfg.Port)
 }
 
+// Reads the exporter config with no values set and expects the
+// documented default port, prefix, and interval.
 func TestReadExporterConfig_Defaults(t *testing.T) {
 	k = koanf.New(".")
 
@@ -266,6 +295,8 @@ func TestReadExporterConfig_Defaults(t *testing.T) {
 	assert.Equal(t, 300, cfg.Interval)
 }
 
+// Reads valid include/exclude filter paths and expects the compiled
+// regex lists to be built.
 func TestReadFiltersConfig(t *testing.T) {
 	cfgFile := writeTestConfig(t, `filters:
   include:
@@ -286,6 +317,8 @@ func TestReadFiltersConfig(t *testing.T) {
 	assert.Len(t, cfg.Exclude.PathRegex, 1)
 }
 
+// Reads an invalid include filter regex and expects an error mentioning
+// the include path regex.
 func TestReadFiltersConfig_InvalidRegex(t *testing.T) {
 	cfgFile := writeTestConfig(t, "filters:\n  include:\n    path:\n      - \"[\"\n")
 	k = koanfNew(t, cfgFile)
@@ -296,6 +329,8 @@ func TestReadFiltersConfig_InvalidRegex(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid filters.include.path regex")
 }
 
+// Reads an invalid exclude filter regex and expects an error mentioning
+// the exclude path regex.
 func TestReadFiltersConfig_InvalidExcludeRegex(t *testing.T) {
 	cfgFile := writeTestConfig(t, "filters:\n  exclude:\n    path:\n      - \"[\"\n")
 	k = koanfNew(t, cfgFile)
@@ -306,6 +341,8 @@ func TestReadFiltersConfig_InvalidExcludeRegex(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid filters.exclude.path regex")
 }
 
+// Reads an include filter path given as a map instead of a list and
+// expects it to be handled (one regex, no error).
 func TestReadFiltersConfig_InvalidIncludeStructure(t *testing.T) {
 	cfgFile := writeTestConfig(t, "filters:\n  include:\n    path:\n      key: value\n")
 	k = koanfNew(t, cfgFile)
@@ -316,6 +353,8 @@ func TestReadFiltersConfig_InvalidIncludeStructure(t *testing.T) {
 	assert.Len(t, cfg.Include.PathRegex, 1)
 }
 
+// Reads an exclude filter path given as a map instead of a list and
+// expects it to be handled (one regex, no error).
 func TestReadFiltersConfig_InvalidExcludeStructure(t *testing.T) {
 	cfgFile := writeTestConfig(t, "filters:\n  exclude:\n    path:\n      key: value\n")
 	k = koanfNew(t, cfgFile)
@@ -326,6 +365,8 @@ func TestReadFiltersConfig_InvalidExcludeStructure(t *testing.T) {
 	assert.Len(t, cfg.Exclude.PathRegex, 1)
 }
 
+// Loads a config with an invalid include regex via readConfig and
+// expects a config error mentioning the include path regex.
 func TestReadConfig_InvalidFilters(t *testing.T) {
 	tmpFile := writeTestConfig(t, "filters:\n  include:\n    path:\n      - \"[\"\n")
 
@@ -334,6 +375,8 @@ func TestReadConfig_InvalidFilters(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid filters.include.path regex")
 }
 
+// Reads filters with no values set and expects empty path lists and no
+// compiled regexes.
 func TestReadFiltersConfig_Defaults(t *testing.T) {
 	k = koanf.New(".")
 	l := slog.Default()
@@ -346,6 +389,8 @@ func TestReadFiltersConfig_Defaults(t *testing.T) {
 	assert.Empty(t, cfg.Exclude.PathRegex)
 }
 
+// Loads a config whose include path is overridden by env vars and
+// expects the env values to be used.
 func TestReadFiltersConfig_EnvOverride(t *testing.T) {
 	tmpFile := writeTestConfig(t, "filters:\n  include:\n    path:\n      - ignored\n")
 	t.Setenv("KGE_FILTERS_INCLUDE_PATH", ".*")
@@ -359,6 +404,8 @@ func TestReadFiltersConfig_EnvOverride(t *testing.T) {
 	assert.Len(t, Cfg.Filters.Exclude.PathRegex, 1)
 }
 
+// Reads the kopia config section and expects password, apiserver fields,
+// and retentions to match the YAML.
 func TestReadKopiaConfig(t *testing.T) {
 	cfgFile := writeTestConfig(t, `kopia:
   password: secret
@@ -383,6 +430,8 @@ func TestReadKopiaConfig(t *testing.T) {
 	assert.Equal(t, []string{"daily", "weekly"}, cfg.Retentions)
 }
 
+// Reads the kopia config with no values set and expects all fields to be
+// empty and retentions empty.
 func TestReadKopiaConfig_Defaults(t *testing.T) {
 	k = koanf.New(".")
 	l := slog.Default()
@@ -396,6 +445,8 @@ func TestReadKopiaConfig_Defaults(t *testing.T) {
 	assert.Equal(t, []string{}, cfg.Retentions)
 }
 
+// Loads a nonexistent config file and expects an error mentioning the
+// failure to read the configuration file.
 func TestReadConfig_MissingFile(t *testing.T) {
 	k = koanf.New(".")
 	err := readConfig("/nonexistent/config.yaml", nil, loadDefaultConfig(t))
@@ -403,6 +454,8 @@ func TestReadConfig_MissingFile(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to read configuration file")
 }
 
+// Loads a config whose exporter port is overridden by an env var and
+// expects the env value to be used.
 func TestReadConfig_EnvOverride(t *testing.T) {
 	tmpFile := writeTestConfig(t, "exporter:\n  port: 8080\n")
 
@@ -429,6 +482,8 @@ func (s stubConfigProvider) Read() (map[string]any, error) {
 	return map[string]any{"exporter": map[string]any{"port": 9090}}, nil
 }
 
+// Loads a config layer from a provider and expects values to be applied,
+// and a provider error to be ignored without failure.
 func TestLoadConfigLayer(t *testing.T) {
 	k := koanf.New(".")
 	loadConfigLayer(k, stubConfigProvider{}, "failed to load stub")
@@ -438,6 +493,7 @@ func TestLoadConfigLayer(t *testing.T) {
 	loadConfigLayer(k2, stubConfigProvider{err: errors.New("boom")}, "failed to load stub")
 }
 
+// Checks a fully populated config and expects no validation error.
 func TestCheckConfig_ValidConfig(t *testing.T) {
 	origCfg := Cfg
 	defer func() { Cfg = origCfg }()
@@ -457,8 +513,8 @@ func TestCheckConfig_ValidConfig(t *testing.T) {
 	assert.NoError(t, CheckConfig(nil))
 }
 
-// TestCheckConfig_MissingFields verifies that CheckConfig reports an error
-// when each required Kopia field is missing.
+// TestCheckConfig_MissingFields verifies that CheckConfig reports an
+// error when each required Kopia field is missing.
 func TestCheckConfig_MissingFields(t *testing.T) {
 	validAPIServer := func() APIServerConfig {
 		return APIServerConfig{
@@ -529,12 +585,16 @@ func TestCheckConfig_MissingFields(t *testing.T) {
 	}
 }
 
+// Calls New with a nonexistent --config file and expects an error
+// mentioning the failure to read the configuration file.
 func TestNew_MissingFile(t *testing.T) {
 	err := New("test", []string{"--config", "/nonexistent/file.yaml"}, loadDefaultConfig(t))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read configuration file")
 }
 
+// Calls New with an unparseable embedded default config and expects an
+// error from the placeholder check.
 func TestNew_BrokenDefaultConfig(t *testing.T) {
 	cfgFile := writeTestConfig(t, `kopia:
   password: "test"
@@ -550,6 +610,8 @@ func TestNew_BrokenDefaultConfig(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to parse default config for placeholder check")
 }
 
+// Calls New with a valid config file and expects success and the default
+// exporter port to be applied.
 func TestNew_ValidConfig(t *testing.T) {
 	cfgFile := writeTestConfig(t, `kopia:
   password: "test"
@@ -564,6 +626,8 @@ func TestNew_ValidConfig(t *testing.T) {
 	assert.Equal(t, 9090, Cfg.Exporter.Port)
 }
 
+// Calls New with an include path wrapped in angle brackets and expects
+// it to be accepted (not treated as a placeholder).
 func TestNew_FilterIncludeWithAngleBrackets(t *testing.T) {
 	cfgFile := writeTestConfig(t, `kopia:
   password: "test"
@@ -582,11 +646,13 @@ filters:
 	assert.Equal(t, []string{"<ok>"}, Cfg.Filters.Include.Path)
 }
 
+// Calls New with --version and expects flag.ErrHelp to be returned.
 func TestNew_VersionFlag(t *testing.T) {
 	err := New("test", []string{"--version"}, loadDefaultConfig(t))
 	assert.Equal(t, flag.ErrHelp, err)
 }
 
+// Calls New with --help and expects flag.ErrHelp to be returned.
 func TestNew_HelpFlag(t *testing.T) {
 	err := New("test", []string{"--help"}, loadDefaultConfig(t))
 	assert.Equal(t, flag.ErrHelp, err)
@@ -600,6 +666,8 @@ func koanfNew(t *testing.T, cfgFile string) *koanf.Koanf {
 	return k
 }
 
+// Formats version info with build info unavailable and expects the given
+// version present and the Go version absent.
 func TestVersionInfo_BuildInfoUnavailable(t *testing.T) {
 	origReadBuildInfo := ReadBuildInfo
 	defer func() { ReadBuildInfo = origReadBuildInfo }()
@@ -614,6 +682,8 @@ func TestVersionInfo_BuildInfoUnavailable(t *testing.T) {
 	assert.NotContains(t, output, "go1.25.0")
 }
 
+// Formats version info with VCS settings and expects the revision and Go
+// version to appear in the output.
 func TestVersionInfo_WithVCSSettings(t *testing.T) {
 	origReadBuildInfo := ReadBuildInfo
 	defer func() { ReadBuildInfo = origReadBuildInfo }()
@@ -634,6 +704,8 @@ func TestVersionInfo_WithVCSSettings(t *testing.T) {
 	assert.Contains(t, output, "go1.25.0")
 }
 
+// Gets version info with build info unavailable and expects revision and
+// time to be empty.
 func TestGetVersionInfo_BuildInfoUnavailable(t *testing.T) {
 	origReadBuildInfo := ReadBuildInfo
 	defer func() { ReadBuildInfo = origReadBuildInfo }()
@@ -649,6 +721,8 @@ func TestGetVersionInfo_BuildInfoUnavailable(t *testing.T) {
 	assert.Empty(t, vi.Time)
 }
 
+// Gets version info with VCS settings and expects version, revision, and
+// time to match the build info.
 func TestGetVersionInfo_WithVCSSettings(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -687,6 +761,8 @@ func TestGetVersionInfo_WithVCSSettings(t *testing.T) {
 	}
 }
 
+// Reads a kopia retentions list given as a map and expects it to be
+// parsed as a single empty string entry.
 func TestReadKopiaConfig_InvalidRetentions(t *testing.T) {
 	cfgFile := writeTestConfig(t, "kopia:\n  retentionstoextract:\n    a:\n      b: c\n")
 	k = koanfNew(t, cfgFile)
@@ -697,6 +773,8 @@ func TestReadKopiaConfig_InvalidRetentions(t *testing.T) {
 	assert.Empty(t, cfg.Retentions[0])
 }
 
+// Loads the logger config with KGE_LOGGER_LOG_LEVEL set and expects the
+// level to come from the env var.
 func TestReadLoggerConfig_EnvVarOverride(t *testing.T) {
 	k = koanf.New(".")
 	t.Setenv("KGE_LOGGER_LOG_LEVEL", "debug")
@@ -707,6 +785,8 @@ func TestReadLoggerConfig_EnvVarOverride(t *testing.T) {
 	assert.Equal(t, "debug", cfg.Level)
 }
 
+// Loads the logger config with KGE_LOGGER_REDACT_SENSITIVE=false and
+// expects RedactSensitive to be false.
 func TestReadLoggerConfig_EnvVarOverrideRedactSensitive(t *testing.T) {
 	k = koanf.New(".")
 	t.Setenv("KGE_LOGGER_REDACT_SENSITIVE", "false")
