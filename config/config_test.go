@@ -556,7 +556,7 @@ func TestNew_MissingFile(t *testing.T) {
 }
 
 func TestNew_ValidConfig(t *testing.T) {
-	err := New("test", []string{"--config", "../config.yaml.sample"})
+	err := New("test", []string{"--config", "../config.default.yaml"})
 	assert.NoError(t, err)
 	assert.Equal(t, 9090, Cfg.Exporter.Port)
 }
