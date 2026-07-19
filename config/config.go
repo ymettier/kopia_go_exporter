@@ -209,32 +209,37 @@ func readExporterConfig(koanfInstance *koanf.Koanf, l *slog.Logger) ExporterConf
 
 func readFiltersConfig(koanfInstance *koanf.Koanf, l *slog.Logger) (FiltersConfig, error) {
 	var cfg FiltersConfig
+	var err error
 
-	cfg.Include.Path = make([]string, 0)
-	if koanfInstance.Exists("filters.include.path") {
-		if err := koanfInstance.Unmarshal("filters.include.path", &cfg.Include.Path); err != nil {
-			l.Warn("Failed to unmarshal filters.include.path", "err", err)
-		}
-	}
-	l.Info("Config: filters.include.path", "path", cfg.Include.Path)
-	includeRegex, err := compileRegexes(cfg.Include.Path)
+	cfg.Include, err = readFilterGroup(koanfInstance, "filters.include", l)
 	if err != nil {
 		return cfg, fmt.Errorf("invalid filters.include.path regex: %w", err)
 	}
-	cfg.Include.PathRegex = includeRegex
 
-	cfg.Exclude.Path = make([]string, 0)
-	if koanfInstance.Exists("filters.exclude.path") {
-		if err := koanfInstance.Unmarshal("filters.exclude.path", &cfg.Exclude.Path); err != nil {
-			l.Warn("Failed to unmarshal filters.exclude.path", "err", err)
-		}
-	}
-	l.Info("Config: filters.exclude.path", "path", cfg.Exclude.Path)
-	excludeRegex, err := compileRegexes(cfg.Exclude.Path)
+	cfg.Exclude, err = readFilterGroup(koanfInstance, "filters.exclude", l)
 	if err != nil {
 		return cfg, fmt.Errorf("invalid filters.exclude.path regex: %w", err)
 	}
-	cfg.Exclude.PathRegex = excludeRegex
+
+	return cfg, nil
+}
+
+func readFilterGroup(koanfInstance *koanf.Koanf, key string, l *slog.Logger) (FilterConfig, error) {
+	var cfg FilterConfig
+
+	cfg.Path = make([]string, 0)
+	if koanfInstance.Exists(key + ".path") {
+		if err := koanfInstance.Unmarshal(key+".path", &cfg.Path); err != nil {
+			l.Warn("Failed to unmarshal "+key+".path", "err", err)
+		}
+	}
+	l.Info("Config: "+key+".path", "path", cfg.Path)
+
+	regexes, err := compileRegexes(cfg.Path)
+	if err != nil {
+		return cfg, err
+	}
+	cfg.PathRegex = regexes
 
 	return cfg, nil
 }
