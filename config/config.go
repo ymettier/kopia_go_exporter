@@ -4,6 +4,7 @@
 package config
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -381,25 +382,26 @@ func flagKeyMapper(key, value string) (mapped string, mappedValue any) {
 	return mapped, mappedValue
 }
 func CheckConfig(defaultConfig []byte) error {
+	var errs []error
 	if Cfg.Kopia.Password == "" {
-		return fmt.Errorf("kopia.password is not set")
+		errs = append(errs, fmt.Errorf("kopia.password is not set"))
 	}
 	if Cfg.Kopia.APIServer.RepositoryURL == "" {
-		return fmt.Errorf("kopia.apiserver.repositoryURL is not set")
+		errs = append(errs, fmt.Errorf("kopia.apiserver.repositoryURL is not set"))
 	}
 	if Cfg.Kopia.APIServer.Fingerprint == "" {
-		return fmt.Errorf("kopia.apiserver.fingerprint is not set")
+		errs = append(errs, fmt.Errorf("kopia.apiserver.fingerprint is not set"))
 	}
 	if Cfg.Kopia.APIServer.Hostname == "" {
-		return fmt.Errorf("kopia.apiserver.hostname is not set")
+		errs = append(errs, fmt.Errorf("kopia.apiserver.hostname is not set"))
 	}
 	if Cfg.Kopia.APIServer.Username == "" {
-		return fmt.Errorf("kopia.apiserver.username is not set")
+		errs = append(errs, fmt.Errorf("kopia.apiserver.username is not set"))
 	}
 	if err := checkPlaceholders(defaultConfig); err != nil {
-		return err
+		errs = append(errs, err)
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // isPlaceholder returns true if val matches the ^<.*>$ pattern used in
