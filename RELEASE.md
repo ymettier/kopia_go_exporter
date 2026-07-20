@@ -19,7 +19,7 @@
     ```
 4. **Update the container image tag in `README.md`** to match the new version (without the `v` prefix):
     ```sh
-    sed -i 's|ghcr\.io/ymettier/kopia_go_exporter:[0-9]\+\.[0-9]\+\.[0-9]\+\(-[a-z]*[0-9]\+\)\?|ghcr.io/ymettier/kopia_go_exporter:${VERSION#v}|g' README.md
+    sed -i "s|ghcr\.io/ymettier/kopia_go_exporter:[0-9]\+\.[0-9]\+\.[0-9]\+\(-[a-z]*[0-9]\+\)\?|ghcr.io/ymettier/kopia_go_exporter:${VERSION#v}|g" README.md
     ```
 5. **Commit**:
     ```sh
