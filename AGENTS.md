@@ -127,6 +127,8 @@ The project is licensed under the [MIT License](LICENSE).
 
 ### Code Style
 - Use structured logging (slog) instead of fmt.Printf for application output
+- Keep the code simple and stupid (KISS): prefer the plain, straightforward solution over clever or abstract ones
+- Code must be readable by humans: optimize for the reader, not for the writer or the machine
 - All public functions should have documentation comments
 - Keep functions focused and under 50 lines when possible
 - Use meaningful variable names
