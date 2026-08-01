@@ -58,64 +58,83 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "password",
-			cfg: `kopia:
-  password: ""
-  apiserver:
-    repositoryURL: "http://127.0.0.1:1"
-    hostname: "localhost"
-    username: "kopia"
-    fingerprint: "abc123"
-`,
-			wantErr: "kopia.password is not set",
-		},
-		{
 			name: "repositoryURL",
 			cfg: `kopia:
-  password: "secret"
   apiserver:
     repositoryURL: ""
-    hostname: "localhost"
-    username: "kopia"
     fingerprint: "abc123"
+  clients:
+    default:
+      username: "kopia"
+      hostname: "localhost"
+      password: "secret"
 `,
 			wantErr: "kopia.apiserver.repositoryURL is not set",
 		},
 		{
 			name: "fingerprint",
 			cfg: `kopia:
-  password: "secret"
   apiserver:
     repositoryURL: "http://127.0.0.1:1"
-    hostname: "localhost"
-    username: "kopia"
     fingerprint: ""
+  clients:
+    default:
+      username: "kopia"
+      hostname: "localhost"
+      password: "secret"
 `,
 			wantErr: "kopia.apiserver.fingerprint is not set",
 		},
 		{
-			name: "hostname",
+			name: "no clients",
 			cfg: `kopia:
-  password: "secret"
   apiserver:
     repositoryURL: "http://127.0.0.1:1"
-    hostname: ""
-    username: "kopia"
     fingerprint: "abc123"
 `,
-			wantErr: "kopia.apiserver.hostname is not set",
+			wantErr: "still has placeholder value",
 		},
 		{
-			name: "username",
+			name: "empty username",
 			cfg: `kopia:
-  password: "secret"
   apiserver:
     repositoryURL: "http://127.0.0.1:1"
-    hostname: "localhost"
-    username: ""
     fingerprint: "abc123"
+  clients:
+    default:
+      username: ""
+      hostname: "localhost"
+      password: "secret"
 `,
-			wantErr: "kopia.apiserver.username is not set",
+			wantErr: "kopia.clients.default.username is not set",
+		},
+		{
+			name: "empty hostname",
+			cfg: `kopia:
+  apiserver:
+    repositoryURL: "http://127.0.0.1:1"
+    fingerprint: "abc123"
+  clients:
+    default:
+      username: "kopia"
+      hostname: ""
+      password: "secret"
+`,
+			wantErr: "kopia.clients.default.hostname is not set",
+		},
+		{
+			name: "empty password",
+			cfg: `kopia:
+  apiserver:
+    repositoryURL: "http://127.0.0.1:1"
+    fingerprint: "abc123"
+  clients:
+    default:
+      username: "kopia"
+      hostname: "localhost"
+      password: ""
+`,
+			wantErr: "kopia.clients.default.password is not set",
 		},
 	}
 	for _, tt := range tests {
@@ -132,12 +151,14 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
 // without error after cancellation.
 func TestRun_ContextCancel(t *testing.T) {
 	cfgFile := writeTestMainConfig(t, `kopia:
-  password: "test"
   apiserver:
     repositoryURL: "http://127.0.0.1:1"
-    hostname: "localhost"
-    username: "kopia"
     fingerprint: "abc123"
+  clients:
+    default:
+      username: "kopia"
+      hostname: "localhost"
+      password: "test"
 exporter:
   port: 9091
   interval: 1
@@ -168,12 +189,14 @@ func TestRun_LoggerConfigFromEnvVar(t *testing.T) {
 	t.Setenv("KGE_LOGGER_LOG_LEVEL", "debug")
 
 	cfgFile := writeTestMainConfig(t, `kopia:
-  password: "test"
   apiserver:
     repositoryURL: "http://127.0.0.1:1"
-    hostname: "localhost"
-    username: "kopia"
     fingerprint: "abc123"
+  clients:
+    default:
+      username: "kopia"
+      hostname: "localhost"
+      password: "test"
 exporter:
   interval: 1
 `)
@@ -203,12 +226,14 @@ exporter:
 // enable warn and disable info.
 func TestRun_LoggerConfigFromFile(t *testing.T) {
 	cfgFile := writeTestMainConfig(t, `kopia:
-  password: "test"
   apiserver:
     repositoryURL: "http://127.0.0.1:1"
-    hostname: "localhost"
-    username: "kopia"
     fingerprint: "abc123"
+  clients:
+    default:
+      username: "kopia"
+      hostname: "localhost"
+      password: "test"
 logger:
   log_level: "warn"
 exporter:
@@ -243,12 +268,14 @@ func TestRun_LoggerJSONFromEnvVar(t *testing.T) {
 	t.Setenv("KGE_LOGGER_JSON", "true")
 
 	cfgFile := writeTestMainConfig(t, `kopia:
-  password: "test"
   apiserver:
     repositoryURL: "http://127.0.0.1:1"
-    hostname: "localhost"
-    username: "kopia"
     fingerprint: "abc123"
+  clients:
+    default:
+      username: "kopia"
+      hostname: "localhost"
+      password: "test"
 exporter:
   interval: 1
 `)
@@ -279,12 +306,14 @@ exporter:
 // failure to create the temp directory.
 func TestRun_NewKopiaClientFails(t *testing.T) {
 	cfgFile := writeTestMainConfig(t, `kopia:
-  password: "test"
   apiserver:
     repositoryURL: "http://127.0.0.1:1"
-    hostname: "localhost"
-    username: "kopia"
     fingerprint: "abc123"
+  clients:
+    default:
+      username: "kopia"
+      hostname: "localhost"
+      password: "test"
 `)
 	t.Setenv("TMPDIR", "/nonexistent-kopia-tmp-dir")
 
@@ -297,12 +326,14 @@ func TestRun_NewKopiaClientFails(t *testing.T) {
 // expects run to exit without error.
 func TestRun_LoopDecrementsInterval(t *testing.T) {
 	cfgFile := writeTestMainConfig(t, `kopia:
-  password: "test"
   apiserver:
     repositoryURL: "http://127.0.0.1:1"
-    hostname: "localhost"
-    username: "kopia"
     fingerprint: "abc123"
+  clients:
+    default:
+      username: "kopia"
+      hostname: "localhost"
+      password: "test"
 exporter:
   port: 9092
   interval: 2

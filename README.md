@@ -23,12 +23,14 @@ See the [Motivations](#motivations) section below for background on why this pro
      interval: 300
 
    kopia:
-     password: "you can also set me in KGE_KOPIA_PASSWORD env var"
      apiserver:
        repositoryURL: "https://some.url:port"
-       hostname: "myhostname"
-       username: "mybackup"
        fingerprint: "you can also set me in KGE_KOPIA_APISERVER_FINGERPRINT env var"
+     clients:
+       default:
+         username: "mybackup"
+         hostname: "myhostname"
+         password: "you can also set me in KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD env var"
      retentionstoextract:
        - "latest-1"
 
@@ -55,7 +57,7 @@ ghcr.io/ymettier/kopia_go_exporter:0.2.0
    podman run -d \
      --name kopia-go-exporter \
      -p 9090:9090 \
-     -e KGE_KOPIA_PASSWORD="your-kopia-password" \
+     -e KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD="your-kopia-password" \
      -e KGE_KOPIA_APISERVER_FINGERPRINT="your-server-fingerprint" \
      -v /path/to/config.yaml:/config.yaml:ro \
      ghcr.io/ymettier/kopia_go_exporter:0.2.0 \
@@ -83,8 +85,10 @@ The chart is located in `charts/kopia_go_exporter`.
      kopia:
        apiserver:
          repositoryURL: "https://host:port"
-         hostname: "myhost"
-         username: "myuser"
+       clients:
+         default:
+           username: "mybackup"
+           hostname: "myhost"
    EOF
    ```
 
@@ -113,6 +117,7 @@ can be overridden with
 ```
 KGE_KOPIA_APISERVER_REPOSITORYURL=https://some.url:port
 ```
+The client password follows the same rule, e.g. `KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD` overrides `kopia.clients.default.password`.
 
 ## Building
 

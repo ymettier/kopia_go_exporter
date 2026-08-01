@@ -5,6 +5,7 @@ package kopiametrics
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,6 +40,14 @@ var getEffectivePolicyFunc = policy.GetEffectivePolicy
 // filterCacheTTL is the lifetime of cached path-filter results. The cache is
 // invalidated after this duration to drop entries that are no longer used.
 const filterCacheTTL = 86400 * time.Second
+
+// Metric label names used by all gauge vectors.
+const (
+	labelHost      = "host"
+	labelPath      = "path"
+	labelUser      = "user"
+	labelRetention = "retention"
+)
 
 type filterCacheEntry struct {
 	result    bool
@@ -91,14 +100,33 @@ type KopiaClient struct {
 	configFile  string
 	tempDir     string
 	repo        repo.Repository
-	metrics     KopiaMetrics
+	metrics     *KopiaMetrics
 	cfg         *config.Config
+	client      config.ClientConfig
 }
 
-// NewKopiaClient creates a new KopiaClient with a temp directory for the config file.
+// NewKopiaClient creates a new KopiaClient with a temp directory for the
+// config file, using the first configured client identity (sorted by name).
 func NewKopiaClient(cfg *config.Config) (*KopiaClient, error) {
+	client := config.ClientConfig{}
+	if len(cfg.Kopia.Clients) > 0 {
+		names := make([]string, 0, len(cfg.Kopia.Clients))
+		for name := range cfg.Kopia.Clients {
+			names = append(names, name)
+		}
+		slices.Sort(names)
+		client = cfg.Kopia.Clients[names[0]]
+	}
+	return newKopiaClient(cfg, client, new(KopiaMetrics))
+}
+
+// newKopiaClient creates a KopiaClient for the given client identity that
+// writes its metrics into the provided (possibly shared) KopiaMetrics.
+func newKopiaClient(cfg *config.Config, client config.ClientConfig, metrics *KopiaMetrics) (*KopiaClient, error) {
 	k := new(KopiaClient)
 	k.cfg = cfg
+	k.client = client
+	k.metrics = metrics
 
 	tempDir, err := os.MkdirTemp("", "kopia-go-exporter-*")
 	if err != nil {
@@ -110,6 +138,35 @@ func NewKopiaClient(cfg *config.Config) (*KopiaClient, error) {
 	return k, nil
 }
 
+// KopiaClients manages one KopiaClient per configured identity, all writing
+// into a single shared set of metrics so that metrics from different hosts
+// are aggregated with their host/path/user labels.
+type KopiaClients struct {
+	cfg     *config.Config
+	metrics KopiaMetrics
+	clients []*KopiaClient
+}
+
+// NewKopiaClients creates a KopiaClients manager with one KopiaClient per
+// configured identity. Client order is deterministic (sorted by name).
+func NewKopiaClients(cfg *config.Config) (*KopiaClients, error) {
+	kc := &KopiaClients{cfg: cfg}
+	names := make([]string, 0, len(cfg.Kopia.Clients))
+	for name := range cfg.Kopia.Clients {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+
+	for _, name := range names {
+		k, err := newKopiaClient(cfg, cfg.Kopia.Clients[name], &kc.metrics)
+		if err != nil {
+			return nil, err
+		}
+		kc.clients = append(kc.clients, k)
+	}
+	return kc, nil
+}
+
 func newGaugeVec(reg *prometheus.Registry, namespace, name, help string) *prometheus.GaugeVec {
 	gv := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -117,28 +174,43 @@ func newGaugeVec(reg *prometheus.Registry, namespace, name, help string) *promet
 			Name:      name,
 			Help:      help,
 		},
-		[]string{"host", "path", "user", "retention"},
+		[]string{labelHost, labelPath, labelUser, labelRetention},
 	)
 	reg.MustRegister(gv)
 	return gv
 }
 
-// RegisterKopiaMetrics registers all Prometheus gauge vectors with the given registry.
-func (k *KopiaClient) RegisterKopiaMetrics(reg *prometheus.Registry) {
-	prefix := k.cfg.Exporter.Metrics.Prefix
-	k.metrics.TotalSize = newGaugeVec(reg, prefix, "total_size", "Total size of the backup")
-	k.metrics.FileCount = newGaugeVec(reg, prefix, "file_count", "Number of files in the backup")
-	k.metrics.DirCount = newGaugeVec(reg, prefix, "dir_count", "Number of directories in the backup")
-	k.metrics.ErrorCount = newGaugeVec(reg, prefix, "error_count", "Number of errors in the backup")
-	k.metrics.BackupDuration = newGaugeVec(reg, prefix, "backup_duration", "Duration of the backup")
-	k.metrics.BackupStartTime = newGaugeVec(reg, prefix, "backup_start_time", "Start time of the backup")
-	k.metrics.BackupEndTime = newGaugeVec(reg, prefix, "backup_end_time", "End time of the backup")
-	k.metrics.Up = prometheus.NewGauge(prometheus.GaugeOpts{
+// newKopiaMetrics creates and registers all Prometheus gauge vectors with the
+// given registry and returns them grouped in a KopiaMetrics struct.
+func newKopiaMetrics(reg *prometheus.Registry, prefix string) KopiaMetrics {
+	up := prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: prefix,
 		Name:      "up",
 		Help:      "Connection status to Kopia repository (1 = connected, 0 = disconnected)",
 	})
-	reg.MustRegister(k.metrics.Up)
+	reg.MustRegister(up)
+	return KopiaMetrics{
+		TotalSize:       newGaugeVec(reg, prefix, "total_size", "Total size of the backup"),
+		FileCount:       newGaugeVec(reg, prefix, "file_count", "Number of files in the backup"),
+		DirCount:        newGaugeVec(reg, prefix, "dir_count", "Number of directories in the backup"),
+		ErrorCount:      newGaugeVec(reg, prefix, "error_count", "Number of errors in the backup"),
+		BackupDuration:  newGaugeVec(reg, prefix, "backup_duration", "Duration of the backup"),
+		BackupStartTime: newGaugeVec(reg, prefix, "backup_start_time", "Start time of the backup"),
+		BackupEndTime:   newGaugeVec(reg, prefix, "backup_end_time", "End time of the backup"),
+		Up:              up,
+	}
+}
+
+// RegisterKopiaMetrics registers all Prometheus gauge vectors with the given registry.
+func (k *KopiaClient) RegisterKopiaMetrics(reg *prometheus.Registry) {
+	*k.metrics = newKopiaMetrics(reg, k.cfg.Exporter.Metrics.Prefix)
+}
+
+// RegisterKopiaMetrics registers the shared Prometheus gauge vectors with the
+// given registry. Because all clients write to the same metrics, registering
+// is done once for the whole KopiaClients manager.
+func (kc *KopiaClients) RegisterKopiaMetrics(reg *prometheus.Registry) {
+	kc.metrics = newKopiaMetrics(reg, kc.cfg.Exporter.Metrics.Prefix)
 }
 
 // GenerateConfigFile connects to the Kopia API server and writes a config file to the temp directory.
@@ -146,8 +218,8 @@ func (k *KopiaClient) GenerateConfigFile(ctx context.Context) error {
 	l := logger.Get()
 	opts := repo.ConnectOptions{
 		ClientOptions: repo.ClientOptions{
-			Username: k.cfg.Kopia.APIServer.Username,
-			Hostname: k.cfg.Kopia.APIServer.Hostname,
+			Username: k.client.Username,
+			Hostname: k.client.Hostname,
 		},
 		CachingOptions: content.CachingOptions{},
 	}
@@ -157,7 +229,7 @@ func (k *KopiaClient) GenerateConfigFile(ctx context.Context) error {
 	}
 
 	l.Debug("Generate ConfigFile and try to connect to server", "ConfigFile", k.configFile, "URL", k.cfg.Kopia.APIServer.RepositoryURL)
-	if err := repo.ConnectAPIServer(ctx, k.configFile, &serverInfo, k.cfg.Kopia.Password, &opts); err != nil {
+	if err := repo.ConnectAPIServer(ctx, k.configFile, &serverInfo, k.client.Password, &opts); err != nil {
 		l.Error("Failed to generate configFile", "err", err, "ConfigFile", k.configFile)
 		return err
 	}
@@ -176,7 +248,7 @@ func (k *KopiaClient) Connect(ctx context.Context) error {
 		return err
 	}
 	l.Debug("Try to connect to server", "ConfigFile", k.configFile)
-	k.repo, err = openRepo(ctx, k.configFile, k.cfg.Kopia.Password, nil)
+	k.repo, err = openRepo(ctx, k.configFile, k.client.Password, nil)
 	if err != nil {
 		l.Error("Failed to open repository", "err", err, "ConfigFile", k.configFile)
 		k.isConnected = false
@@ -218,7 +290,12 @@ func (k *KopiaClient) setSnapshotMetrics(m *snapshot.Manifest, keepAllRetentions
 		if !slices.Contains(k.cfg.Kopia.Retentions, rr) && !keepAllRetentions {
 			continue
 		}
-		labels := prometheus.Labels{"host": m.Source.Host, "path": m.Source.Path, "user": m.Source.UserName, "retention": rr}
+		labels := prometheus.Labels{
+			labelHost:      m.Source.Host,
+			labelPath:      m.Source.Path,
+			labelUser:      m.Source.UserName,
+			labelRetention: rr,
+		}
 		k.metrics.BackupStartTime.With(labels).Set(float64(m.StartTime.ToTime().Unix()))
 		k.metrics.BackupEndTime.With(labels).Set(float64(m.EndTime.ToTime().Unix()))
 		k.metrics.BackupDuration.With(labels).Set(max(0.0, float64(m.EndTime-m.StartTime)/1e9)) //nolint:mnd
@@ -290,5 +367,33 @@ func (k *KopiaClient) Disconnect(ctx context.Context) {
 			l.Debug("Failed to remove temporary directory", "tempDir", k.tempDir, "err", err)
 		}
 		k.tempDir = ""
+	}
+}
+
+// RunOnce performs a single metrics collection cycle for every configured
+// client. The shared up metric is set to 1 only when all clients succeed;
+// a failure in any client returns an error but does not stop the others.
+func (kc *KopiaClients) RunOnce(ctx context.Context) error {
+	if len(kc.clients) == 0 {
+		return fmt.Errorf("no kopia clients configured")
+	}
+	var errs []error
+	for _, k := range kc.clients {
+		if err := k.RunOnce(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("%s@%s: %w", k.client.Username, k.client.Hostname, err))
+		}
+	}
+	if len(errs) > 0 {
+		kc.metrics.Up.Set(0)
+		return errors.Join(errs...)
+	}
+	kc.metrics.Up.Set(1)
+	return nil
+}
+
+// Disconnect disconnects every client and removes their temp directories.
+func (kc *KopiaClients) Disconnect(ctx context.Context) {
+	for _, k := range kc.clients {
+		k.Disconnect(ctx)
 	}
 }

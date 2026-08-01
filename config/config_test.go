@@ -21,6 +21,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// clientDefaultName is the name of the single client used by the tests.
+const clientDefaultName = "default"
+
 // Parses CLI flags and checks that defaults, version/help error paths,
 // and custom --config, --exporter-port and --log_level values are
 // handled as expected.
@@ -100,19 +103,19 @@ func TestNew_NoConfigFile(t *testing.T) {
 	assert.Contains(t, err.Error(), "still has placeholder value")
 }
 
-// Calls New with no --config and only environment variables set, and
-// expects success with the password read from the env vars.
-func TestNew_NoConfigFile_WithEnv(t *testing.T) {
-	// No --config flag but all required values via env vars
-	t.Setenv("KGE_KOPIA_PASSWORD", "secret")
+// Calls New with no --config and the kopia.clients env vars, and
+// expects success with the client read from those env vars.
+func TestNew_NoConfigFile_WithClientsEnv(t *testing.T) {
 	t.Setenv("KGE_KOPIA_APISERVER_REPOSITORYURL", "https://some.url:port")
 	t.Setenv("KGE_KOPIA_APISERVER_FINGERPRINT", "abc123")
-	t.Setenv("KGE_KOPIA_APISERVER_HOSTNAME", "myhost")
-	t.Setenv("KGE_KOPIA_APISERVER_USERNAME", "myuser")
+	t.Setenv("KGE_KOPIA_CLIENTS_DEFAULT_USERNAME", "myuser")
+	t.Setenv("KGE_KOPIA_CLIENTS_DEFAULT_HOSTNAME", "myhost")
+	t.Setenv("KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD", "secret")
 
 	err := New("test", []string{}, loadDefaultConfig(t))
 	assert.NoError(t, err)
-	assert.Equal(t, "secret", Cfg.Kopia.Password)
+	require.Len(t, Cfg.Kopia.Clients, 1)
+	assert.Equal(t, "secret", Cfg.Kopia.Clients[clientDefaultName].Password)
 }
 
 // Builds version info and expects the given version and a non-empty Go
@@ -404,16 +407,22 @@ func TestReadFiltersConfig_EnvOverride(t *testing.T) {
 	assert.Len(t, Cfg.Filters.Exclude.PathRegex, 1)
 }
 
-// Reads the kopia config section and expects password, apiserver fields,
-// and retentions to match the YAML.
+// Reads the kopia config section and expects apiserver fields, named
+// clients, and retentions to match the YAML.
 func TestReadKopiaConfig(t *testing.T) {
 	cfgFile := writeTestConfig(t, `kopia:
-  password: secret
   apiserver:
     repositoryURL: "https://example.com:51515"
-    hostname: myhost
-    username: myuser
     fingerprint: abc123
+  clients:
+    host1:
+      username: user1
+      hostname: host1
+      password: pwd1
+    host2:
+      username: user2
+      hostname: host2
+      password: pwd2
   retentionstoextract:
     - daily
     - weekly
@@ -422,11 +431,11 @@ func TestReadKopiaConfig(t *testing.T) {
 
 	l := slog.Default()
 	cfg := readKopiaConfig(k, l)
-	assert.Equal(t, "secret", cfg.Password)
 	assert.Equal(t, "https://example.com:51515", cfg.APIServer.RepositoryURL)
-	assert.Equal(t, "myhost", cfg.APIServer.Hostname)
-	assert.Equal(t, "myuser", cfg.APIServer.Username)
 	assert.Equal(t, "abc123", cfg.APIServer.Fingerprint)
+	require.Len(t, cfg.Clients, 2)
+	assert.Equal(t, ClientConfig{Username: "user1", Hostname: "host1", Password: "pwd1"}, cfg.Clients["host1"])
+	assert.Equal(t, ClientConfig{Username: "user2", Hostname: "host2", Password: "pwd2"}, cfg.Clients["host2"])
 	assert.Equal(t, []string{"daily", "weekly"}, cfg.Retentions)
 }
 
@@ -437,12 +446,21 @@ func TestReadKopiaConfig_Defaults(t *testing.T) {
 	l := slog.Default()
 
 	cfg := readKopiaConfig(k, l)
-	assert.Equal(t, "", cfg.Password)
 	assert.Equal(t, "", cfg.APIServer.RepositoryURL)
-	assert.Equal(t, "", cfg.APIServer.Hostname)
-	assert.Equal(t, "", cfg.APIServer.Username)
 	assert.Equal(t, "", cfg.APIServer.Fingerprint)
+	assert.Empty(t, cfg.Clients)
 	assert.Equal(t, []string{}, cfg.Retentions)
+}
+
+// Reads the kopia config whose kopia.clients value cannot be unmarshalled
+// into a client map and expects the failure to be logged and clients left
+// empty.
+func TestReadKopiaConfig_ClientsUnmarshalError(t *testing.T) {
+	k = koanf.New(".")
+	require.NoError(t, k.Set("kopia.clients", "not-a-map"))
+
+	cfg := readKopiaConfig(k, slog.Default())
+	assert.Empty(t, cfg.Clients)
 }
 
 // Loads a nonexistent config file and expects an error mentioning the
@@ -501,12 +519,16 @@ func TestCheckConfig_ValidConfig(t *testing.T) {
 	k = koanf.New(".")
 	Cfg = Config{
 		Kopia: KopiaConfig{
-			Password: "test",
 			APIServer: APIServerConfig{
 				RepositoryURL: "https://example.com:51515",
-				Hostname:      "localhost",
-				Username:      "kopia",
 				Fingerprint:   "abc123", //nolint:goconst
+			},
+			Clients: map[string]ClientConfig{
+				clientDefaultName: {
+					Username: "kopia",
+					Hostname: "localhost",
+					Password: "test",
+				},
 			},
 		},
 	}
@@ -516,12 +538,13 @@ func TestCheckConfig_ValidConfig(t *testing.T) {
 // TestCheckConfig_MissingFields verifies that CheckConfig reports an
 // error when each required Kopia field is missing.
 func TestCheckConfig_MissingFields(t *testing.T) {
-	validAPIServer := func() APIServerConfig {
-		return APIServerConfig{
-			RepositoryURL: "https://example.com:51515",
-			Hostname:      "localhost",
-			Username:      "kopia",
-			Fingerprint:   "abc123",
+	validClients := func() map[string]ClientConfig {
+		return map[string]ClientConfig{
+			clientDefaultName: {
+				Username: "kopia",
+				Hostname: "localhost",
+				Password: "test",
+			},
 		}
 	}
 
@@ -531,37 +554,46 @@ func TestCheckConfig_MissingFields(t *testing.T) {
 		expectedErr string
 	}{
 		{
-			name:        "missing password",
-			mutate:      func(c *Config) { c.Kopia.Password = "" },
-			expectedErr: "kopia.password is not set",
-		},
-		{
-			name: "missing repositoryURL",
-			mutate: func(c *Config) {
-				c.Kopia.APIServer.RepositoryURL = ""
-			},
+			name:        "missing repositoryURL",
+			mutate:      func(c *Config) { c.Kopia.APIServer.RepositoryURL = "" },
 			expectedErr: "kopia.apiserver.repositoryURL is not set",
 		},
 		{
-			name: "missing fingerprint",
-			mutate: func(c *Config) {
-				c.Kopia.APIServer.Fingerprint = ""
-			},
+			name:        "missing fingerprint",
+			mutate:      func(c *Config) { c.Kopia.APIServer.Fingerprint = "" },
 			expectedErr: "kopia.apiserver.fingerprint is not set",
 		},
 		{
-			name: "missing hostname",
-			mutate: func(c *Config) {
-				c.Kopia.APIServer.Hostname = ""
-			},
-			expectedErr: "kopia.apiserver.hostname is not set",
+			name:        "missing clients",
+			mutate:      func(c *Config) { c.Kopia.Clients = map[string]ClientConfig{} },
+			expectedErr: "kopia.clients is empty",
 		},
 		{
 			name: "missing username",
 			mutate: func(c *Config) {
-				c.Kopia.APIServer.Username = ""
+				client := c.Kopia.Clients[clientDefaultName]
+				client.Username = ""
+				c.Kopia.Clients[clientDefaultName] = client
 			},
-			expectedErr: "kopia.apiserver.username is not set",
+			expectedErr: "kopia.clients.default.username is not set",
+		},
+		{
+			name: "missing hostname",
+			mutate: func(c *Config) {
+				client := c.Kopia.Clients[clientDefaultName]
+				client.Hostname = ""
+				c.Kopia.Clients[clientDefaultName] = client
+			},
+			expectedErr: "kopia.clients.default.hostname is not set",
+		},
+		{
+			name: "missing password",
+			mutate: func(c *Config) {
+				client := c.Kopia.Clients[clientDefaultName]
+				client.Password = ""
+				c.Kopia.Clients[clientDefaultName] = client
+			},
+			expectedErr: "kopia.clients.default.password is not set",
 		},
 	}
 
@@ -572,8 +604,11 @@ func TestCheckConfig_MissingFields(t *testing.T) {
 
 			Cfg = Config{
 				Kopia: KopiaConfig{
-					Password:  "test",
-					APIServer: validAPIServer(),
+					APIServer: APIServerConfig{
+						RepositoryURL: "https://example.com:51515",
+						Fingerprint:   "abc123",
+					},
+					Clients: validClients(),
 				},
 			}
 			tt.mutate(&Cfg)
@@ -597,12 +632,14 @@ func TestNew_MissingFile(t *testing.T) {
 // error from the placeholder check.
 func TestNew_BrokenDefaultConfig(t *testing.T) {
 	cfgFile := writeTestConfig(t, `kopia:
-  password: "test"
   apiserver:
     repositoryURL: "https://example.com:51515"
-    hostname: "myhost"
-    username: "myuser"
     fingerprint: "abc123"
+  clients:
+    default:
+      username: "myuser"
+      hostname: "myhost"
+      password: "test"
 `)
 	broken := []byte("{{{{not valid yaml")
 	err := New("test", []string{"--config", cfgFile}, broken)
@@ -614,12 +651,14 @@ func TestNew_BrokenDefaultConfig(t *testing.T) {
 // exporter port to be applied.
 func TestNew_ValidConfig(t *testing.T) {
 	cfgFile := writeTestConfig(t, `kopia:
-  password: "test"
   apiserver:
     repositoryURL: "https://example.com:51515"
-    hostname: "myhost"
-    username: "myuser"
     fingerprint: "abc123"
+  clients:
+    default:
+      username: "myuser"
+      hostname: "myhost"
+      password: "test"
 `)
 	err := New("test", []string{"--config", cfgFile}, loadDefaultConfig(t))
 	assert.NoError(t, err)
@@ -630,12 +669,14 @@ func TestNew_ValidConfig(t *testing.T) {
 // it to be accepted (not treated as a placeholder).
 func TestNew_FilterIncludeWithAngleBrackets(t *testing.T) {
 	cfgFile := writeTestConfig(t, `kopia:
-  password: "test"
   apiserver:
     repositoryURL: "https://example.com:51515"
-    hostname: "myhost"
-    username: "myuser"
     fingerprint: "abc123"
+  clients:
+    default:
+      username: "myuser"
+      hostname: "myhost"
+      password: "test"
 filters:
   include:
     path:
@@ -802,12 +843,14 @@ func TestReadLoggerConfig_EnvVarOverrideRedactSensitive(t *testing.T) {
 // without error.
 func TestLogConfig_NoRedact(t *testing.T) {
 	tmpFile := writeTestConfig(t, `kopia:
-  password: secret
   apiserver:
     repositoryURL: "https://example.com:51515"
-    hostname: myhost
-    username: myuser
     fingerprint: abc123
+  clients:
+    default:
+      username: myuser
+      hostname: myhost
+      password: secret
 logger:
   redact_sensitive: false
 `)

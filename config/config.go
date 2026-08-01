@@ -11,6 +11,7 @@ import (
 	"os"
 	"regexp"
 	"runtime/debug"
+	"sort"
 	"strings"
 
 	"github.com/knadh/koanf/parsers/yaml"
@@ -40,14 +41,21 @@ type ExporterConfig struct {
 
 type APIServerConfig struct {
 	RepositoryURL string
-	Hostname      string
-	Username      string
 	Fingerprint   string
 }
 
+// ClientConfig is a Kopia client identity (username@hostname) with its
+// server user password. Each entry in KopiaConfig.Clients connects to the
+// same API server under a different identity.
+type ClientConfig struct {
+	Username string
+	Hostname string
+	Password string
+}
+
 type KopiaConfig struct {
-	Password   string
 	APIServer  APIServerConfig
+	Clients    map[string]ClientConfig
 	Retentions []string
 }
 
@@ -263,15 +271,16 @@ func compileRegexes(patterns []string) ([]*regexp.Regexp, error) {
 func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
 	var cfg KopiaConfig
 
-	cfg.Password = getConfigString(koanfInstance, "kopia.password", "")
-
 	cfg.APIServer.RepositoryURL = getConfigString(koanfInstance, "kopia.apiserver.repositoryURL", "")
 
-	cfg.APIServer.Hostname = getConfigString(koanfInstance, "kopia.apiserver.hostname", "")
-
-	cfg.APIServer.Username = getConfigString(koanfInstance, "kopia.apiserver.username", "")
-
 	cfg.APIServer.Fingerprint = getConfigString(koanfInstance, "kopia.apiserver.fingerprint", "")
+
+	cfg.Clients = make(map[string]ClientConfig)
+	if koanfInstance.Exists("kopia.clients") {
+		if err := koanfInstance.Unmarshal("kopia.clients", &cfg.Clients); err != nil {
+			l.Warn("Failed to unmarshal kopia.clients", "err", err)
+		}
+	}
 
 	// Read retentions list
 	cfg.Retentions = make([]string, 0)
@@ -389,11 +398,14 @@ func logConfig(l *slog.Logger) {
 	l.Info("Config: exporter.interval", "interval", Cfg.Exporter.Interval)
 	l.Info("Config: filters.include.path", "path", Cfg.Filters.Include.Path)
 	l.Info("Config: filters.exclude.path", "path", Cfg.Filters.Exclude.Path)
-	l.Info("Config: kopia.password", "password", redact(Cfg.Kopia.Password))
 	l.Info("Config: kopia.apiserver.repositoryURL", "repositoryURL", Cfg.Kopia.APIServer.RepositoryURL)
-	l.Info("Config: kopia.apiserver.hostname", "hostname", Cfg.Kopia.APIServer.Hostname)
-	l.Info("Config: kopia.apiserver.username", "username", Cfg.Kopia.APIServer.Username)
 	l.Info("Config: kopia.apiserver.fingerprint", "fingerprint", redact(Cfg.Kopia.APIServer.Fingerprint))
+	for _, name := range sortedClientNames() {
+		client := Cfg.Kopia.Clients[name]
+		l.Info("Config: kopia.clients."+name+".username", "username", client.Username)
+		l.Info("Config: kopia.clients."+name+".hostname", "hostname", client.Hostname)
+		l.Info("Config: kopia.clients."+name+".password", "password", redact(client.Password))
+	}
 	l.Info("Config: kopia.retentionstoextract", "retentions", Cfg.Kopia.Retentions)
 	l.Info("Config: logger.log_level", "log_level", Cfg.Logger.Level)
 	l.Info("Config: logger.json", "json", Cfg.Logger.JSON)
@@ -414,25 +426,42 @@ func flagKeyMapper(key, value string) (mapped string, mappedValue any) {
 }
 func CheckConfig(defaultConfig []byte) error {
 	var errs []error
-	if Cfg.Kopia.Password == "" {
-		errs = append(errs, fmt.Errorf("kopia.password is not set"))
-	}
 	if Cfg.Kopia.APIServer.RepositoryURL == "" {
 		errs = append(errs, fmt.Errorf("kopia.apiserver.repositoryURL is not set"))
 	}
 	if Cfg.Kopia.APIServer.Fingerprint == "" {
 		errs = append(errs, fmt.Errorf("kopia.apiserver.fingerprint is not set"))
 	}
-	if Cfg.Kopia.APIServer.Hostname == "" {
-		errs = append(errs, fmt.Errorf("kopia.apiserver.hostname is not set"))
+	if len(Cfg.Kopia.Clients) == 0 {
+		errs = append(errs, fmt.Errorf("kopia.clients is empty; configure at least one client under kopia.clients"))
 	}
-	if Cfg.Kopia.APIServer.Username == "" {
-		errs = append(errs, fmt.Errorf("kopia.apiserver.username is not set"))
+	for _, name := range sortedClientNames() {
+		client := Cfg.Kopia.Clients[name]
+		if client.Username == "" {
+			errs = append(errs, fmt.Errorf("kopia.clients.%s.username is not set", name))
+		}
+		if client.Hostname == "" {
+			errs = append(errs, fmt.Errorf("kopia.clients.%s.hostname is not set", name))
+		}
+		if client.Password == "" {
+			errs = append(errs, fmt.Errorf("kopia.clients.%s.password is not set", name))
+		}
 	}
 	if err := checkPlaceholders(defaultConfig); err != nil {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
+}
+
+// sortedClientNames returns the names of all configured Kopia clients in
+// lexicographic order, so validation errors and config logs are stable.
+func sortedClientNames() []string {
+	names := make([]string, 0, len(Cfg.Kopia.Clients))
+	for name := range Cfg.Kopia.Clients {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // isPlaceholder returns true if val matches the ^<.*>$ pattern used in
