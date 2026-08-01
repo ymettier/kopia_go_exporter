@@ -1,5 +1,6 @@
 [![GitHub](https://img.shields.io/badge/ymettier/kopia__exporter-grey?logo=github)](https://github.com/ymettier/kopia_go_exporter)
-[![Release](https://img.shields.io/github/v/release/ymettier/kopia_go_exporter?color=blue)](https://github.com/ymettier/kopia_go_exporter/releases)
+[![Release](https://img.shields.io/github/v/release/ymettier/kopia_go_exporter?color=blue&filter=v*)](https://github.com/ymettier/kopia_go_exporter/releases)
+[![Helm Release](https://img.shields.io/github/v/release/ymettier/kopia_go_exporter?color=blue&label=helm&filter=helm-v*)](https://github.com/ymettier/kopia_go_exporter/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Go Build](https://github.com/ymettier/kopia_go_exporter/actions/workflows/go.yml/badge.svg)](https://github.com/ymettier/kopia_go_exporter/actions/workflows/go.yml)
 [![golangci-lint](https://github.com/ymettier/kopia_go_exporter/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/ymettier/kopia_go_exporter/actions/workflows/golangci-lint.yml)
