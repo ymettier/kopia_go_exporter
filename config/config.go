@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/knadh/koanf/parsers/yaml"
@@ -191,8 +192,8 @@ func getConfigString(koanfInstance *koanf.Koanf, camelKey, defaultValue string) 
 
 func getConfigInt(koanfInstance *koanf.Koanf, camelKey string, defaultValue int) int {
 	if val, ok := lookupConfigKey(koanfInstance, camelKey); ok {
-		var i int
-		if _, err := fmt.Sscanf(val, "%d", &i); err == nil {
+		i, err := strconv.Atoi(val)
+		if err == nil {
 			return i
 		}
 		l := logger.Get()
