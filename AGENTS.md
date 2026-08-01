@@ -83,9 +83,11 @@ The project is licensed under the [MIT License](LICENSE).
 - `New()` constructor: parses flags, loads YAML via Koanf, overlays env vars, validates, returns error
 - `config.default.yaml` is embedded in the binary via `//go:embed` in `main.go` and provides all configuration defaults. It is loaded first as the base layer. The `--config` file, environment variables, and CLI flags overlay it.
 - Koanf layered loading: embedded defaults (`config.default.yaml`) → YAML file → environment variables (KGE_ prefix) → pflag values
-- Environment variable mapping: `KGE_KOPIA_PASSWORD` → `kopia.password` (uppercase, underscores → dots)
+- Environment variable mapping: `KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD` → `kopia.clients.default.password` (uppercase, underscores → dots)
 - Config validation in `CheckConfig()`: returns error on missing required fields
 - Config struct: `config.Cfg` (global, populated at startup) with `Exporter`, `Filters`, `Kopia`, and `Logger` sub-structs
+- `KopiaConfig` holds `APIServer` (`RepositoryURL`, `Fingerprint`), `Clients` (a map of client name → `ClientConfig{Username, Hostname, Password}`), and `Retentions`. One Kopia API server is queried under each configured identity (the server only returns each client its own snapshots).
+- `sortedClientNames()` supports deterministic iteration of the clients map.
 - `Filters` holds `Include`/`Exclude` `FilterConfig` entries, each with a `Path []string` list and the compiled `PathRegex []*regexp.Regexp`. Patterns are compiled to regexes at load time (see `readFiltersConfig`) so invalid patterns fail fast.
 - `GetVersionInfo()` returns `VersionInfo` struct with version, revision, time, dirty, goVersion from build info
 - `ReadBuildInfo` is an exported variable holding `debug.ReadBuildInfo`, mockable for testing
@@ -99,8 +101,9 @@ The project is licensed under the [MIT License](LICENSE).
 - Starts HTTP server on configured port serving `/metrics`
 
 ### Kopia Metrics (kopiametrics/kopia.go)
-- Constructor `NewKopiaClient(cfg *config.Config)` receives the full config directly
+- Constructors `NewKopiaClient(cfg *config.Config)` (first configured identity) and `NewKopiaClients(cfg *config.Config)` (one client per configured identity, sorted by name) receive the full config directly
 - `KopiaClient` manages connection lifecycle: `GenerateConfigFile` → `Connect` → `RunOnce` → `Disconnect`
+- `KopiaClients` shares a single `KopiaMetrics` across all clients; its `RunOnce()` runs every client, sets the shared `up` gauge to 1 only when all succeed, and joins per-client errors (prefixed with `user@host`)
 - `RunOnce()` lists all snapshot manifests, groups by source, computes retention reasons, and sets gauge metrics
 - Seven Prometheus gauge vectors: `total_size`, `file_count`, `dir_count`, `error_count`, `backup_duration`, `backup_start_time`, `backup_end_time`
 - All metrics use labels: `host`, `path`, `user`, `retention`
@@ -116,7 +119,7 @@ The project is licensed under the [MIT License](LICENSE).
 ### Helm Chart (charts/kopia_go_exporter/)
 - Standard Helm chart for Kubernetes deployment
 - `values.yaml` includes `kopiaConfigSecret: kopia-config` for the Kopia credentials Secret name
-- Deployment template injects `KGE_KOPIA_PASSWORD` and `KGE_KOPIA_APISERVER_FINGERPRINT` from the Secret defined in `kopiaConfigSecret` (e.g. `kopia-config`) as environment variables
+- Deployment template injects `KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD` and `KGE_KOPIA_APISERVER_FINGERPRINT` from the Secret defined in `kopiaConfigSecret` (e.g. `kopia-config`) as environment variables
 - ConfigMap serves the application config at `/config/config.yaml`
 - ServiceMonitor supports `relabelings`, `metricRelabelings`, and `namespaceSelector`
 
@@ -154,11 +157,11 @@ The project is licensed under the [MIT License](LICENSE).
 - Global config: `config.Cfg` is the global populated at startup. Exporter and KopiaClient receive their config via constructors, not by reading the global.
 
 ### Environment Variables
-- Use optional environment variables for configuration (e.g., `KGE_KOPIA_PASSWORD`...)
+- Use optional environment variables for configuration (e.g., `KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD`...)
 - Environment variables should override values from the config file
-- Environment variable names should be in uppercase with underscores (e.g., `KGE_KOPIA_PASSWORD`)
-- Environment variables should not be documented in the `config.default.yaml` except `KGE_KOPIA_APISERVER_FINGERPRINT` and `KGE_KOPIA_PASSWORD`.
-- Environment variables should be prefixed with `KGE_` (e.g., `KGE_EXPORTER_PORT`, `KGE_KOPIA_PASSWORD`, `KGE_LOGGER_LOG_LEVEL`)
+- Environment variable names should be in uppercase with underscores (e.g., `KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD`)
+- Environment variables should not be documented in the `config.default.yaml` except `KGE_KOPIA_APISERVER_FINGERPRINT`.
+- Environment variables should be prefixed with `KGE_` (e.g., `KGE_EXPORTER_PORT`, `KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD`, `KGE_LOGGER_LOG_LEVEL`)
 - The mapping converts uppercase underscores to dots: `KGE_KOPIA_APISERVER_FINGERPRINT` → `kopia.apiserver.fingerprint`
 - README.md explains how to forge an environment variable from its definition on config.default.yaml (e.g. a `KGE_` prefix, flatten the path of the variable and replace dots with underscores).
 - Config keys that contain an underscore as part of their name (not a path separator) must be mapped explicitly. The generic flattening turns `KGE_LOGGER_LOG_LEVEL` into `logger.log.level` and `KGE_LOGGER_REDACT_SENSITIVE` into `logger.redact.sensitive`, which do not match the real keys `logger.log_level` / `logger.redact_sensitive`. `kgeKeyMapper` (config/config.go) restores these keys after flattening; any new config key with an internal underscore must be added there too, and the manual `os.Getenv` override in `readLoggerConfig` must NOT be reintroduced (the env provider already handles it).
@@ -168,7 +171,7 @@ The project is licensed under the [MIT License](LICENSE).
 - Comments should be as short as possible (a few words)
 - Group related options under section comments
 - Avoid dead options
-- Values wrapped in `< >` (e.g., `<set me in KGE_KOPIA_PASSWORD env var>`) are **placeholders** that must be overridden by the user via config file, environment variables, or CLI flags. The binary embeds `config.default.yaml` at build time; at startup, `checkPlaceholders()` parses the embedded defaults to find keys whose values match `^<.*>$`, then verifies those keys have been overridden in the final config. Values like `xx<xx>xx` are intentionally allowed — only the `^<.*>$` pattern triggers the check. When adding a new placeholder, use `<description>` format as the value in `config.default.yaml`. Placeholders that were not initially in `config.default.yaml` are also allowed.
+- Values wrapped in `< >` (e.g., `<set me in KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD env var>`) are **placeholders** that must be overridden by the user via config file, environment variables, or CLI flags. The binary embeds `config.default.yaml` at build time; at startup, `checkPlaceholders()` parses the embedded defaults to find keys whose values match `^<.*>$`, then verifies those keys have been overridden in the final config. Values like `xx<xx>xx` are intentionally allowed — only the `^<.*>$` pattern triggers the check. When adding a new placeholder, use `<description>` format as the value in `config.default.yaml`. Placeholders that were not initially in `config.default.yaml` are also allowed.
 
 ### Metrics
 - Use `prometheus.NewGaugeVec` for snapshot-derived metrics
@@ -290,6 +293,6 @@ The project is licensed under the [MIT License](LICENSE).
 - When updating a version, check all references across the project (go.mod, Dockerfile, AGENTS.md).
 
 ## Important Notes
-- The Kopia password and API server fingerprint are sensitive — they should be provided via environment variables (`KGE_KOPIA_PASSWORD`, `KGE_KOPIA_APISERVER_FINGERPRINT`), not committed to the repository.
+- The Kopia password and API server fingerprint are sensitive — they should be provided via environment variables (`KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD`, `KGE_KOPIA_APISERVER_FINGERPRINT`), not committed to the repository.
 - The main loop sleeps 1 second at a time in a busy-wait pattern, counting down `sleepInterval` to the next `RunOnce()` call. This is intentional and must not be replaced with `time.After` or `time.Ticker` — the 1-second granularity allows the shutdown signal to be checked frequently and keeps the countdown logic simple and deterministic.
 - Always use locally installed tools (e.g. `git`, `golangci-lint`, `go`, `gofmt`, `goimports`, `helm`...). Only `golangci-lint` may be run in a container if the local version mismatches with the local version of `go`.
