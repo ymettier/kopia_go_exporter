@@ -259,28 +259,22 @@ func (k *KopiaClient) Connect(ctx context.Context) error {
 	return nil
 }
 
-// matchPathFilters decides whether a snapshot source path should produce metrics.
-// Exclude filters are applied first: if any exclude regex matches, the path is
-// rejected. Then include filters are applied: if at least one include regex
-// matches, the path is accepted. When there are no include filters, every path
-// that was not excluded is accepted.
+// matchPathFilters decides whether a snapshot source path should produce
+// metrics. A path is rejected only when it matches an exclude filter and no
+// include filter: excludes are overridden by includes, and every other path
+// is accepted.
 func matchPathFilters(path string, include, exclude []*regexp.Regexp) bool {
-	matches := true
-	for _, re := range exclude {
-		if re.MatchString(path) {
-			matches = false
-			break
-		}
-	}
-	if len(include) == 0 {
-		return matches
-	}
-	for _, re := range include {
+	return !matchesAny(exclude, path) || matchesAny(include, path)
+}
+
+// matchesAny reports whether path matches any of the given regexes.
+func matchesAny(regexes []*regexp.Regexp, path string) bool {
+	for _, re := range regexes {
 		if re.MatchString(path) {
 			return true
 		}
 	}
-	return matches
+	return false
 }
 
 func (k *KopiaClient) setSnapshotMetrics(m *snapshot.Manifest, keepAllRetentions bool) {
