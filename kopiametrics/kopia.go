@@ -116,16 +116,6 @@ func sortedClientNames(cfg *config.Config) []string {
 	return names
 }
 
-// NewKopiaClient creates a new KopiaClient with a temp directory for the
-// config file, using the first configured client identity (sorted by name).
-func NewKopiaClient(cfg *config.Config) (*KopiaClient, error) {
-	client := config.ClientConfig{}
-	if names := sortedClientNames(cfg); len(names) > 0 {
-		client = cfg.Kopia.Clients[names[0]]
-	}
-	return newKopiaClient(cfg, client, new(KopiaMetrics))
-}
-
 // newKopiaClient creates a KopiaClient for the given client identity that
 // writes its metrics into the provided (possibly shared) KopiaMetrics.
 func newKopiaClient(cfg *config.Config, client config.ClientConfig, metrics *KopiaMetrics) (*KopiaClient, error) {

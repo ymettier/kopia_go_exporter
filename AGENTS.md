@@ -101,7 +101,7 @@ The project is licensed under the [MIT License](LICENSE).
 - Starts HTTP server on configured port serving `/metrics`
 
 ### Kopia Metrics (kopiametrics/kopia.go)
-- Constructors `NewKopiaClient(cfg *config.Config)` (first configured identity) and `NewKopiaClients(cfg *config.Config)` (one client per configured identity, sorted by name) receive the full config directly
+- Constructor `NewKopiaClients(cfg *config.Config)` (one client per configured identity, sorted by name) receives the full config directly
 - `KopiaClient` manages connection lifecycle: `GenerateConfigFile` → `Connect` → `RunOnce` → `Disconnect`
 - `KopiaClients` shares a single `KopiaMetrics` across all clients; its `RunOnce()` runs every client, sets the shared `up` gauge to 1 only when all succeed, and joins per-client errors (prefixed with `user@host`)
 - `RunOnce()` lists all snapshot manifests, groups by source, computes retention reasons, and sets gauge metrics
