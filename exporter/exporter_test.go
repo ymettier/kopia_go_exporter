@@ -45,7 +45,7 @@ func TestNewExporter(t *testing.T) {
 	}
 	ex := NewExporter(cfg)
 	require.NotNil(t, ex)
-	assert.Equal(t, 12346, ex.Port)
+	assert.Equal(t, cfg.Port, ex.cfg.Port)
 	assert.NotNil(t, ex.Reg)
 }
 
@@ -76,8 +76,7 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 		Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
 	}
 	type fields struct {
-		Port int
-		Reg  *prometheus.Registry
+		Reg *prometheus.Registry
 	}
 	tests := []struct {
 		name   string
@@ -86,8 +85,7 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 		{
 			name: "test registry after setting build_info metric",
 			fields: fields{
-				Port: 9090,
-				Reg:  prometheus.NewRegistry(),
+				Reg: prometheus.NewRegistry(),
 			},
 		},
 	}
@@ -95,9 +93,8 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ex := &Exporter{
-				Port: tt.fields.Port,
-				Reg:  tt.fields.Reg,
-				cfg:  cfg,
+				Reg: tt.fields.Reg,
+				cfg: cfg,
 			}
 			labels := map[string]string{
 				"version": "test_version",  //nolint:goconst
@@ -141,8 +138,8 @@ func TestExporter_Run(t *testing.T) {
 		port := freePort(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		ex := Exporter{
-			Port: port,
-			Reg:  prometheus.NewRegistry(),
+			Reg: prometheus.NewRegistry(),
+			cfg: config.ExporterConfig{Port: port},
 		}
 
 		go ex.Run(ctx)
@@ -171,8 +168,8 @@ func TestExporter_Run_AlreadyInUse(t *testing.T) {
 	defer func() { _ = blocker.Close() }()
 
 	ex := Exporter{
-		Port: port,
-		Reg:  prometheus.NewRegistry(),
+		Reg: prometheus.NewRegistry(),
+		cfg: config.ExporterConfig{Port: port},
 	}
 
 	done := make(chan struct{})
