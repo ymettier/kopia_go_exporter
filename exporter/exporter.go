@@ -18,9 +18,8 @@ import (
 )
 
 type Exporter struct {
-	Port int
-	Reg  *prometheus.Registry
-	cfg  config.ExporterConfig
+	Reg *prometheus.Registry
+	cfg config.ExporterConfig
 }
 
 // NewExporter creates a new Exporter with a Prometheus registry and build info metric.
@@ -28,7 +27,6 @@ func NewExporter(cfg config.ExporterConfig) *Exporter {
 	l := logger.Get()
 	ex := new(Exporter)
 	ex.cfg = cfg
-	ex.Port = cfg.Port
 
 	ex.Reg = prometheus.NewRegistry()
 	ex.Reg.MustRegister(collectors.NewGoCollector())
@@ -67,7 +65,7 @@ func (ex *Exporter) Run(ctx context.Context) {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(ex.Reg, promhttp.HandlerOpts{}))
 	srv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", ex.Port),
+		Addr:              fmt.Sprintf(":%d", ex.cfg.Port),
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -77,10 +75,10 @@ func (ex *Exporter) Run(ctx context.Context) {
 
 	go func() {
 		<-ctx.Done()
-		shutdownServer(srv, ex.Port)
+		shutdownServer(srv, ex.cfg.Port)
 	}()
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		l.Error("HTTP server error", "port", ex.Port, "err", err)
+		l.Error("HTTP server error", "port", ex.cfg.Port, "err", err)
 	}
 }
 
