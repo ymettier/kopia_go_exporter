@@ -75,12 +75,15 @@ config:
       prefix: "kopia_go_exporter"
     interval: 300
   kopia:
-    # Example API server connection. Password and fingerprint are injected via
-    # KGE_KOPIA_PASSWORD and KGE_KOPIA_APISERVER_FINGERPRINT env vars from the kopia Secret.
+    # Example API server connection. The client password and the server
+    # fingerprint are injected via KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD and
+    # KGE_KOPIA_APISERVER_FINGERPRINT env vars from the kopia Secret.
     apiserver:
       repositoryURL: "https://some.url:port"
-      hostname: "myhostname"
-      username: "mybackup"
+    clients:
+      default:
+        username: "mybackup"
+        hostname: "myhostname"
     retentionstoextract:
       - "latest-1"
   logger:

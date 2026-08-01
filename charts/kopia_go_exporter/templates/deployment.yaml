@@ -48,7 +48,7 @@ spec:
           env:
             - name: KGE_LOGGER_FILENAME
               value: "stdout"
-            - name: KGE_KOPIA_PASSWORD
+            - name: KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.kopiaConfigSecret }}
