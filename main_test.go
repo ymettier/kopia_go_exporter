@@ -92,7 +92,7 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
     repositoryURL: "http://127.0.0.1:1"
     fingerprint: "abc123"
 `,
-			wantErr: "still has placeholder value",
+			wantErr: "kopia.clients is empty",
 		},
 		{
 			name: "empty username",
