@@ -41,6 +41,16 @@ const defaultClientName = "default"
 // multi-client tests.
 const otherClientName = "other"
 
+// newTestKopiaClient creates a KopiaClient with a temp directory for the
+// config file, using the first configured client identity (sorted by name).
+func newTestKopiaClient(cfg *config.Config) (*KopiaClient, error) {
+	client := config.ClientConfig{}
+	if names := sortedClientNames(cfg); len(names) > 0 {
+		client = cfg.Kopia.Clients[names[0]]
+	}
+	return newKopiaClient(cfg, client, new(KopiaMetrics))
+}
+
 func hashSHA256(pemContent []byte) (string, error) {
 	block, _ := pem.Decode(pemContent)
 	if block == nil {
@@ -228,22 +238,22 @@ func logGatheredMetrics(t *testing.T, families []*dto.MetricFamily) {
 	}
 }
 
-// Constructs a new kopia client and expects a non-nil client that is
-// initially not connected.
-func TestNewKopiaClient(t *testing.T) {
+// Constructs a new kopia client via the test helper and expects a non-nil
+// client that is initially not connected.
+func TestNewTestKopiaClient(t *testing.T) {
 	cfg := &config.Config{}
-	k, err := NewKopiaClient(cfg)
+	k, err := newTestKopiaClient(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	assert.NotNil(t, k)
 	assert.False(t, k.isConnected)
 }
 
-// Constructs a kopia client when TMPDIR points to a nonexistent
-// directory and expects an error creating the temp directory.
-func TestNewKopiaClient_TempDirFailure(t *testing.T) {
+// Constructs a kopia client via the test helper when TMPDIR points to a
+// nonexistent directory and expects an error creating the temp directory.
+func TestNewTestKopiaClient_TempDirFailure(t *testing.T) {
 	t.Setenv("TMPDIR", "/nonexistent-kopia-tmp-dir")
-	_, err := NewKopiaClient(&config.Config{})
+	_, err := newTestKopiaClient(&config.Config{})
 	assert.Error(t, err)
 }
 
@@ -260,7 +270,7 @@ func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 		"backup_end_time",
 	}
 
-	k, err := NewKopiaClient(&config.Config{})
+	k, err := newTestKopiaClient(&config.Config{})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
@@ -321,7 +331,7 @@ func TestKopiaClient_Connect(t *testing.T) {
 func TestKopiaClient_Disconnect(t *testing.T) {
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient(&config.Config{})
+	k, err := newTestKopiaClient(&config.Config{})
 	require.NoError(t, err)
 	assert.False(t, k.isConnected)
 
@@ -335,7 +345,7 @@ func TestKopiaClient_Disconnect(t *testing.T) {
 func TestKopiaClient_DisconnectTempDirRemovalFails(t *testing.T) {
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient(&config.Config{})
+	k, err := newTestKopiaClient(&config.Config{})
 	require.NoError(t, err)
 
 	// Point tempDir at a path whose parent is a regular file, so
@@ -407,7 +417,7 @@ func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient(cfg)
+	k, err := newTestKopiaClient(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
@@ -462,7 +472,7 @@ func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient(cfg)
+	k, err := newTestKopiaClient(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
@@ -650,7 +660,7 @@ func TestSetSnapshotMetrics_PathFilterExcludes(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient(cfg)
+	k, err := newTestKopiaClient(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
@@ -703,7 +713,7 @@ func TestSetSnapshotMetrics_PathFilterIncludes(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient(cfg)
+	k, err := newTestKopiaClient(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
@@ -758,7 +768,7 @@ func TestRunOnce_ConnectFails(t *testing.T) {
 	}
 	cfg.Exporter.Metrics.Prefix = prefix
 
-	k, err := NewKopiaClient(cfg)
+	k, err := newTestKopiaClient(cfg)
 	require.NoError(t, err)
 	k.configFile = filepath.Join(t.TempDir(), "nonexistent.config")
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
@@ -899,7 +909,7 @@ func TestConnect(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient(cfg)
+	k, err := newTestKopiaClient(cfg)
 	require.NoError(t, err)
 	k.configFile = configFile
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
@@ -939,7 +949,7 @@ func TestConnect_OpenFails(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient(cfg)
+	k, err := newTestKopiaClient(cfg)
 	require.NoError(t, err)
 	k.configFile = configFile
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
@@ -966,7 +976,7 @@ func TestConnect_OpenFails(t *testing.T) {
 			},
 		},
 	}
-	k2, err := NewKopiaClient(cfg2)
+	k2, err := newTestKopiaClient(cfg2)
 	require.NoError(t, err)
 	k2.configFile = configFile
 	t.Cleanup(func() { k2.Disconnect(context.Background()) })
@@ -1009,7 +1019,7 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient(cfg)
+	k, err := newTestKopiaClient(cfg)
 	require.NoError(t, err)
 	k.configFile = configFile
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
@@ -1447,7 +1457,7 @@ func TestConnect_RepoOpenFails(t *testing.T) {
 	}
 	t.Cleanup(func() { openRepo = originalOpenRepo })
 
-	k, err := NewKopiaClient(cfg)
+	k, err := newTestKopiaClient(cfg)
 	require.NoError(t, err)
 	k.configFile = configFile
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
@@ -1491,7 +1501,7 @@ func TestRunOnce_LoadSnapshotsFails(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient(cfg)
+	k, err := newTestKopiaClient(cfg)
 	require.NoError(t, err)
 	k.configFile = configFile
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
@@ -1559,7 +1569,7 @@ func TestRunOnce_PolicyError(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient(cfg)
+	k, err := newTestKopiaClient(cfg)
 	require.NoError(t, err)
 	k.configFile = configFile
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
@@ -1626,7 +1636,7 @@ func TestRunOnce_ListSnapshotManifestsFails(t *testing.T) {
 
 	logger.Reset(nil)
 
-	k, err := NewKopiaClient(cfg)
+	k, err := newTestKopiaClient(cfg)
 	require.NoError(t, err)
 	k.configFile = configFile
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
