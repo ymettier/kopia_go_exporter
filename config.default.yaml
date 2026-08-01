@@ -25,10 +25,11 @@ kopia:
     repositoryURL: "<https://some.url:port>" # API server URL
     fingerprint: "<set me in KGE_KOPIA_APISERVER_FINGERPRINT env var>" # server cert SHA256
   clients: # named client identities (username@hostname) with their passwords
-    default:
-      username: "<mybackup>"   # client username
-      hostname: "<myhostname>" # client hostname
-      password: "<mybackup password>" # client password
+    # Enable at least one client, e.g.:
+    # default:
+    #   username: "<mybackup>"   # client username
+    #   hostname: "<myhostname>" # client hostname
+    #   password: "<mybackup password>" # client password
   retentionstoextract: # retention reasons to export metrics for
     - "latest-1"
 
