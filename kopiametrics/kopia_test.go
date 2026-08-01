@@ -33,6 +33,14 @@ import (
 	"kopia-go-exporter/logger"
 )
 
+// defaultClientName is the name of the single client used by tests that do
+// not exercise multiple identities.
+const defaultClientName = "default"
+
+// otherClientName is the name of the second client identity used by the
+// multi-client tests.
+const otherClientName = "other"
+
 func hashSHA256(pemContent []byte) (string, error) {
 	block, _ := pem.Decode(pemContent)
 	if block == nil {
@@ -78,9 +86,10 @@ func freeTestPort(t *testing.T) string {
 // setupTestKopia starts a real Kopia API server on the local
 // machine using the downloaded kopia test binary (see
 // kopia_tests_helpers_test.go). It creates a filesystem repository,
-// takes a snapshot, adds a server user, and starts the server listening
-// on 127.0.0.1:51515 with a freshly generated TLS certificate. It
-// returns a cleanup function that shuts the server down, together with
+// takes a snapshot as kopia@localhost and a second snapshot as
+// other@otherhost, registers both server users, and starts the server
+// listening on 127.0.0.1:51515 with a freshly generated TLS certificate.
+// It returns a cleanup function that shuts the server down, together with
 // the server certificate fingerprint, the bind IP and the listening
 // port. No container runtime (Docker/testcontainers) is used; the server
 // runs as a local subprocess so the tests can run anywhere the binary
@@ -123,10 +132,24 @@ func setupTestKopia(t *testing.T) (cleanup func(), fingerprint, ip, port string)
 		"--path="+repoPath, "-p", "kopiapwd", "--cache-directory="+cachePath, "--no-check-for-updates")
 
 	runKopia("snapshot create", "--config-file="+configFile, "snapshot", "create", "-p", "kopiapwd", baseDir,
+		"--override-source=kopia@localhost:"+baseDir,
 		"--start-time=2025-05-01 15:20:01 CET", "--end-time=2025-05-01 16:10:02 CET")
 
 	runKopia("server user add", "--config-file="+configFile, "server", "user", "add", "kopia@localhost",
 		"--user-password=kopiapwd", "-p", "kopiapwd")
+
+	// A second snapshot taken under the other@otherhost identity, so the
+	// multi-client test can assert per-host metrics.
+	otherDir := filepath.Join(baseDir, "otherdata")
+	require.NoError(t, os.MkdirAll(otherDir, 0o755), "failed to create otherdata dir")
+	require.NoError(t, os.WriteFile(filepath.Join(otherDir, "otherfile.txt"), []byte("other host data"), 0o600))
+
+	runKopia("snapshot create other", "--config-file="+configFile, "snapshot", "create", "-p", "kopiapwd", otherDir,
+		"--override-source=other@otherhost:"+otherDir,
+		"--start-time=2025-05-02 09:00:00 UTC", "--end-time=2025-05-02 09:05:00 UTC")
+
+	runKopia("server user add other", "--config-file="+configFile, "server", "user", "add", "other@otherhost",
+		"--user-password=otherpwd", "-p", "kopiapwd")
 
 	srv := exec.CommandContext(ctx, bin,
 		"--config-file="+configFile, "server", "start", "-p", "kopiapwd",
@@ -720,12 +743,16 @@ func TestRunOnce_ConnectFails(t *testing.T) {
 
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
-			Password: "wrong",
 			APIServer: config.APIServerConfig{
 				RepositoryURL: "https://127.0.0.1:1",
 				Fingerprint:   "0000000000000000000000000000000000000000000000000000000000000000",
-				Hostname:      "localhost",
-				Username:      "kopia",
+			},
+			Clients: map[string]config.ClientConfig{
+				defaultClientName: {
+					Username: "kopia",
+					Hostname: "localhost",
+					Password: "wrong",
+				},
 			},
 		},
 	}
@@ -793,7 +820,13 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
-			Password:   password,
+			Clients: map[string]config.ClientConfig{
+				defaultClientName: {
+					Username: "kopia",
+					Hostname: "localhost",
+					Password: password,
+				},
+			},
 			Retentions: []string{},
 		},
 	}
@@ -802,6 +835,7 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 	k := &KopiaClient{
 		isConnected: false,
 		cfg:         cfg,
+		metrics:     new(KopiaMetrics),
 	}
 
 	ctx := context.Background()
@@ -849,12 +883,16 @@ func TestConnect(t *testing.T) {
 
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
-			Password: "kopiapwd",
 			APIServer: config.APIServerConfig{
 				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
 				Fingerprint:   fingerprint,
-				Hostname:      "localhost",
-				Username:      "kopia",
+			},
+			Clients: map[string]config.ClientConfig{
+				defaultClientName: {
+					Username: "kopia",
+					Hostname: "localhost",
+					Password: "kopiapwd",
+				},
 			},
 		},
 	}
@@ -885,12 +923,16 @@ func TestConnect_OpenFails(t *testing.T) {
 
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
-			Password: "kopiapwd",
 			APIServer: config.APIServerConfig{
 				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
 				Fingerprint:   fingerprint,
-				Hostname:      "localhost",
-				Username:      "kopia",
+			},
+			Clients: map[string]config.ClientConfig{
+				defaultClientName: {
+					Username: "kopia",
+					Hostname: "localhost",
+					Password: "kopiapwd",
+				},
 			},
 		},
 	}
@@ -911,12 +953,16 @@ func TestConnect_OpenFails(t *testing.T) {
 
 	cfg2 := &config.Config{
 		Kopia: config.KopiaConfig{
-			Password: "kopiapwd",
 			APIServer: config.APIServerConfig{
 				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
 				Fingerprint:   fingerprint,
-				Hostname:      "localhost",
-				Username:      "kopia",
+			},
+			Clients: map[string]config.ClientConfig{
+				defaultClientName: {
+					Username: "kopia",
+					Hostname: "localhost",
+					Password: "kopiapwd",
+				},
 			},
 		},
 	}
@@ -945,14 +991,18 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
-			Password:   "kopiapwd",
-			Retentions: []string{},
 			APIServer: config.APIServerConfig{
 				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
 				Fingerprint:   fingerprint,
-				Hostname:      "localhost",
-				Username:      "kopia",
 			},
+			Clients: map[string]config.ClientConfig{
+				defaultClientName: {
+					Username: "kopia",
+					Hostname: "localhost",
+					Password: "kopiapwd",
+				},
+			},
+			Retentions: []string{},
 		},
 	}
 	cfg.Exporter.Metrics.Prefix = prefix
@@ -1053,7 +1103,13 @@ func TestRunOnceMetrics(t *testing.T) {
 			Port: 9090,
 		},
 		Kopia: config.KopiaConfig{
-			Password:   password,
+			Clients: map[string]config.ClientConfig{
+				defaultClientName: {
+					Username: "kopia",
+					Hostname: "localhost",
+					Password: password,
+				},
+			},
 			Retentions: []string{},
 		},
 	}
@@ -1064,6 +1120,7 @@ func TestRunOnceMetrics(t *testing.T) {
 	k := &KopiaClient{
 		isConnected: false,
 		cfg:         cfg,
+		metrics:     new(KopiaMetrics),
 	}
 
 	var err error
@@ -1140,10 +1197,218 @@ func assertMetricLabels(t *testing.T, name, sourceDir string, familyMap map[stri
 	for _, lp := range m.GetLabel() {
 		labels[lp.GetName()] = lp.GetValue()
 	}
-	assert.NotEmpty(t, labels["host"], "%s: host label should not be empty", name)
+	assert.NotEmpty(t, labels[labelHost], "%s: host label should not be empty", name)
 	assert.NotEmpty(t, labels["user"], "%s: user label should not be empty", name)
 	assert.Equal(t, sourceDir, labels["path"], "%s: unexpected path label", name)
 	assert.NotEmpty(t, labels["retention"], "%s: retention label should not be empty", name)
+}
+
+// Runs RunOnce with two client identities against a single test API
+// server and expects metrics to be emitted for both hosts (the server
+// only returns each client its own snapshots).
+func TestKopiaClients_RunOnce_MultiClient(t *testing.T) {
+	prefix := "kopia_go_exporter"
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	cleanup, fingerprint, ip, port := setupTestKopia(t)
+	defer cleanup()
+
+	logger.Reset(nil)
+
+	cfg := &config.Config{
+		Kopia: config.KopiaConfig{
+			APIServer: config.APIServerConfig{
+				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
+				Fingerprint:   fingerprint,
+			},
+			Clients: map[string]config.ClientConfig{
+				defaultClientName: {
+					Username: "kopia",
+					Hostname: "localhost",
+					Password: "kopiapwd",
+				},
+				otherClientName: {
+					Username: "other", //nolint:goconst
+					Hostname: "otherhost",
+					Password: "otherpwd",
+				},
+			},
+			Retentions: []string{},
+		},
+	}
+	cfg.Exporter.Metrics.Prefix = prefix
+
+	kc, err := NewKopiaClients(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { kc.Disconnect(context.Background()) })
+	require.Len(t, kc.clients, 2)
+
+	reg := prometheus.NewRegistry()
+	kc.RegisterKopiaMetrics(reg)
+
+	require.NoError(t, kc.RunOnce(context.Background()), "RunOnce should succeed for both clients")
+
+	families, err := reg.Gather()
+	require.NoError(t, err)
+	logGatheredMetrics(t, families)
+
+	familyMap := make(map[string]*dto.MetricFamily)
+	for _, f := range families {
+		familyMap[f.GetName()] = f
+	}
+
+	up := familyMap[prefix+"_up"]
+	require.NotNil(t, up, "up metric should be registered")
+	assert.Equal(t, float64(1), up.GetMetric()[0].GetGauge().GetValue(), "up should be 1 when all clients succeed")
+
+	totalSize := familyMap[prefix+"_total_size"]
+	require.NotNil(t, totalSize, "total_size metric should be registered")
+
+	hosts := make(map[string]bool)
+	for _, m := range totalSize.GetMetric() {
+		for _, lp := range m.GetLabel() {
+			if lp.GetName() == labelHost {
+				hosts[lp.GetValue()] = true
+			}
+		}
+	}
+	assert.True(t, hosts["localhost"], "expected metrics for host localhost")
+	assert.True(t, hosts["otherhost"], "expected metrics for host otherhost")
+}
+
+// Runs RunOnce with no clients and expects an error and up metric 0.
+func TestKopiaClients_RunOnce_NoClients(t *testing.T) {
+	prefix := "kopia_go_exporter"
+	logger.Reset(nil)
+
+	kc, err := NewKopiaClients(&config.Config{})
+	require.NoError(t, err)
+	kc.cfg.Exporter.Metrics.Prefix = prefix
+	t.Cleanup(func() { kc.Disconnect(context.Background()) })
+
+	reg := prometheus.NewRegistry()
+	kc.RegisterKopiaMetrics(reg)
+
+	err = kc.RunOnce(context.Background())
+	assert.Error(t, err, "RunOnce should fail when no clients are configured")
+
+	families, err := reg.Gather()
+	require.NoError(t, err)
+	familyMap := make(map[string]*dto.MetricFamily)
+	for _, f := range families {
+		familyMap[f.GetName()] = f
+	}
+	up := familyMap[prefix+"_up"]
+	require.NotNil(t, up, "up metric should be registered")
+	assert.Equal(t, float64(0), up.GetMetric()[0].GetGauge().GetValue(), "up should stay 0 with no clients")
+}
+
+// Disconnects a KopiaClients manager with multiple clients and expects no
+// panic and isConnected to become false on all of them.
+func TestKopiaClients_Disconnect(t *testing.T) {
+	logger.Reset(nil)
+
+	kc, err := NewKopiaClients(&config.Config{
+		Kopia: config.KopiaConfig{
+			Clients: map[string]config.ClientConfig{
+				"a": {Username: "u1", Hostname: "h1", Password: "p1"},
+				"b": {Username: "u2", Hostname: "h2", Password: "p2"},
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, kc.clients, 2)
+
+	for _, k := range kc.clients {
+		assert.False(t, k.isConnected)
+		k.isConnected = true
+	}
+	kc.Disconnect(context.Background())
+	for _, k := range kc.clients {
+		assert.False(t, k.isConnected)
+	}
+}
+
+// Creates a KopiaClients manager when TMPDIR points to a nonexistent
+// directory and expects an error creating the temp directory.
+func TestNewKopiaClients_TempDirFailure(t *testing.T) {
+	t.Setenv("TMPDIR", "/nonexistent-kopia-tmp-dir")
+	_, err := NewKopiaClients(&config.Config{
+		Kopia: config.KopiaConfig{
+			Clients: map[string]config.ClientConfig{
+				defaultClientName: {Username: "u", Hostname: "h", Password: "p"},
+			},
+		},
+	})
+	assert.Error(t, err)
+}
+
+// Runs RunOnce with two client identities against a running test API server
+// while loadSnapshotsFunc is stubbed to fail, and expects the returned error
+// to mention both clients and the shared up metric to be 0.
+func TestKopiaClients_RunOnce_ClientFailure(t *testing.T) {
+	prefix := "kopia_go_exporter"
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	cleanup, fingerprint, ip, port := setupTestKopia(t)
+	defer cleanup()
+
+	logger.Reset(nil)
+
+	cfg := &config.Config{
+		Kopia: config.KopiaConfig{
+			APIServer: config.APIServerConfig{
+				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
+				Fingerprint:   fingerprint,
+			},
+			Clients: map[string]config.ClientConfig{
+				defaultClientName: {
+					Username: "kopia",
+					Hostname: "localhost",
+					Password: "kopiapwd",
+				},
+				"other": {
+					Username: "other",
+					Hostname: "otherhost",
+					Password: "otherpwd",
+				},
+			},
+			Retentions: []string{},
+		},
+	}
+	cfg.Exporter.Metrics.Prefix = prefix
+
+	kc, err := NewKopiaClients(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { kc.Disconnect(context.Background()) })
+
+	reg := prometheus.NewRegistry()
+	kc.RegisterKopiaMetrics(reg)
+
+	originalLoadSnapshots := loadSnapshotsFunc
+	loadSnapshotsFunc = func(_ context.Context, _ repo.Repository, _ []manifest.ID) ([]*snapshot.Manifest, error) {
+		return nil, fmt.Errorf("simulated LoadSnapshots failure")
+	}
+	t.Cleanup(func() { loadSnapshotsFunc = originalLoadSnapshots })
+
+	err = kc.RunOnce(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "kopia@localhost:")
+	assert.Contains(t, err.Error(), "other@otherhost:")
+
+	families, err := reg.Gather()
+	require.NoError(t, err)
+	familyMap := make(map[string]*dto.MetricFamily)
+	for _, f := range families {
+		familyMap[f.GetName()] = f
+	}
+	up := familyMap[prefix+"_up"]
+	require.NotNil(t, up, "up metric should be registered")
+	assert.Equal(t, float64(0), up.GetMetric()[0].GetGauge().GetValue(), "up should be 0 when a client fails")
 }
 
 // Connects and expects repo.Open to fail via the openRepo test hook.
@@ -1159,12 +1424,16 @@ func TestConnect_RepoOpenFails(t *testing.T) {
 
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
-			Password: "kopiapwd",
 			APIServer: config.APIServerConfig{
 				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
 				Fingerprint:   fingerprint,
-				Hostname:      "localhost",
-				Username:      "kopia",
+			},
+			Clients: map[string]config.ClientConfig{
+				defaultClientName: {
+					Username: "kopia",
+					Hostname: "localhost",
+					Password: "kopiapwd",
+				},
 			},
 		},
 	}
@@ -1204,14 +1473,18 @@ func TestRunOnce_LoadSnapshotsFails(t *testing.T) {
 
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
-			Password:   "kopiapwd",
-			Retentions: []string{},
 			APIServer: config.APIServerConfig{
 				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
 				Fingerprint:   fingerprint,
-				Hostname:      "localhost",
-				Username:      "kopia",
 			},
+			Clients: map[string]config.ClientConfig{
+				defaultClientName: {
+					Username: "kopia",
+					Hostname: "localhost",
+					Password: "kopiapwd",
+				},
+			},
+			Retentions: []string{},
 		},
 	}
 	cfg.Exporter.Metrics.Prefix = prefix
@@ -1268,14 +1541,18 @@ func TestRunOnce_PolicyError(t *testing.T) {
 
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
-			Password:   "kopiapwd",
-			Retentions: []string{},
 			APIServer: config.APIServerConfig{
 				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
 				Fingerprint:   fingerprint,
-				Hostname:      "localhost",
-				Username:      "kopia",
 			},
+			Clients: map[string]config.ClientConfig{
+				defaultClientName: {
+					Username: "kopia",
+					Hostname: "localhost",
+					Password: "kopiapwd",
+				},
+			},
+			Retentions: []string{},
 		},
 	}
 	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
@@ -1331,14 +1608,18 @@ func TestRunOnce_ListSnapshotManifestsFails(t *testing.T) {
 
 	cfg := &config.Config{
 		Kopia: config.KopiaConfig{
-			Password:   "kopiapwd",
-			Retentions: []string{},
 			APIServer: config.APIServerConfig{
 				RepositoryURL: fmt.Sprintf("https://%s:%s", ip, port),
 				Fingerprint:   fingerprint,
-				Hostname:      "localhost",
-				Username:      "kopia",
 			},
+			Clients: map[string]config.ClientConfig{
+				defaultClientName: {
+					Username: "kopia",
+					Hostname: "localhost",
+					Password: "kopiapwd",
+				},
+			},
+			Retentions: []string{},
 		},
 	}
 	cfg.Exporter.Metrics.Prefix = prefix

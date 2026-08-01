@@ -47,7 +47,7 @@ func run(ctx context.Context, args []string) error {
 	l := logger.Get()
 	l.Debug("Debug logging enabled")
 	ex := exporter.NewExporter(config.Cfg.Exporter)
-	k, err := kopiametrics.NewKopiaClient(&config.Cfg)
+	k, err := kopiametrics.NewKopiaClients(&config.Cfg)
 	if err != nil {
 		return err
 	}
