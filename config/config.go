@@ -425,6 +425,7 @@ func flagKeyMapper(key, value string) (mapped string, mappedValue any) {
 	mappedValue = value
 	return mapped, mappedValue
 }
+
 func CheckConfig(defaultConfig []byte) error {
 	var errs []error
 	if Cfg.Kopia.APIServer.RepositoryURL == "" {
