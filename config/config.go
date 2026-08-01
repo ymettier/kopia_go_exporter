@@ -427,13 +427,13 @@ func flagKeyMapper(key, value string) (mapped string, mappedValue any) {
 func CheckConfig(defaultConfig []byte) error {
 	var errs []error
 	if Cfg.Kopia.APIServer.RepositoryURL == "" {
-		errs = append(errs, fmt.Errorf("kopia.apiserver.repositoryURL is not set"))
+		errs = append(errs, errors.New("kopia.apiserver.repositoryURL is not set"))
 	}
 	if Cfg.Kopia.APIServer.Fingerprint == "" {
-		errs = append(errs, fmt.Errorf("kopia.apiserver.fingerprint is not set"))
+		errs = append(errs, errors.New("kopia.apiserver.fingerprint is not set"))
 	}
 	if len(Cfg.Kopia.Clients) == 0 {
-		errs = append(errs, fmt.Errorf("kopia.clients is empty; configure at least one client under kopia.clients"))
+		errs = append(errs, errors.New("kopia.clients is empty; configure at least one client under kopia.clients"))
 	}
 	for _, name := range sortedClientNames() {
 		client := Cfg.Kopia.Clients[name]
