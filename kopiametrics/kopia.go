@@ -105,16 +105,22 @@ type KopiaClient struct {
 	client      config.ClientConfig
 }
 
+// sortedClientNames returns the names of all configured Kopia clients in
+// lexicographic order, so client order is deterministic.
+func sortedClientNames(cfg *config.Config) []string {
+	names := make([]string, 0, len(cfg.Kopia.Clients))
+	for name := range cfg.Kopia.Clients {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names
+}
+
 // NewKopiaClient creates a new KopiaClient with a temp directory for the
 // config file, using the first configured client identity (sorted by name).
 func NewKopiaClient(cfg *config.Config) (*KopiaClient, error) {
 	client := config.ClientConfig{}
-	if len(cfg.Kopia.Clients) > 0 {
-		names := make([]string, 0, len(cfg.Kopia.Clients))
-		for name := range cfg.Kopia.Clients {
-			names = append(names, name)
-		}
-		slices.Sort(names)
+	if names := sortedClientNames(cfg); len(names) > 0 {
 		client = cfg.Kopia.Clients[names[0]]
 	}
 	return newKopiaClient(cfg, client, new(KopiaMetrics))
@@ -151,13 +157,8 @@ type KopiaClients struct {
 // configured identity. Client order is deterministic (sorted by name).
 func NewKopiaClients(cfg *config.Config) (*KopiaClients, error) {
 	kc := &KopiaClients{cfg: cfg}
-	names := make([]string, 0, len(cfg.Kopia.Clients))
-	for name := range cfg.Kopia.Clients {
-		names = append(names, name)
-	}
-	slices.Sort(names)
 
-	for _, name := range names {
+	for _, name := range sortedClientNames(cfg) {
 		k, err := newKopiaClient(cfg, cfg.Kopia.Clients[name], &kc.metrics)
 		if err != nil {
 			return nil, err
