@@ -307,7 +307,7 @@ func (k *KopiaClient) RunOnce(ctx context.Context) error {
 	keepAllRetentions := len(k.cfg.Kopia.Retentions) == 0
 	if !k.isConnected {
 		if err := k.Connect(ctx); err != nil {
-			k.metrics.Up.Set(0)
+			k.setDown()
 			return err
 		}
 	}
@@ -316,16 +316,14 @@ func (k *KopiaClient) RunOnce(ctx context.Context) error {
 	manifestsIds, err := snapshot.ListSnapshotManifests(ctx, k.repo, nil, nil)
 	if err != nil {
 		l.Error("failed to list snapshot manifests", "err", err, "ConfigFile", k.configFile)
-		k.isConnected = false
-		k.metrics.Up.Set(0)
+		k.setDown()
 		return err
 	}
 
 	manifests, err := loadSnapshotsFunc(ctx, k.repo, manifestsIds)
 	if err != nil {
 		l.Error("failed to load snapshot manifests", "err", err, "ConfigFile", k.configFile)
-		k.isConnected = false
-		k.metrics.Up.Set(0)
+		k.setDown()
 		return err
 	}
 
@@ -347,6 +345,12 @@ func (k *KopiaClient) RunOnce(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// setDown marks the client as disconnected and sets the up metric to 0.
+func (k *KopiaClient) setDown() {
+	k.isConnected = false
+	k.metrics.Up.Set(0)
 }
 
 // Disconnect closes the repository connection and removes the temp directory.
