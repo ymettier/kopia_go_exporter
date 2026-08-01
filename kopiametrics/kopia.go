@@ -298,7 +298,7 @@ func (k *KopiaClient) setSnapshotMetrics(m *snapshot.Manifest, keepAllRetentions
 		}
 		k.metrics.BackupStartTime.With(labels).Set(float64(m.StartTime.ToTime().Unix()))
 		k.metrics.BackupEndTime.With(labels).Set(float64(m.EndTime.ToTime().Unix()))
-		k.metrics.BackupDuration.With(labels).Set(max(0.0, float64(m.EndTime-m.StartTime)/1e9)) //nolint:mnd
+		k.metrics.BackupDuration.With(labels).Set(max(0.0, time.Duration(m.EndTime-m.StartTime).Seconds()))
 		k.metrics.DirCount.With(labels).Set(float64(m.Stats.TotalDirectoryCount))
 		k.metrics.ErrorCount.With(labels).Set(float64(m.Stats.ErrorCount))
 		k.metrics.FileCount.With(labels).Set(float64(m.Stats.TotalFileCount))
