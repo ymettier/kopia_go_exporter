@@ -118,8 +118,8 @@ The project is licensed under the [MIT License](LICENSE).
 
 ### Helm Chart (charts/kopia_go_exporter/)
 - Standard Helm chart for Kubernetes deployment
-- `values.yaml` includes `kopiaConfigSecret: kopia-config` for the Kopia credentials Secret name
-- Deployment template injects `KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD` and `KGE_KOPIA_APISERVER_FINGERPRINT` from the Secret defined in `kopiaConfigSecret` (e.g. `kopia-config`) as environment variables
+- `values.yaml` configures a pre-created Secret per Kopia client via `config.kopia.clients.<name>.passwordSecretName` (containing the `password` key), plus a server Secret via `config.kopia.apiserver.fingerprintSecretName` (containing the `fingerprint` key)
+- Deployment template injects one `KGE_KOPIA_CLIENTS_<NAME>_PASSWORD` env var per client (from the Secret named in that client's `passwordSecretName`) and `KGE_KOPIA_APISERVER_FINGERPRINT` (from the Secret named in `apiserver.fingerprintSecretName`)
 - ConfigMap serves the application config at `/config/config.yaml`
 - ServiceMonitor supports `relabelings`, `metricRelabelings`, and `namespaceSelector`
 
@@ -276,7 +276,7 @@ The project is licensed under the [MIT License](LICENSE).
 ## Helm Chart
 - Chart location: `charts/kopia_go_exporter/`
 - Template test: `helm template ./charts/kopia_go_exporter`
-- The chart requires a pre-created Secret named `kopia-config` (configurable via `kopiaConfigSecret` in values.yaml) containing `password` and `fingerprint` keys
+- The chart requires a pre-created Secret per Kopia client, named via `config.kopia.clients.<name>.passwordSecretName` in values.yaml, each containing a `password` key, and a Secret named via `config.kopia.apiserver.fingerprintSecretName` containing a `fingerprint` key
 
 ## Code coverage
 - Packages `config`, `exporter` and `logger` should be covered at 100%.
