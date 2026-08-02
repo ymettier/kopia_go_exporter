@@ -48,15 +48,17 @@ spec:
           env:
             - name: KGE_LOGGER_FILENAME
               value: "stdout"
-            - name: KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD
+            {{- range $clientName, $clientConfig := .Values.config.kopia.clients }}
+            - name: "KGE_KOPIA_CLIENTS_{{ $clientName | upper }}_PASSWORD"
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.kopiaConfigSecret }}
+                  name: {{ $clientConfig.passwordSecretName }}
                   key: password
+            {{- end }}
             - name: KGE_KOPIA_APISERVER_FINGERPRINT
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.kopiaConfigSecret }}
+                  name: {{ .Values.config.kopia.apiserver.fingerprintSecretName }}
                   key: fingerprint
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
