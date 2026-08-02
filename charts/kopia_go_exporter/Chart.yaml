@@ -3,5 +3,5 @@ name: kopia-go-exporter
 description: Prometheus exporter for Kopia backup repositories
 
 type: application
-version: 0.3.0-rc1
+version: 0.3.0-rc2
 appVersion: "0.3.0-rc1"
