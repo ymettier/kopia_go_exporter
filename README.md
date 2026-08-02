@@ -72,12 +72,14 @@ ghcr.io/ymettier/kopia_go_exporter:0.2.0
 The chart is located in `charts/kopia_go_exporter`.
 
 **Configuration:**
-1. Create the Kopia credentials Secret:
+1. Create the Kopia credentials Secrets:
    ```sh
-    kubectl create secret generic kopia-config \
-     --from-literal=password='your-kopia-password' \
-      --from-literal=fingerprint='your-server-fingerprint'
+   kubectl create secret generic mysecret \
+     --from-literal=password='your-kopia-password'
+   kubectl create secret generic myapiserver-fingerprint \
+     --from-literal=fingerprint='your-server-fingerprint'
    ```
+   Each client's `passwordSecretName` and the API server's `fingerprintSecretName` in values.yaml point to the matching Secret.
 2. Create a custom values file with your configuration:
 
    ```sh
@@ -86,10 +88,12 @@ The chart is located in `charts/kopia_go_exporter`.
      kopia:
        apiserver:
          repositoryURL: "https://host:port"
+         fingerprintSecretName: "myapiserver-fingerprint"
        clients:
          default:
            username: "mybackup"
            hostname: "myhost"
+           passwordSecretName: "mysecret"
    EOF
    ```
 
