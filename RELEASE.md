@@ -18,6 +18,8 @@
     cat version.txt
     ```
 4. **Update the container image tag in `README.md`** to match the new version (without the `v` prefix):
+
+    ⚠️WARNING⚠️: not for pre-releases!
     ```sh
     sed -i "s|ghcr\.io/ymettier/kopia_go_exporter:[0-9]\+\.[0-9]\+\.[0-9]\+\(-[a-z]*[0-9]\+\)\?|ghcr.io/ymettier/kopia_go_exporter:${VERSION#v}|g" README.md
     ```
@@ -68,6 +70,8 @@
     sed -i "s/^appVersion: .*/appVersion: \"${APP_VERSION}\"/" charts/kopia_go_exporter/Chart.yaml
     ```
 5. **Update `README.md`** helm install command with the new chart version:
+
+    ⚠️WARNING⚠️: not for pre-releases!
     ```sh
     sed -i -E "s|--version [0-9]+.[0-9]+.[0-9]+|--version ${HELM_VERSION#v}|g" README.md
     ```
@@ -91,4 +95,3 @@
     git push origin "helm-${HELM_VERSION}"
     ```
    The CI workflow publishes the chart to `ghcr.io/ymettier/charts/kopia-go-exporter` on `helm-v*` tags.
-
