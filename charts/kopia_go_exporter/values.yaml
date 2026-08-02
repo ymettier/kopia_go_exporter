@@ -64,6 +64,7 @@ readinessProbe:
 extraVolumes: []
 extraVolumeMounts: []
 extraEnv: []
+kopiaConfigSecret: kopia-config
 
 # Configuration served from the ConfigMap at /config/config.yaml
 # ref: config.default.yaml at the root of the repository
@@ -75,18 +76,15 @@ config:
     interval: 300
   kopia:
     # Example API server connection. The server fingerprint is injected via
-    # KGE_KOPIA_APISERVER_FINGERPRINT from the secret named in
-    # apiserver.fingerprintSecretName.
+    # KGE_KOPIA_APISERVER_FINGERPRINT from the `fingerprint` key of the
+    # kopiaConfigSecret secret. Each client password is injected via
+    # KGE_KOPIA_CLIENTS_<NAME>_PASSWORD from the `password-<name>` key.
     apiserver:
       repositoryURL: "https://some.url:port"
-      fingerprintSecretName: "myapiserver-fingerprint"
-    # Each client password is injected via KGE_KOPIA_CLIENTS_<NAME>_PASSWORD
-    # from the secret named in clients.<name>.passwordSecretName.
     clients:
       # default:
       #   username: "mybackup"
       #   hostname: "myhostname"
-      #   passwordSecretName: "mysecret"
     retentionstoextract:
       - "latest-1"
   logger:

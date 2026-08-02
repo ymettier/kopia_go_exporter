@@ -52,13 +52,13 @@ spec:
             - name: "KGE_KOPIA_CLIENTS_{{ $clientName | upper }}_PASSWORD"
               valueFrom:
                 secretKeyRef:
-                  name: {{ $clientConfig.passwordSecretName }}
-                  key: password
+                  name: {{ $.Values.kopiaConfigSecret }}
+                  key: password-{{ $clientName }}
             {{- end }}
             - name: KGE_KOPIA_APISERVER_FINGERPRINT
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.config.kopia.apiserver.fingerprintSecretName }}
+                  name: {{ .Values.kopiaConfigSecret }}
                   key: fingerprint
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
