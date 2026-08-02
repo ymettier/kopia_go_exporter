@@ -49,7 +49,7 @@ See the [Motivations](#motivations) section below for background on why this pro
 The container image is published on the GitHub Container Registry:
 
 ```
-ghcr.io/ymettier/kopia_go_exporter:0.3.0-rc1
+ghcr.io/ymettier/kopia_go_exporter:0.2.0
 ```
 
 1. **Configure**: Create a `config.yaml` file as described in the [Getting Started](#getting-started) section.
@@ -61,7 +61,7 @@ ghcr.io/ymettier/kopia_go_exporter:0.3.0-rc1
      -e KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD="your-kopia-password" \
      -e KGE_KOPIA_APISERVER_FINGERPRINT="your-server-fingerprint" \
      -v /path/to/config.yaml:/config.yaml:ro \
-     ghcr.io/ymettier/kopia_go_exporter:0.3.0-rc1 \
+     ghcr.io/ymettier/kopia_go_exporter:0.2.0 \
      --config /config.yaml
    ```
    Sensitive values (password, fingerprint) are passed preferably as environment variables.
