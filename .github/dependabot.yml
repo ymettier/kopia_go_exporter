@@ -10,13 +10,38 @@ updates:
     open-pull-requests-limit: 5
     schedule:
       interval: "weekly"
+    groups:
+      go-modules:
+        applies-to: version-updates
+        patterns:
+          - "*"
   - package-ecosystem: "docker"
     directory: "/"
     open-pull-requests-limit: 5
     schedule:
       interval: "weekly"
+    groups:
+      docker:
+        applies-to: version-updates
+        patterns:
+          - "*"
   - package-ecosystem: "github-actions"
     directory: "/"
     open-pull-requests-limit: 5
     schedule:
       interval: "weekly"
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+  - package-ecosystem: "helm"
+    directories:
+      - "/charts/*"
+    schedule:
+      interval: "weekly"
+    groups:
+      helm-charts:
+        applies-to: version-updates
+        patterns:
+          - "*"
