@@ -1,4 +1,4 @@
-FROM golang:1.27 AS builder
+FROM golang:1.27.3 AS builder
 
 ARG VERSION=build
 
@@ -18,4 +18,3 @@ COPY --from=builder /go/kopia-go-exporter /kopia-go-exporter
 EXPOSE 9090
 
 ENTRYPOINT ["/kopia-go-exporter"]
-
