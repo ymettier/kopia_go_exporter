@@ -26,7 +26,7 @@ func waitReady(t *testing.T, ch <-chan struct{}) {
 	select {
 	case <-ch:
 	case <-time.After(5 * time.Second):
-		t.Fatal("run did not reach its first loop iteration")
+		require.FailNow(t, "run did not reach its first loop iteration")
 	}
 }
 
@@ -179,7 +179,7 @@ exporter:
 	case err := <-done:
 		assert.NoError(t, err)
 	case <-time.After(5 * time.Second):
-		t.Fatal("run did not exit after context cancellation")
+		require.FailNow(t, "run did not exit after context cancellation")
 	}
 }
 
@@ -218,7 +218,7 @@ exporter:
 	case err := <-done:
 		assert.NoError(t, err)
 	case <-time.After(5 * time.Second):
-		t.Fatal("run did not exit after context cancellation")
+		require.FailNow(t, "run did not exit after context cancellation")
 	}
 }
 
@@ -258,7 +258,7 @@ exporter:
 	case err := <-done:
 		assert.NoError(t, err)
 	case <-time.After(5 * time.Second):
-		t.Fatal("run did not exit after context cancellation")
+		require.FailNow(t, "run did not exit after context cancellation")
 	}
 }
 
@@ -298,7 +298,7 @@ exporter:
 	case err := <-done:
 		assert.NoError(t, err)
 	case <-time.After(5 * time.Second):
-		t.Fatal("run did not exit after context cancellation")
+		require.FailNow(t, "run did not exit after context cancellation")
 	}
 }
 
@@ -355,7 +355,7 @@ exporter:
 	case err := <-done:
 		assert.NoError(t, err)
 	case <-time.After(5 * time.Second):
-		t.Fatal("run did not exit after context cancellation")
+		require.FailNow(t, "run did not exit after context cancellation")
 	}
 }
 

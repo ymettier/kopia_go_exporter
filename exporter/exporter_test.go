@@ -181,7 +181,7 @@ func TestExporter_Run_AlreadyInUse(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("Run() did not return after server error")
+		require.FailNow(t, "Run() did not return after server error")
 	}
 }
 
@@ -213,27 +213,55 @@ func (f *fakeShutdowner) Shutdown(ctx context.Context) error {
 // Shuts down a fake server and expects Shutdown to be called, errors to
 // be observed, and a 5s timeout context to be passed.
 func TestShutdownServer(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		f := &fakeShutdowner{}
-		shutdownServer(f, 9090)
-		assert.True(t, f.called, "Shutdown should be called")
-		assert.NoError(t, f.captured)
-	})
+	tests := []struct {
+		name          string
+		shutdownErr   error
+		wantCalled    bool
+		wantErr       bool
+		wantDeadline  bool
+		deadlineDelta time.Duration
+	}{
+		{
+			name:          "success",
+			wantCalled:    true,
+			wantErr:       false,
+			wantDeadline:  true,
+			deadlineDelta: 6 * time.Second,
+		},
+		{
+			name:          "error is logged",
+			shutdownErr:   errors.New("boom"), //nolint:err113
+			wantCalled:    true,
+			wantErr:       true,
+			wantDeadline:  true,
+			deadlineDelta: 6 * time.Second,
+		},
+		{
+			name:          "context has timeout",
+			wantCalled:    true,
+			wantErr:       false,
+			wantDeadline:  true,
+			deadlineDelta: 6 * time.Second,
+		},
+	}
 
-	t.Run("error is logged", func(t *testing.T) {
-		f := &fakeShutdowner{err: errors.New("boom")} //nolint:err113
-		shutdownServer(f, 9090)
-		assert.True(t, f.called, "Shutdown should be called even on error")
-		assert.Error(t, f.captured, "the shutdown error should be observed by the helper")
-	})
-
-	t.Run("context has timeout", func(t *testing.T) {
-		f := &fakeShutdowner{}
-		shutdownServer(f, 9090)
-		require.NotNil(t, f.capturedContext, "context should be passed to Shutdown")
-		deadline, ok := f.capturedContext.Deadline()
-		assert.True(t, ok, "context should have a deadline")
-		assert.WithinDuration(t, deadline, time.Now(), 6*time.Second,
-			"deadline should be approximately now + 5s")
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeShutdowner{err: tt.shutdownErr}
+			shutdownServer(f, 9090)
+			assert.Equal(t, tt.wantCalled, f.called, "Shutdown call state")
+			if tt.wantErr {
+				assert.Error(t, f.captured)
+			} else {
+				assert.NoError(t, f.captured)
+			}
+			if tt.wantDeadline {
+				require.NotNil(t, f.capturedContext, "context should be passed to Shutdown")
+				deadline, ok := f.capturedContext.Deadline()
+				assert.True(t, ok, "context should have a deadline")
+				assert.WithinDuration(t, deadline, time.Now(), tt.deadlineDelta,
+					"deadline should be approximately now + 5s")
+			}
+		})
+	}
 }
