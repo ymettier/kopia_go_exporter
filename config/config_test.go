@@ -885,28 +885,42 @@ func TestReadKopiaConfig_InvalidRetentions(t *testing.T) {
 	assert.Empty(t, cfg.Retentions[0])
 }
 
-// Loads the logger config with KGE_LOGGER_LOG_LEVEL set and expects the
-// level to come from the env var.
-func TestReadLoggerConfig_EnvVarOverride(t *testing.T) {
-	k = koanf.New(".")
-	t.Setenv("KGE_LOGGER_LOG_LEVEL", "debug")
+// Loads the logger config from environment variables.
+func TestReadLoggerConfig_EnvVarOverrides(t *testing.T) {
+	tests := []struct {
+		name  string
+		env   map[string]string
+		check func(t *testing.T, cfg LoggerConfig)
+	}{
+		{
+			name: "log level",
+			env:  map[string]string{"KGE_LOGGER_LOG_LEVEL": "debug"},
+			check: func(t *testing.T, cfg LoggerConfig) {
+				assert.Equal(t, "debug", cfg.Level)
+			},
+		},
+		{
+			name: "redact sensitive false",
+			env:  map[string]string{"KGE_LOGGER_REDACT_SENSITIVE": "false"},
+			check: func(t *testing.T, cfg LoggerConfig) {
+				assert.False(t, cfg.RedactSensitive)
+			},
+		},
+	}
 
-	loadConfigLayer(k, env.Provider("KGE_", ".", kgeKeyMapper), "Failed to load environment variable overrides")
-
-	cfg := readLoggerConfig(k)
-	assert.Equal(t, "debug", cfg.Level)
-}
-
-// Loads the logger config with KGE_LOGGER_REDACT_SENSITIVE=false and
-// expects RedactSensitive to be false.
-func TestReadLoggerConfig_EnvVarOverrideRedactSensitive(t *testing.T) {
-	k = koanf.New(".")
-	t.Setenv("KGE_LOGGER_REDACT_SENSITIVE", "false")
-
-	loadConfigLayer(k, env.Provider("KGE_", ".", kgeKeyMapper), "Failed to load environment variable overrides")
-
-	cfg := readLoggerConfig(k)
-	assert.False(t, cfg.RedactSensitive)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k = koanf.New(".")
+			for ek, ev := range tt.env {
+				t.Setenv(ek, ev)
+			}
+			loadConfigLayer(k, env.Provider("KGE_", ".", kgeKeyMapper), "Failed to load environment variable overrides")
+			cfg := readLoggerConfig(k)
+			if tt.check != nil {
+				tt.check(t, cfg)
+			}
+		})
+	}
 }
 
 // Loads a config with logger.redact_sensitive set to false and expects
