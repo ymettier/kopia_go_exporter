@@ -10,7 +10,7 @@ kopia-go-exporter is a Prometheus exporter for Kopia backup repositories written
 The project is licensed under the [MIT License](LICENSE).
 
 ## Technology Stack
-- **Language**: Go 1.25.8+
+- **Language**: Go 1.27.3+
 - **Configuration**: `github.com/knadh/koanf` (YAML parsing)
 - **CLI parsing**: `github.com/spf13/pflag`
 - **Metrics**: `github.com/prometheus/client_golang`
@@ -288,12 +288,12 @@ The project is licensed under the [MIT License](LICENSE).
 ## Linting
 - Run: `golangci-lint run ./...`
 - Fallback (version mismatch):
-  `podman run -t --rm -v $(pwd):/app:z -w /app golangci/golangci-lint:v2.12.2 golangci-lint run ./...`
+  `podman run -t --rm -v $(pwd):/app:z -w /app golangci/golangci-lint:v2.15.0 golangci-lint run ./...`
 
 ## Version Management
 - `version.txt` is embedded at build time via `//go:embed` and should contain the version string (e.g., `build` for dev, `1.0.0` for releases).
 - `go.mod` sets the minimum Go version. Only bump when the code requires a newer toolchain feature.
-- `Dockerfile` sets the latest stable Go version as 1.xx (example: 1.26).
+- `Dockerfile` uses the Go version pinned for this project (currently 1.27.3).
 - When updating a version, check all references across the project (go.mod, Dockerfile, AGENTS.md).
 
 ## Important Notes
