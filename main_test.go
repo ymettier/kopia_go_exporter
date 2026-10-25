@@ -45,7 +45,7 @@ func TestRun_SimpleErrors(t *testing.T) {
 	}{
 		{
 			name:       "missing config file",
-			args:       []string{"--config", "/nonexistent/config.yaml"},
+			args:       []string{"--config", "/nonexistent/config.yaml"}, //nolint:goconst
 			wantErrSub: "failed to read configuration file",
 		},
 		{
@@ -171,8 +171,14 @@ func TestRun_MissingRequiredConfig(t *testing.T) {
 
 // Runs the main loop, cancels the context, and expects run to return
 // without error after cancellation.
-func TestRun_ContextCancel(t *testing.T) {
-	cfgFile := writeTestMainConfig(t, `kopia:
+func TestRun_Loop(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  string
+	}{
+		{
+			name: "context cancel",
+			cfg: `kopia:
   apiserver:
     repositoryURL: "http://127.0.0.1:1"
     fingerprint: "abc123"
@@ -184,28 +190,50 @@ func TestRun_ContextCancel(t *testing.T) {
 exporter:
   port: 9091
   interval: 1
-`)
+`,
+		},
+		{
+			name: "loop decrements interval",
+			cfg: `kopia:
+  apiserver:
+    repositoryURL: "http://127.0.0.1:1"
+    fingerprint: "abc123"
+  clients:
+    default:
+      username: "kopia"
+      hostname: "localhost"
+      password: "test"
+exporter:
+  port: 9092
+  interval: 2
+`,
+		},
+	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	testReady = make(chan struct{})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfgFile := writeTestMainConfig(t, tt.cfg)
+			ctx, cancel := context.WithCancel(context.Background())
+			testReady = make(chan struct{})
 
-	done := make(chan error, 1)
-	go func() {
-		done <- run(ctx, []string{"--config", cfgFile})
-	}()
+			done := make(chan error, 1)
+			go func() {
+				done <- run(ctx, []string{"--config", cfgFile})
+			}()
 
-	waitReady(t, testReady)
-	cancel()
+			waitReady(t, testReady)
+			cancel()
 
-	select {
-	case err := <-done:
-		assert.NoError(t, err)
-	case <-time.After(5 * time.Second):
-		require.FailNow(t, "run did not exit after context cancellation")
+			select {
+			case err := <-done:
+				assert.NoError(t, err)
+			case <-time.After(5 * time.Second):
+				require.FailNow(t, "run did not exit after context cancellation")
+			}
+		})
 	}
 }
 
-// Runs logger configuration scenarios.
 func TestRun_LoggerConfig(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -322,43 +350,6 @@ func TestRun_NewKopiaClientFails(t *testing.T) {
 	err := run(context.Background(), []string{"--config", cfgFile})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to create temp directory")
-}
-
-// Runs the main loop, lets it complete one iteration, then cancels, and
-// expects run to exit without error.
-func TestRun_LoopDecrementsInterval(t *testing.T) {
-	cfgFile := writeTestMainConfig(t, `kopia:
-  apiserver:
-    repositoryURL: "http://127.0.0.1:1"
-    fingerprint: "abc123"
-  clients:
-    default:
-      username: "kopia"
-      hostname: "localhost"
-      password: "test"
-exporter:
-  port: 9092
-  interval: 2
-`)
-	ctx, cancel := context.WithCancel(context.Background())
-	testReady = make(chan struct{})
-
-	done := make(chan error, 1)
-	go func() {
-		done <- run(ctx, []string{"--config", cfgFile})
-	}()
-
-	// Wait until the loop has performed its first iteration (which exercises
-	// the interval reset branch), then cancel.
-	waitReady(t, testReady)
-	cancel()
-
-	select {
-	case err := <-done:
-		assert.NoError(t, err)
-	case <-time.After(5 * time.Second):
-		require.FailNow(t, "run did not exit after context cancellation")
-	}
 }
 
 func writeTestMainConfig(t *testing.T, content string) string {

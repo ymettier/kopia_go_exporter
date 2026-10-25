@@ -12,28 +12,63 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Calls Get with no global logger set and expects a default logger to be
-// created and returned.
-func TestGet_InitializesDefault(t *testing.T) {
-	mu.Lock()
-	global = nil
-	mu.Unlock()
+const (
+	DEBUG_LEVEL          = "debug"
+	LOGGER_LOG_LEVEL_ENV = "KGE_LOGGER_LOG_LEVEL"
+)
 
-	l := Get()
-	assert.NotNil(t, l)
-	assert.Equal(t, global, l)
-}
+// Calls Get with different global logger states.
+func TestGet(t *testing.T) {
+	tests := []struct {
+		name   string
+		setup  func()
+		check  func(t *testing.T, l *slog.Logger)
+		custom *slog.Logger
+	}{
+		{
+			name: "initializes default",
+			setup: func() {
+				mu.Lock()
+				global = nil
+				mu.Unlock()
+			},
+			check: func(t *testing.T, l *slog.Logger) {
+				assert.NotNil(t, l)
+				assert.Equal(t, global, l)
+			},
+		},
+		{
+			name: "returns existing",
+			setup: func() {
+				custom := slog.New(slog.NewTextHandler(os.Stderr, nil))
+				mu.Lock()
+				global = custom
+				mu.Unlock()
+			},
+			check: func(t *testing.T, l *slog.Logger) {
+				assert.NotNil(t, l)
+			},
+		},
+	}
 
-// Calls Get when a global logger is already set and expects the existing
-// logger to be returned.
-func TestGet_ReturnsExisting(t *testing.T) {
-	custom := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	mu.Lock()
-	global = custom
-	mu.Unlock()
-
-	l := Get()
-	assert.Equal(t, custom, l)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup()
+			}
+			l := Get()
+			if tt.check != nil {
+				tt.check(t, l)
+			}
+			if tt.name == "returns existing" {
+				// ensure it returns the same instance we set
+				mu.RLock()
+				g := global
+				mu.RUnlock()
+				assert.Equal(t, g, l)
+			}
+		})
+	}
 }
 
 // Resets the logger with various options and expects a non-nil logger.
@@ -45,7 +80,7 @@ func TestReset(t *testing.T) {
 		{
 			name: "with options",
 			opts: &LogOptions{
-				Level:    "debug",
+				Level:    DEBUG_LEVEL,
 				JSON:     false,
 				Filename: "stdout", //nolint:goconst
 			},
@@ -126,16 +161,16 @@ func TestGetWriter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := tt.opts
 			if tt.useTempFile {
-				opts = tt.opts
-				if opts == nil {
-					opts = &LogOptions{}
+				base := opts
+				if base == nil {
+					base = &LogOptions{}
 				}
 				opts = &LogOptions{
 					Filename:   t.TempDir() + "/" + tt.tempName,
-					MaxSize:    tt.opts.MaxSize,
-					MaxBackups: tt.opts.MaxBackups,
-					MaxAge:     tt.opts.MaxAge,
-					Compress:   tt.opts.Compress,
+					MaxSize:    base.MaxSize,
+					MaxBackups: base.MaxBackups,
+					MaxAge:     base.MaxAge,
+					Compress:   base.Compress,
 				}
 			}
 			w, lj := getLogWriter(opts)
@@ -168,7 +203,7 @@ func TestNewLogger(t *testing.T) {
 		},
 		{
 			name: "debug level",
-			opts: &LogOptions{Level: "debug"},
+			opts: &LogOptions{Level: DEBUG_LEVEL},
 			log:  func(l *slog.Logger) { l.Debug("test debug message") },
 		},
 		{
@@ -188,7 +223,7 @@ func TestNewLogger(t *testing.T) {
 		{
 			name: "env fallback",
 			opts: &LogOptions{},
-			env:  map[string]string{"KGE_LOGGER_LOG_LEVEL": "debug"},
+			env:  map[string]string{LOGGER_LOG_LEVEL_ENV: DEBUG_LEVEL},
 		},
 	}
 
@@ -262,24 +297,50 @@ func TestReset_Concurrent(t *testing.T) {
 	}
 }
 
-// Reads logger options from env vars all set and expects Level, JSON,
-// and Filename to match.
-func TestOptionsFromEnv_AllSet(t *testing.T) {
-	t.Setenv("KGE_LOGGER_LOG_LEVEL", "debug")
-	t.Setenv("KGE_LOGGER_JSON", "true")
-	t.Setenv("KGE_LOGGER_FILENAME", "/tmp/test.log")
+// Reads logger options from environment variables.
+func TestOptionsFromEnv(t *testing.T) {
+	tests := []struct {
+		name  string
+		env   map[string]string
+		check func(t *testing.T, opts *LogOptions)
+	}{
+		{
+			name: "all set",
+			env: map[string]string{
+				LOGGER_LOG_LEVEL_ENV:  DEBUG_LEVEL,
+				"KGE_LOGGER_JSON":     "true",
+				"KGE_LOGGER_FILENAME": "/tmp/test.log",
+			},
+			check: func(t *testing.T, opts *LogOptions) {
+				assert.Equal(t, DEBUG_LEVEL, opts.Level)
+				assert.True(t, opts.JSON)
+				assert.Equal(t, "/tmp/test.log", opts.Filename)
+			},
+		},
+		{
+			name: "none set",
+			env:  map[string]string{},
+			check: func(t *testing.T, opts *LogOptions) {
+				assert.Equal(t, "", opts.Level)
+				assert.False(t, opts.JSON)
+				assert.Equal(t, "", opts.Filename)
+			},
+		},
+	}
 
-	opts := OptionsFromEnv()
-	assert.Equal(t, "debug", opts.Level)
-	assert.True(t, opts.JSON)
-	assert.Equal(t, "/tmp/test.log", opts.Filename)
-}
-
-// Reads logger options from env with no vars set and expects empty
-// Level/JSON/Filename defaults.
-func TestOptionsFromEnv_NoneSet(t *testing.T) {
-	opts := OptionsFromEnv()
-	assert.Equal(t, "", opts.Level)
-	assert.False(t, opts.JSON)
-	assert.Equal(t, "", opts.Filename)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear env vars to ensure clean state
+			for k := range map[string]bool{LOGGER_LOG_LEVEL_ENV: true, "KGE_LOGGER_JSON": true, "KGE_LOGGER_FILENAME": true} {
+				t.Setenv(k, "")
+			}
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+			opts := OptionsFromEnv()
+			if tt.check != nil {
+				tt.check(t, opts)
+			}
+		})
+	}
 }

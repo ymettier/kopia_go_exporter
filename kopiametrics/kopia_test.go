@@ -41,6 +41,12 @@ const defaultClientName = "default"
 // multi-client tests.
 const otherClientName = "other"
 
+const (
+	testPrefix    = "kopia_go_exporter"
+	testRetention = "daily"
+	testPath      = "/test/path"
+)
+
 // newTestKopiaClient creates a KopiaClient with a temp directory for the
 // config file, using the first configured client identity (sorted by name).
 func newTestKopiaClient(cfg *config.Config) (*KopiaClient, error) {
@@ -238,23 +244,54 @@ func logGatheredMetrics(t *testing.T, families []*dto.MetricFamily) {
 	}
 }
 
-// Constructs a new kopia client via the test helper and expects a non-nil
-// client that is initially not connected.
+// Constructs a new kopia client via the test helper.
 func TestNewTestKopiaClient(t *testing.T) {
-	cfg := &config.Config{}
-	k, err := newTestKopiaClient(cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { k.Disconnect(context.Background()) })
-	assert.NotNil(t, k)
-	assert.False(t, k.isConnected)
-}
+	tests := []struct {
+		name    string
+		cfg     *config.Config
+		env     map[string]string
+		wantErr bool
+		check   func(t *testing.T, k *KopiaClient)
+	}{
+		{
+			name: "success",
+			cfg:  &config.Config{},
+			check: func(t *testing.T, k *KopiaClient) {
+				assert.NotNil(t, k)
+				assert.False(t, k.isConnected)
+			},
+		},
+		{
+			name:    "temp dir failure",
+			cfg:     &config.Config{},
+			env:     map[string]string{"TMPDIR": "/nonexistent-kopia-tmp-dir"},
+			wantErr: true,
+		},
+	}
 
-// Constructs a kopia client via the test helper when TMPDIR points to a
-// nonexistent directory and expects an error creating the temp directory.
-func TestNewTestKopiaClient_TempDirFailure(t *testing.T) {
-	t.Setenv("TMPDIR", "/nonexistent-kopia-tmp-dir")
-	_, err := newTestKopiaClient(&config.Config{})
-	assert.Error(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for ek, ev := range tt.env {
+				t.Setenv(ek, ev)
+			}
+			cfg := tt.cfg
+			if cfg == nil {
+				cfg = &config.Config{}
+			}
+			k, err := newTestKopiaClient(cfg)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			if k != nil {
+				t.Cleanup(func() { k.Disconnect(context.Background()) })
+			}
+			if tt.check != nil && k != nil {
+				tt.check(t, k)
+			}
+		})
+	}
 }
 
 // Registers kopia metrics and expects each of the seven gauge metrics to
@@ -328,38 +365,54 @@ func TestKopiaClient_Connect(t *testing.T) {
 	assert.True(t, k.isConnected)
 }
 
-// Disconnects a connected kopia client and expects isConnected to become
-// false and no panic.
+// Disconnects a kopia client.
 func TestKopiaClient_Disconnect(t *testing.T) {
-	logger.Reset(nil)
+	tests := []struct {
+		name  string
+		setup func(t *testing.T, k *KopiaClient)
+		check func(t *testing.T, k *KopiaClient)
+	}{
+		{
+			name: "connected",
+			setup: func(t *testing.T, k *KopiaClient) {
+				t.Helper()
+				k.isConnected = true
+			},
+			check: func(t *testing.T, k *KopiaClient) {
+				assert.False(t, k.isConnected)
+			},
+		},
+		{
+			name: "temp dir removal fails",
+			setup: func(t *testing.T, k *KopiaClient) {
+				parentFile := filepath.Join(t.TempDir(), "afile")
+				require.NoError(t, os.WriteFile(parentFile, []byte("x"), 0o600))
+				k.tempDir = filepath.Join(parentFile, "unremovable")
+				k.isConnected = true
+			},
+			check: func(t *testing.T, k *KopiaClient) {
+				assert.False(t, k.isConnected)
+				assert.Equal(t, "", k.tempDir)
+			},
+		},
+	}
 
-	k, err := newTestKopiaClient(&config.Config{})
-	require.NoError(t, err)
-	assert.False(t, k.isConnected)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger.Reset(nil)
 
-	k.isConnected = true
-	k.Disconnect(context.Background())
-	assert.False(t, k.isConnected)
-}
-
-// Disconnects a client whose temp directory cannot be removed and expects
-// the removal error to be logged without panicking and isConnected to be false.
-func TestKopiaClient_DisconnectTempDirRemovalFails(t *testing.T) {
-	logger.Reset(nil)
-
-	k, err := newTestKopiaClient(&config.Config{})
-	require.NoError(t, err)
-
-	// Point tempDir at a path whose parent is a regular file, so
-	// os.RemoveAll fails with a "not a directory" error even as root.
-	parentFile := filepath.Join(t.TempDir(), "afile")
-	require.NoError(t, os.WriteFile(parentFile, []byte("x"), 0o600))
-
-	k.tempDir = filepath.Join(parentFile, "unremovable")
-	k.isConnected = true
-	k.Disconnect(context.Background())
-	assert.False(t, k.isConnected)
-	assert.Equal(t, "", k.tempDir)
+			k, err := newTestKopiaClient(&config.Config{})
+			require.NoError(t, err)
+			assert.False(t, k.isConnected)
+			if tt.setup != nil {
+				tt.setup(t, k)
+			}
+			k.Disconnect(context.Background())
+			if tt.check != nil {
+				tt.check(t, k)
+			}
+		})
+	}
 }
 
 // TestKopiaBinaryPresent verifies that the kopia test
@@ -406,109 +459,124 @@ func TestKopiaVersion(t *testing.T) {
 	t.Logf("kopia test binary is at expected version %s", kopiaTestVersion)
 }
 
-// Sets snapshot metrics for a retention that is filtered out and expects
-// no snapshot metrics to be emitted but up metric to exist.
-func TestSetSnapshotMetrics_RetentionFiltering(t *testing.T) {
-	prefix := "kopia_go_exporter" //nolint:goconst
-	cfg := &config.Config{
-		Kopia: config.KopiaConfig{
-			Retentions: []string{"daily"}, //nolint:goconst
+// Sets snapshot metrics and expects results based on retention and
+// filters.
+func TestSetSnapshotMetrics(t *testing.T) {
+	prefix := testPrefix
+	tests := []struct {
+		name              string
+		cfg               *config.Config
+		manifest          *snapshot.Manifest
+		keepAll           bool
+		wantUp            float64
+		wantFileCount     *float64
+		wantSnapshotEmpty bool
+	}{
+		{
+			name: "retention filtered out",
+			cfg: &config.Config{
+				Kopia: config.KopiaConfig{
+					Retentions: []string{testRetention},
+				},
+			},
+			manifest: &snapshot.Manifest{
+				Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: testPath}, //nolint:goconst
+				StartTime:        fs.UTCTimestampFromTime(time.Now()),
+				EndTime:          fs.UTCTimestampFromTime(time.Now()),
+				RetentionReasons: []string{"latest"}, //nolint:goconst
+				Stats: snapshot.Stats{
+					TotalFileCount:      10,
+					TotalDirectoryCount: 2,
+					TotalFileSize:       1024,
+				},
+			},
+			keepAll:           false,
+			wantUp:            0.0,
+			wantSnapshotEmpty: true,
 		},
-	}
-	cfg.Exporter.Metrics.Prefix = prefix
-
-	logger.Reset(nil)
-
-	k, err := newTestKopiaClient(cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { k.Disconnect(context.Background()) })
-	reg := prometheus.NewRegistry()
-	k.RegisterKopiaMetrics(reg)
-
-	now := fs.UTCTimestampFromTime(time.Now())
-	m := &snapshot.Manifest{
-		Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/test/path"}, //nolint:goconst
-		StartTime:        now,
-		EndTime:          now,
-		RetentionReasons: []string{"latest"},
-		Stats: snapshot.Stats{
-			TotalFileCount:      10,
-			TotalDirectoryCount: 2,
-			TotalFileSize:       1024,
-		},
-	}
-
-	k.setSnapshotMetrics(m, false)
-
-	families, err := reg.Gather()
-	require.NoError(t, err)
-	logGatheredMetrics(t, families)
-
-	// up metric should exist but snapshot metrics should be empty
-	familyMap := make(map[string]*dto.MetricFamily)
-	for _, f := range families {
-		familyMap[f.GetName()] = f
-	}
-	up := familyMap[prefix+"_up"]
-	require.NotNil(t, up, "up metric should be registered")
-	// up is 0 because setSnapshotMetrics doesn't set it
-	assert.Equal(t, 0.0, up.GetMetric()[0].GetGauge().GetValue())
-
-	// No snapshot metrics should be set when retention is filtered out
-	for _, f := range families {
-		if f.GetName() != prefix+"_up" {
-			assert.Empty(t, f.GetMetric(), "snapshot metric %s should have no samples when retention is filtered out", f.GetName())
-		}
-	}
-}
-
-// Sets snapshot metrics with keepAllRetentions and expects the
-// file_count gauge to be 10.
-func TestSetSnapshotMetrics_KeepAllRetentions(t *testing.T) {
-	cfg := &config.Config{
-		Kopia: config.KopiaConfig{
-			Retentions: []string{"daily"},
-		},
-	}
-	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
-
-	logger.Reset(nil)
-
-	k, err := newTestKopiaClient(cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { k.Disconnect(context.Background()) })
-	reg := prometheus.NewRegistry()
-	k.RegisterKopiaMetrics(reg)
-
-	now := fs.UTCTimestampFromTime(time.Now())
-	m := &snapshot.Manifest{
-		Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/test/path"},
-		StartTime:        now,
-		EndTime:          now,
-		RetentionReasons: []string{"latest"},
-		Stats: snapshot.Stats{
-			TotalFileCount:      10,
-			TotalDirectoryCount: 2,
-			TotalFileSize:       1024,
+		{
+			name: "keep all retentions",
+			cfg: &config.Config{
+				Kopia: config.KopiaConfig{
+					Retentions: []string{testRetention},
+				},
+			},
+			manifest: &snapshot.Manifest{
+				Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: testPath},
+				StartTime:        fs.UTCTimestampFromTime(time.Now()),
+				EndTime:          fs.UTCTimestampFromTime(time.Now()),
+				RetentionReasons: []string{"latest"},
+				Stats: snapshot.Stats{
+					TotalFileCount:      10,
+					TotalDirectoryCount: 2,
+					TotalFileSize:       1024,
+				},
+			},
+			keepAll:       true,
+			wantFileCount: func() *float64 { v := float64(10); return &v }(),
 		},
 	}
 
-	k.setSnapshotMetrics(m, true)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := tt.cfg
+			if cfg == nil {
+				cfg = &config.Config{}
+			}
+			cfg.Exporter.Metrics.Prefix = prefix
+			logger.Reset(nil)
 
-	families, err := reg.Gather()
-	require.NoError(t, err)
-	logGatheredMetrics(t, families)
-	require.NotEmpty(t, families, "metrics should be set when keepAllRetentions is true")
+			k, err := newTestKopiaClient(cfg)
+			require.NoError(t, err)
+			t.Cleanup(func() { k.Disconnect(context.Background()) })
+			reg := prometheus.NewRegistry()
+			k.RegisterKopiaMetrics(reg)
 
-	familyMap := make(map[string]*dto.MetricFamily)
-	for _, f := range families {
-		familyMap[f.GetName()] = f
+			m := tt.manifest
+			if m == nil {
+				now := fs.UTCTimestampFromTime(time.Now())
+				m = &snapshot.Manifest{
+					Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: testPath},
+					StartTime:        now,
+					EndTime:          now,
+					RetentionReasons: []string{"latest"},
+					Stats:            snapshot.Stats{TotalFileCount: 10, TotalDirectoryCount: 2, TotalFileSize: 1024},
+				}
+			}
+
+			k.setSnapshotMetrics(m, tt.keepAll)
+
+			families, err := reg.Gather()
+			require.NoError(t, err)
+			logGatheredMetrics(t, families)
+
+			familyMap := make(map[string]*dto.MetricFamily)
+			for _, f := range families {
+				familyMap[f.GetName()] = f
+			}
+			up := familyMap[prefix+"_up"]
+			require.NotNil(t, up, "up metric should be registered")
+			if tt.wantUp != 0 || tt.wantSnapshotEmpty {
+				assert.Equal(t, tt.wantUp, up.GetMetric()[0].GetGauge().GetValue())
+			}
+
+			if tt.wantSnapshotEmpty {
+				for _, f := range families {
+					if f.GetName() != prefix+"_up" {
+						assert.Empty(t, f.GetMetric(), "snapshot metric %s should have no samples", f.GetName())
+					}
+				}
+				return
+			}
+
+			if tt.wantFileCount != nil {
+				gauge := familyMap[prefix+"_file_count"]
+				require.NotNil(t, gauge)
+				require.NotEmpty(t, gauge.GetMetric())
+				assert.Equal(t, *tt.wantFileCount, gauge.GetMetric()[0].GetGauge().GetValue())
+			}
+		})
 	}
-
-	gauge := familyMap["kopia_go_exporter_file_count"]
-	require.NotNil(t, gauge)
-	require.NotEmpty(t, gauge.GetMetric())
-	assert.Equal(t, float64(10), gauge.GetMetric()[0].GetGauge().GetValue())
 }
 
 // Exercises matchPathFilters with various include/exclude regex
@@ -646,111 +714,109 @@ func mustRegexes(t *testing.T, patterns ...string) []*regexp.Regexp {
 	return res
 }
 
-// Sets snapshot metrics for a path matching the exclude filter and
-// expects no snapshot metrics to be emitted but up metric to exist.
-func TestSetSnapshotMetrics_PathFilterExcludes(t *testing.T) {
-	prefix := "kopia_go_exporter"
-	cfg := &config.Config{
-		Kopia: config.KopiaConfig{
-			Retentions: []string{"daily"},
+// Sets snapshot metrics with path filters.
+func TestSetSnapshotMetrics_PathFilters(t *testing.T) {
+	prefix := testPrefix
+	tests := []struct {
+		name              string
+		cfg               *config.Config
+		manifestPath      string
+		wantUp            float64
+		wantSnapshotEmpty bool
+		wantFileCount     *float64
+	}{
+		{
+			name: "excluded",
+			cfg: &config.Config{
+				Kopia: config.KopiaConfig{
+					Retentions: []string{testRetention},
+				},
+				Filters: config.FiltersConfig{
+					Exclude: config.FilterConfig{PathRegex: mustRegexes(t, ".*secret.*")},
+				},
+			},
+			manifestPath:      "/data/secret",
+			wantUp:            0.0,
+			wantSnapshotEmpty: true,
 		},
-		Filters: config.FiltersConfig{
-			Exclude: config.FilterConfig{PathRegex: mustRegexes(t, ".*secret.*")},
-		},
-	}
-	cfg.Exporter.Metrics.Prefix = prefix
-
-	logger.Reset(nil)
-
-	k, err := newTestKopiaClient(cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { k.Disconnect(context.Background()) })
-	reg := prometheus.NewRegistry()
-	k.RegisterKopiaMetrics(reg)
-
-	now := fs.UTCTimestampFromTime(time.Now())
-	m := &snapshot.Manifest{
-		Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/data/secret"},
-		StartTime:        now,
-		EndTime:          now,
-		RetentionReasons: []string{"daily"},
-		Stats:            snapshot.Stats{TotalFileCount: 10, TotalDirectoryCount: 2, TotalFileSize: 1024},
-	}
-
-	k.setSnapshotMetrics(m, false)
-
-	families, err := reg.Gather()
-	require.NoError(t, err)
-
-	// up metric should exist but snapshot metrics should be empty
-	familyMap := make(map[string]*dto.MetricFamily)
-	for _, f := range families {
-		familyMap[f.GetName()] = f
-	}
-	up := familyMap[prefix+"_up"]
-	require.NotNil(t, up, "up metric should be registered")
-	// up is 0 because setSnapshotMetrics doesn't set it
-	assert.Equal(t, 0.0, up.GetMetric()[0].GetGauge().GetValue())
-
-	// No snapshot metrics should be set when path is excluded
-	for _, f := range families {
-		if f.GetName() != prefix+"_up" {
-			assert.Empty(t, f.GetMetric(), "snapshot metric %s should have no samples when path is excluded", f.GetName())
-		}
-	}
-}
-
-// Sets snapshot metrics for a path matching the include filter and
-// expects the file_count gauge to be 10.
-func TestSetSnapshotMetrics_PathFilterIncludes(t *testing.T) {
-	cfg := &config.Config{
-		Kopia: config.KopiaConfig{
-			Retentions: []string{"daily"},
-		},
-		Filters: config.FiltersConfig{
-			Include: config.FilterConfig{PathRegex: mustRegexes(t, ".*included.*")},
+		{
+			name: "included",
+			cfg: &config.Config{
+				Kopia: config.KopiaConfig{
+					Retentions: []string{testRetention},
+				},
+				Filters: config.FiltersConfig{
+					Include: config.FilterConfig{PathRegex: mustRegexes(t, ".*included.*")},
+				},
+			},
+			manifestPath:  "/data/included",
+			wantFileCount: func() *float64 { v := float64(10); return &v }(),
 		},
 	}
-	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
 
-	logger.Reset(nil)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := tt.cfg
+			if cfg == nil {
+				cfg = &config.Config{}
+			}
+			cfg.Exporter.Metrics.Prefix = prefix
+			logger.Reset(nil)
 
-	k, err := newTestKopiaClient(cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { k.Disconnect(context.Background()) })
-	reg := prometheus.NewRegistry()
-	k.RegisterKopiaMetrics(reg)
+			k, err := newTestKopiaClient(cfg)
+			require.NoError(t, err)
+			t.Cleanup(func() { k.Disconnect(context.Background()) })
+			reg := prometheus.NewRegistry()
+			k.RegisterKopiaMetrics(reg)
 
-	now := fs.UTCTimestampFromTime(time.Now())
-	m := &snapshot.Manifest{
-		Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: "/data/included"},
-		StartTime:        now,
-		EndTime:          now,
-		RetentionReasons: []string{"daily"},
-		Stats:            snapshot.Stats{TotalFileCount: 10, TotalDirectoryCount: 2, TotalFileSize: 1024},
+			now := fs.UTCTimestampFromTime(time.Now())
+			m := &snapshot.Manifest{
+				Source:           snapshot.SourceInfo{Host: "testhost", UserName: "testuser", Path: tt.manifestPath},
+				StartTime:        now,
+				EndTime:          now,
+				RetentionReasons: []string{testRetention},
+				Stats:            snapshot.Stats{TotalFileCount: 10, TotalDirectoryCount: 2, TotalFileSize: 1024},
+			}
+
+			k.setSnapshotMetrics(m, false)
+
+			families, err := reg.Gather()
+			require.NoError(t, err)
+			logGatheredMetrics(t, families)
+
+			familyMap := make(map[string]*dto.MetricFamily)
+			for _, f := range families {
+				familyMap[f.GetName()] = f
+			}
+			up := familyMap[prefix+"_up"]
+			require.NotNil(t, up, "up metric should be registered")
+			if tt.wantSnapshotEmpty || tt.wantUp == 0 {
+				assert.Equal(t, tt.wantUp, up.GetMetric()[0].GetGauge().GetValue())
+			}
+
+			if tt.wantSnapshotEmpty {
+				for _, f := range families {
+					if f.GetName() != prefix+"_up" {
+						assert.Empty(t, f.GetMetric(), "snapshot metric %s should have no samples", f.GetName())
+					}
+				}
+				return
+			}
+
+			if tt.wantFileCount != nil {
+				gauge := familyMap[prefix+"_file_count"]
+				require.NotNil(t, gauge)
+				require.NotEmpty(t, gauge.GetMetric())
+				assert.Equal(t, *tt.wantFileCount, gauge.GetMetric()[0].GetGauge().GetValue())
+			}
+		})
 	}
-
-	k.setSnapshotMetrics(m, false)
-
-	families, err := reg.Gather()
-	require.NoError(t, err)
-	logGatheredMetrics(t, families)
-	require.NotEmpty(t, families, "metrics should be set when path is included")
-
-	familyMap := make(map[string]*dto.MetricFamily)
-	for _, f := range families {
-		familyMap[f.GetName()] = f
-	}
-	gauge := familyMap["kopia_go_exporter_file_count"]
-	require.NotNil(t, gauge)
-	require.NotEmpty(t, gauge.GetMetric())
-	assert.Equal(t, float64(10), gauge.GetMetric()[0].GetGauge().GetValue())
 }
 
 // Runs RunOnce when Connect fails and expects an error, isConnected to remain
 // false, and the up metric to be set to 0.
 func TestRunOnce_ConnectFails(t *testing.T) {
-	prefix := "kopia_go_exporter"
+	prefix := testPrefix
 	logger.Reset(nil)
 
 	cfg := &config.Config{
@@ -795,7 +861,7 @@ func TestRunOnce_ConnectFails(t *testing.T) {
 // Runs RunOnce against an empty repository and expects success with no
 // snapshot metrics emitted but up metric set to 1.
 func TestRunOnce_EmptyRepo(t *testing.T) {
-	prefix := "kopia_go_exporter"
+	prefix := testPrefix
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -991,7 +1057,7 @@ func TestConnect_OpenFails(t *testing.T) {
 // Calls RunOnce on a disconnected client and expects it to auto-connect,
 // set the repo, and leave isConnected true. Also expects up metric to be 1.
 func TestRunOnce_ConnectsAutomatically(t *testing.T) {
-	prefix := "kopia_go_exporter"
+	prefix := testPrefix
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -1103,7 +1169,7 @@ func setupTestRepo(t *testing.T) (configFile, sourceDir, password string) {
 // Runs RunOnce against a repo with a known snapshot and expects the
 // seven metrics with correct labels, counts, sizes, and timestamps.
 func TestRunOnceMetrics(t *testing.T) {
-	prefix := "kopia_go_exporter"
+	prefix := testPrefix
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -1219,7 +1285,7 @@ func assertMetricLabels(t *testing.T, name, sourceDir string, familyMap map[stri
 // server and expects metrics to be emitted for both hosts (the server
 // only returns each client its own snapshots).
 func TestKopiaClients_RunOnce_MultiClient(t *testing.T) {
-	prefix := "kopia_go_exporter"
+	prefix := testPrefix
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -1292,7 +1358,7 @@ func TestKopiaClients_RunOnce_MultiClient(t *testing.T) {
 
 // Runs RunOnce with no clients and expects an error and up metric 0.
 func TestKopiaClients_RunOnce_NoClients(t *testing.T) {
-	prefix := "kopia_go_exporter"
+	prefix := testPrefix
 	logger.Reset(nil)
 
 	kc, err := NewKopiaClients(&config.Config{})
@@ -1361,7 +1427,7 @@ func TestNewKopiaClients_TempDirFailure(t *testing.T) {
 // while loadSnapshotsFunc is stubbed to fail, and expects the returned error
 // to mention both clients and the shared up metric to be 0.
 func TestKopiaClients_RunOnce_ClientFailure(t *testing.T) {
-	prefix := "kopia_go_exporter"
+	prefix := testPrefix
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -1473,7 +1539,7 @@ func TestConnect_RepoOpenFails(t *testing.T) {
 // Connects to a running test API server, then stubs loadSnapshotsFunc to fail
 // and expects RunOnce to return the error and up metric to be 0.
 func TestRunOnce_LoadSnapshotsFails(t *testing.T) {
-	prefix := "kopia_go_exporter"
+	prefix := testPrefix
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -1567,7 +1633,7 @@ func TestRunOnce_PolicyError(t *testing.T) {
 			Retentions: []string{},
 		},
 	}
-	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	cfg.Exporter.Metrics.Prefix = testPrefix
 
 	logger.Reset(nil)
 
@@ -1588,7 +1654,7 @@ func TestRunOnce_PolicyError(t *testing.T) {
 	// AND stub getEffectivePolicyFunc to return an error.
 	originalLoadSnapshots := loadSnapshotsFunc
 	loadSnapshotsFunc = func(_ context.Context, _ repo.Repository, _ []manifest.ID) ([]*snapshot.Manifest, error) {
-		return []*snapshot.Manifest{{Source: snapshot.SourceInfo{Path: "/test/path"}}}, nil
+		return []*snapshot.Manifest{{Source: snapshot.SourceInfo{Path: testPath}}}, nil
 	}
 	t.Cleanup(func() { loadSnapshotsFunc = originalLoadSnapshots })
 
@@ -1608,7 +1674,7 @@ func TestRunOnce_PolicyError(t *testing.T) {
 // Connects to a running test API server, stops it, then calls RunOnce
 // and expects ListSnapshotManifests to fail with an error and up metric to be 0.
 func TestRunOnce_ListSnapshotManifestsFails(t *testing.T) {
-	prefix := "kopia_go_exporter"
+	prefix := testPrefix
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}

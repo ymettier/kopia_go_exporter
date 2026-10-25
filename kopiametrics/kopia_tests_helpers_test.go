@@ -27,17 +27,11 @@ import (
 // Keep this in sync with the documented version in AGENTS.md.
 const kopiaTestVersion = "v0.23.1"
 
-// kopiaTestBinaryName is the name of the downloaded kopia executable that is
-// kept in the kopiametrics/ package directory between test runs. The word
-// "test" is part of the name to avoid clashing with any system-installed kopia
-// binary and to make it obvious the file belongs to the test suite.
-const kopiaTestBinaryName = "kopia_test"
-
 // kopiaTestBinaryPath is the location of the kopia executable relative to the
 // kopiametrics/ package directory (the working directory while the tests run).
 // The binary is kept in the test_assets/ subdirectory and is intentionally NOT
 // removed after the tests so subsequent runs can reuse it.
-var kopiaTestBinaryPath = filepath.Join("test_assets", kopiaTestBinaryName)
+var kopiaTestBinaryPath = filepath.Join("test_assets", "kopia_test")
 
 // kopiaReleaseOS maps the Go runtime OS to the OS token used in the kopia
 // release asset name (e.g. "macOS" for darwin).
