@@ -64,62 +64,86 @@ func TestReset_JSON(t *testing.T) {
 	assert.NotNil(t, l)
 }
 
-// Gets the log writer with nil options and expects stderr and no
-// lumberjack writer.
-func TestGetWriter_NilOptions(t *testing.T) {
-	w, lj := getLogWriter(nil)
-	assert.Equal(t, os.Stderr, w)
-	assert.Nil(t, lj)
-}
+// Gets the log writer and expects the correct writer and lumberjack
+// behavior for each case.
+func TestGetWriter(t *testing.T) {
+	tests := []struct {
+		name           string
+		opts           *LogOptions
+		useTempFile    bool
+		tempName       string
+		wantWriter     *os.File
+		wantLumberjack bool
+	}{
+		{
+			name:           "nil options",
+			opts:           nil,
+			wantWriter:     os.Stderr,
+			wantLumberjack: false,
+		},
+		{
+			name:           "empty filename",
+			opts:           &LogOptions{Filename: ""},
+			wantWriter:     os.Stderr,
+			wantLumberjack: false,
+		},
+		{
+			name:           "stdout",
+			opts:           &LogOptions{Filename: "stdout"},
+			wantWriter:     os.Stdout,
+			wantLumberjack: false,
+		},
+		{
+			name:           "stderr",
+			opts:           &LogOptions{Filename: "stderr"},
+			wantWriter:     os.Stderr,
+			wantLumberjack: false,
+		},
+		{
+			name:           "lumberjack with settings",
+			useTempFile:    true,
+			tempName:       "test.log",
+			opts:           &LogOptions{MaxSize: 10, MaxBackups: 5, MaxAge: 7, Compress: true},
+			wantLumberjack: true,
+		},
+		{
+			name:           "lumberjack defaults",
+			useTempFile:    true,
+			tempName:       "test_defaults.log",
+			opts:           &LogOptions{},
+			wantLumberjack: true,
+		},
+	}
 
-// Gets the log writer with an empty filename and expects stderr and no
-// lumberjack writer.
-func TestGetWriter_EmptyFilename(t *testing.T) {
-	w, lj := getLogWriter(&LogOptions{Filename: ""})
-	assert.Equal(t, os.Stderr, w)
-	assert.Nil(t, lj)
-}
-
-// Gets the log writer for "stdout" and expects stdout and no lumberjack
-// writer.
-func TestGetWriter_Stdout(t *testing.T) {
-	w, lj := getLogWriter(&LogOptions{Filename: "stdout"})
-	assert.Equal(t, os.Stdout, w)
-	assert.Nil(t, lj)
-}
-
-// Gets the log writer for "stderr" and expects stderr and no lumberjack
-// writer.
-func TestGetWriter_Stderr(t *testing.T) {
-	w, lj := getLogWriter(&LogOptions{Filename: "stderr"})
-	assert.Equal(t, os.Stderr, w)
-	assert.Nil(t, lj)
-}
-
-// Gets the log writer for a file and expects a lumberjack writer to be
-// returned.
-func TestGetWriter_Lumberjack(t *testing.T) {
-	tmpFile := t.TempDir() + "/test.log"
-	w, lj := getLogWriter(&LogOptions{
-		Filename:   tmpFile,
-		MaxSize:    10,
-		MaxBackups: 5,
-		MaxAge:     7,
-		Compress:   true,
-	})
-	require.NotNil(t, w)
-	assert.NotNil(t, lj)
-}
-
-// Gets the log writer for a file with no size settings and expects a
-// lumberjack writer to be returned.
-func TestGetWriter_LumberjackDefaults(t *testing.T) {
-	tmpFile := t.TempDir() + "/test_defaults.log"
-	w, lj := getLogWriter(&LogOptions{
-		Filename: tmpFile,
-	})
-	require.NotNil(t, w)
-	assert.NotNil(t, lj)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := tt.opts
+			if tt.useTempFile {
+				opts = tt.opts
+				if opts == nil {
+					opts = &LogOptions{}
+				}
+				opts = &LogOptions{
+					Filename:   t.TempDir() + "/" + tt.tempName,
+					MaxSize:    tt.opts.MaxSize,
+					MaxBackups: tt.opts.MaxBackups,
+					MaxAge:     tt.opts.MaxAge,
+					Compress:   tt.opts.Compress,
+				}
+			}
+			w, lj := getLogWriter(opts)
+			if tt.wantWriter != nil {
+				assert.Equal(t, tt.wantWriter, w)
+			} else {
+				require.NotNil(t, w)
+			}
+			if tt.wantLumberjack {
+				assert.NotNil(t, lj)
+			} else {
+				assert.Nil(t, lj)
+			}
+		})
+	}
 }
 
 // Resets the logger with no level set and expects a non-nil logger at

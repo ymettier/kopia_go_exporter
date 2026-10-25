@@ -76,13 +76,14 @@ func TestParseFlags(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, _, err := ParseFlags("test", tt.args)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseFlags() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.wantErrHelp {
+					assert.ErrorIs(t, err, flag.ErrHelp)
+				}
 				return
 			}
-			if tt.wantErrHelp && err != flag.ErrHelp {
-				t.Errorf("ParseFlags() error = %v, wantErrHelp flag.ErrHelp", err)
-			}
+			require.NoError(t, err)
 		})
 	}
 }
@@ -153,27 +154,45 @@ func loadDefaultConfig(t *testing.T) []byte {
 // Looks up lowercase, camelCase, and nonexistent config keys and expects
 // the value (or absence) to be reported correctly.
 func TestLookupConfigKey(t *testing.T) {
+	tests := []struct {
+		name string
+		key  string
+		want string
+		ok   bool
+	}{
+		{
+			name: "lowercase key",
+			key:  "exporter.port",
+			want: "9090",
+			ok:   true,
+		},
+		{
+			name: "camelCase key",
+			key:  "exporter.metrics.prefix",
+			want: "test_prefix",
+			ok:   true,
+		},
+		{
+			name: "nonexistent key",
+			key:  "nonexistent.key",
+			want: "",
+			ok:   false,
+		},
+	}
 	cfgFile := writeTestConfig(t, "exporter:\n  port: 9090\n  metrics:\n    prefix: test_prefix\n")
 	k = koanf.New(".")
 	err := k.Load(file.Provider(cfgFile), yaml.Parser())
 	require.NoError(t, err)
 
-	t.Run("lowercase key", func(t *testing.T) {
-		val, ok := lookupConfigKey(k, "exporter.port")
-		assert.True(t, ok)
-		assert.Equal(t, "9090", val)
-	})
-
-	t.Run("camelCase key", func(t *testing.T) {
-		val, ok := lookupConfigKey(k, "exporter.metrics.prefix")
-		assert.True(t, ok)
-		assert.Equal(t, "test_prefix", val)
-	})
-
-	t.Run("nonexistent key", func(t *testing.T) {
-		_, ok := lookupConfigKey(k, "nonexistent.key")
-		assert.False(t, ok)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			val, ok := lookupConfigKey(k, tt.key)
+			assert.Equal(t, tt.ok, ok)
+			if tt.ok {
+				assert.Equal(t, tt.want, val)
+			}
+		})
+	}
 }
 
 // Looks up a key written with an underscore format in the config and
@@ -190,72 +209,124 @@ func TestLookupConfigKey_UnderscoreFormat(t *testing.T) {
 // Reads a string config value and expects the existing value, or the
 // default when the key is missing.
 func TestGetConfigString(t *testing.T) {
+	tests := []struct {
+		name         string
+		key          string
+		defaultValue string
+		want         string
+	}{
+		{
+			name:         "existing key",
+			key:          "existing.key",
+			defaultValue: "default",
+			want:         "value",
+		},
+		{
+			name:         "missing key returns default",
+			key:          "missing.key",
+			defaultValue: "default_value",
+			want:         "default_value",
+		},
+	}
 	cfgFile := writeTestConfig(t, "existing:\n  key: value\n")
 	k = koanfNew(t, cfgFile)
 
-	t.Run("existing key", func(t *testing.T) {
-		val := getConfigString(k, "existing.key", "default")
-		assert.Equal(t, "value", val)
-	})
-
-	t.Run("missing key returns default", func(t *testing.T) {
-		val := getConfigString(k, "missing.key", "default_value")
-		assert.Equal(t, "default_value", val)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			val := getConfigString(k, tt.key, tt.defaultValue)
+			assert.Equal(t, tt.want, val)
+		})
+	}
 }
 
 // Reads an int config value and expects the parsed value, or the default
 // for a missing key or a non-numeric value.
 func TestGetConfigInt(t *testing.T) {
+	tests := []struct {
+		name         string
+		key          string
+		defaultValue int
+		want         int
+	}{
+		{
+			name:         "valid int",
+			key:          "port",
+			defaultValue: 9090,
+			want:         8080,
+		},
+		{
+			name:         "missing key returns default",
+			key:          "missing.port",
+			defaultValue: 9090,
+			want:         9090,
+		},
+		{
+			name:         "invalid int returns default",
+			key:          "invalid",
+			defaultValue: 9090,
+			want:         9090,
+		},
+	}
 	cfgFile := writeTestConfig(t, "port: 8080\ninvalid: not_a_number\n")
 	k = koanfNew(t, cfgFile)
 
-	t.Run("valid int", func(t *testing.T) {
-		val := getConfigInt(k, "port", 9090)
-		assert.Equal(t, 8080, val)
-	})
-
-	t.Run("missing key returns default", func(t *testing.T) {
-		val := getConfigInt(k, "missing.port", 9090)
-		assert.Equal(t, 9090, val)
-	})
-
-	t.Run("invalid int returns default", func(t *testing.T) {
-		val := getConfigInt(k, "invalid", 9090)
-		assert.Equal(t, 9090, val)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			val := getConfigInt(k, tt.key, tt.defaultValue)
+			assert.Equal(t, tt.want, val)
+		})
+	}
 }
 
 // Reads a bool config value and expects true/false for
 // "true"/"false"/"1", and the default for missing or invalid values.
 func TestGetConfigBool(t *testing.T) {
+	tests := []struct {
+		name         string
+		key          string
+		defaultValue bool
+		want         bool
+	}{
+		{
+			name:         "true string",
+			key:          "enabled",
+			defaultValue: false,
+			want:         true,
+		},
+		{
+			name:         "false string",
+			key:          "disabled",
+			defaultValue: true,
+			want:         false,
+		},
+		{
+			name:         "1 string",
+			key:          "one",
+			defaultValue: false,
+			want:         true,
+		},
+		{
+			name:         "missing key returns default",
+			key:          "missing.key",
+			defaultValue: true,
+			want:         true,
+		},
+		{
+			name:         "invalid bool returns default",
+			key:          "invalid_bool",
+			defaultValue: false,
+			want:         false,
+		},
+	}
 	cfgFile := writeTestConfig(t, "enabled: true\ndisabled: \"false\"\none: \"1\"\ninvalid_bool: maybe\n")
 	k = koanfNew(t, cfgFile)
 
-	t.Run("true string", func(t *testing.T) {
-		val := getConfigBool(k, "enabled", false)
-		assert.True(t, val)
-	})
-
-	t.Run("false string", func(t *testing.T) {
-		val := getConfigBool(k, "disabled", true)
-		assert.False(t, val)
-	})
-
-	t.Run("1 string", func(t *testing.T) {
-		val := getConfigBool(k, "one", false)
-		assert.True(t, val)
-	})
-
-	t.Run("missing key returns default", func(t *testing.T) {
-		val := getConfigBool(k, "missing.key", true)
-		assert.True(t, val)
-	})
-
-	t.Run("invalid bool returns default", func(t *testing.T) {
-		val := getConfigBool(k, "invalid_bool", false)
-		assert.False(t, val)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			val := getConfigBool(k, tt.key, tt.defaultValue)
+			assert.Equal(t, tt.want, val)
+		})
+	}
 }
 
 // Reads the exporter config section and expects port, metrics prefix,

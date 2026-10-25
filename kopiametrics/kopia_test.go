@@ -87,7 +87,7 @@ func freeTestPort(t *testing.T) string {
 	conn, err := d.DialContext(context.Background(), "tcp", net.JoinHostPort("127.0.0.1", port))
 	if err == nil {
 		_ = conn.Close()
-		t.Fatalf("expected port %s to be free but something is already listening", port)
+		require.FailNowf(t, "port in use", "expected port %s to be free but something is already listening", port)
 	}
 
 	return port
