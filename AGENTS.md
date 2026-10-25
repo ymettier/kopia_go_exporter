@@ -198,6 +198,8 @@ The project is licensed under the [MIT License](LICENSE).
 
 ### Testing Conventions
 - Write tests alongside features in `*_test.go` files.
+- In tests, do not declare a string as a `const` if it is used only within a single function; use a string literal instead.
+- In tests, do not declare CLI flags as `const`; use string literals.
 - Use testify (`github.com/stretchr/testify/assert` and `github.com/stretchr/testify/require`) in all `*_test.go` files. Use `require` for preconditions and checks that must not continue on failure, and `assert` for independent checks. Replace `t.Error`/`t.Errorf`, `t.Fatal`/`t.Fatalf`, and ad hoc conditionals with testify assertions. For fatal timeouts or unrecoverable states in goroutines, use `require.FailNow`.
 - Use table-driven tests with struct-based test cases as much as possible in all `*_test.go` files, driving cases with `t.Run` and table iteration. When tests have many scenarios with shared setup/assertion patterns, prefer tables over duplicating test functions.
 - Integration tests in `kopiametrics/kopia_test.go` start a real Kopia API server locally via the downloaded `kopia_test` binary.
