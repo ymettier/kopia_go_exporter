@@ -277,12 +277,14 @@ func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 	k.RegisterKopiaMetrics(reg)
 
 	for _, mn := range metricNames {
-		collector := prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: mn,
-			Help: "whatever",
+		t.Run(mn, func(t *testing.T) {
+			collector := prometheus.NewGauge(prometheus.GaugeOpts{
+				Name: mn,
+				Help: "whatever",
+			})
+			err := reg.Register(collector)
+			assert.Error(t, err, "Expected metric '%s' to already be registered", mn)
 		})
-		err := reg.Register(collector)
-		assert.Error(t, err, "Expected metric '%s' to already be registered", mn)
 	}
 }
 

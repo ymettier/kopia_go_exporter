@@ -36,32 +36,39 @@ func TestGet_ReturnsExisting(t *testing.T) {
 	assert.Equal(t, custom, l)
 }
 
-// Resets the logger with explicit options and expects a non-nil logger.
-func TestReset_WithOptions(t *testing.T) {
-	Reset(&LogOptions{
-		Level:    "debug",
-		JSON:     false,
-		Filename: "stdout", //nolint:goconst
-	})
+// Resets the logger with various options and expects a non-nil logger.
+func TestReset(t *testing.T) {
+	tests := []struct {
+		name string
+		opts *LogOptions
+	}{
+		{
+			name: "with options",
+			opts: &LogOptions{
+				Level:    "debug",
+				JSON:     false,
+				Filename: "stdout", //nolint:goconst
+			},
+		},
+		{
+			name: "nil options",
+			opts: nil,
+		},
+		{
+			name: "json enabled",
+			opts: &LogOptions{
+				JSON: true,
+			},
+		},
+	}
 
-	l := Get()
-	assert.NotNil(t, l)
-}
-
-// Resets the logger with nil options and expects a non-nil logger.
-func TestReset_NilOptions(t *testing.T) {
-	Reset(nil)
-	l := Get()
-	assert.NotNil(t, l)
-}
-
-// Resets the logger with JSON enabled and expects a non-nil logger.
-func TestReset_JSON(t *testing.T) {
-	Reset(&LogOptions{
-		JSON: true,
-	})
-	l := Get()
-	assert.NotNil(t, l)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			Reset(tt.opts)
+			l := Get()
+			assert.NotNil(t, l)
+		})
+	}
 }
 
 // Gets the log writer and expects the correct writer and lumberjack
@@ -146,54 +153,58 @@ func TestGetWriter(t *testing.T) {
 	}
 }
 
-// Resets the logger with no level set and expects a non-nil logger at
-// the default level.
-func TestNewLogger_DefaultLevel(t *testing.T) {
-	Reset(nil)
-	l := Get()
-	require.NotNil(t, l)
-	l.Info("test message at default level")
-}
+// Resets the logger with various levels and env settings.
+func TestNewLogger(t *testing.T) {
+	tests := []struct {
+		name string
+		opts *LogOptions
+		env  map[string]string
+		log  func(*slog.Logger)
+	}{
+		{
+			name: "default level",
+			opts: nil,
+			log:  func(l *slog.Logger) { l.Info("test message at default level") },
+		},
+		{
+			name: "debug level",
+			opts: &LogOptions{Level: "debug"},
+			log:  func(l *slog.Logger) { l.Debug("test debug message") },
+		},
+		{
+			name: "warn level",
+			opts: &LogOptions{Level: "warn"},
+			log:  func(l *slog.Logger) { l.Warn("test warn message") },
+		},
+		{
+			name: "error level",
+			opts: &LogOptions{Level: "error"},
+			log:  func(l *slog.Logger) { l.Error("test error message") },
+		},
+		{
+			name: "invalid level falls back",
+			opts: &LogOptions{Level: "invalid"},
+		},
+		{
+			name: "env fallback",
+			opts: &LogOptions{},
+			env:  map[string]string{"KGE_LOGGER_LOG_LEVEL": "debug"},
+		},
+	}
 
-// Resets the logger at debug level and expects a non-nil logger.
-func TestNewLogger_DebugLevel(t *testing.T) {
-	Reset(&LogOptions{Level: "debug"})
-	l := Get()
-	require.NotNil(t, l)
-	l.Debug("test debug message")
-}
-
-// Resets the logger at warn level and expects a non-nil logger.
-func TestNewLogger_WarnLevel(t *testing.T) {
-	Reset(&LogOptions{Level: "warn"})
-	l := Get()
-	require.NotNil(t, l)
-	l.Warn("test warn message")
-}
-
-// Resets the logger at error level and expects a non-nil logger.
-func TestNewLogger_ErrorLevel(t *testing.T) {
-	Reset(&LogOptions{Level: "error"})
-	l := Get()
-	require.NotNil(t, l)
-	l.Error("test error message")
-}
-
-// Resets the logger with an invalid level and expects a non-nil logger
-// that falls back to INFO.
-func TestNewLogger_InvalidLevel(t *testing.T) {
-	Reset(&LogOptions{Level: "invalid"})
-	l := Get()
-	require.NotNil(t, l)
-}
-
-// Resets the logger with KGE_LOGGER_LOG_LEVEL set and expects the level
-// to come from the environment.
-func TestNewLogger_EnvFallback(t *testing.T) {
-	t.Setenv("KGE_LOGGER_LOG_LEVEL", "debug")
-	Reset(&LogOptions{})
-	l := Get()
-	require.NotNil(t, l)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+			Reset(tt.opts)
+			l := Get()
+			require.NotNil(t, l)
+			if tt.log != nil {
+				tt.log(l)
+			}
+		})
+	}
 }
 
 // Resets the logger to write to a lumberjack file and expects a non-nil
