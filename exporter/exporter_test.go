@@ -33,7 +33,7 @@ func TestNewExporter(t *testing.T) {
 			name: "build info available",
 			buildInfo: func() (*debug.BuildInfo, bool) {
 				return &debug.BuildInfo{
-					GoVersion: "go1.25.0",
+					GoVersion: "go1.27.3",
 					Settings: []debug.BuildSetting{
 						{Key: "vcs.revision", Value: "abc123"},
 						{Key: "vcs.time", Value: "2025-01-15T10:00:00Z"},

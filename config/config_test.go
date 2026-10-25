@@ -143,7 +143,7 @@ func TestGetVersionInfo(t *testing.T) {
 				orig := ReadBuildInfo
 				ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 					return &debug.BuildInfo{
-						GoVersion: "go1.25.0",
+						GoVersion: "go1.27.3",
 						Settings: []debug.BuildSetting{
 							{Key: vcsRevision, Value: testRevision},
 							{Key: vcsTime, Value: "2025-01-15T10:00:00Z"},
