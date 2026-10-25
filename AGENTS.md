@@ -197,12 +197,12 @@ The project is licensed under the [MIT License](LICENSE).
 - Configuration through config.yaml: `logger.log_level`, `logger.json`, `logger.filename`, `logger.log_file.maxsize`, `logger.log_file.maxbackups`, `logger.log_file.maxage`, `logger.log_file.compress`
 
 ### Testing Conventions
-- Write tests alongside features in `*_test.go` files
-- Use testify assertions (`assert.NoError`, `assert.True`, `assert.Equal`)
-- Integration tests in `kopiametrics/kopia_test.go` start a real Kopia API server locally via the downloaded `kopia_test` binary
-- The downloaded kopia CLI binary is kept in `kopiametrics/test_assets/` between runs
-- Unused test data files must be removed
-- Table-driven tests with struct-based test cases
+- Write tests alongside features in `*_test.go` files.
+- Use testify (`github.com/stretchr/testify/assert` and `github.com/stretchr/testify/require`) in all `*_test.go` files. Use `require` for preconditions and checks that must not continue on failure, and `assert` for independent checks. Replace `t.Error`/`t.Errorf`, `t.Fatal`/`t.Fatalf`, and ad hoc conditionals with testify assertions. For fatal timeouts or unrecoverable states in goroutines, use `require.FailNow`.
+- Use table-driven tests with struct-based test cases as much as possible in all `*_test.go` files, driving cases with `t.Run` and table iteration. When tests have many scenarios with shared setup/assertion patterns, prefer tables over duplicating test functions.
+- Integration tests in `kopiametrics/kopia_test.go` start a real Kopia API server locally via the downloaded `kopia_test` binary.
+- The downloaded kopia CLI binary is kept in `kopiametrics/test_assets/` between runs.
+- Unused test data files must be removed.
 - Each `Test*` function is preceded by a short comment describing what it tests and the expected outcome; lines are wrapped at about 70 characters.
 - For integration tests requiring a Kopia API server, use `setupTestKopia()`. For tests using a local filesystem repository without a server, use `setupTestRepo()`. Both helpers manage the kopia test binary automatically.
 
