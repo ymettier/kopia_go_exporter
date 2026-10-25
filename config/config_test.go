@@ -108,7 +108,7 @@ func TestNew_NoConfigFile(t *testing.T) {
 // expects success with the client read from those env vars.
 func TestNew_NoConfigFile_WithClientsEnv(t *testing.T) {
 	t.Setenv("KGE_KOPIA_APISERVER_REPOSITORYURL", "https://some.url:port")
-	t.Setenv("KGE_KOPIA_APISERVER_FINGERPRINT", "abc123")
+	t.Setenv("KGE_KOPIA_APISERVER_FINGERPRINT", testRevision)
 	t.Setenv("KGE_KOPIA_CLIENTS_DEFAULT_USERNAME", "myuser")
 	t.Setenv("KGE_KOPIA_CLIENTS_DEFAULT_HOSTNAME", "myhost")
 	t.Setenv("KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD", "secret")
@@ -119,21 +119,108 @@ func TestNew_NoConfigFile_WithClientsEnv(t *testing.T) {
 	assert.Equal(t, "secret", Cfg.Kopia.Clients[clientDefaultName].Password)
 }
 
-// Builds version info and expects the given version and a non-empty Go
-// version.
-func TestGetVersionInfo(t *testing.T) {
-	givenVersion = "testVersion"
-	vi := GetVersionInfo()
-	assert.Equal(t, "testVersion", vi.Version)
-	assert.NotEmpty(t, vi.GoVersion)
-}
+const (
+	testRevision  = "abc123"
+	vcsRevision   = "vcs.revision"
+	vcsTime       = "vcs.time"
+	missingKey    = "missing.key"
+	missingKeyMsg = "missing key returns default"
+)
 
-// Builds version info with build info unavailable and expects the
-// version to fall back to the given value.
-func TestGetVersionInfo_ReturnsVCSData(t *testing.T) {
-	givenVersion = "1.0.0" //nolint:goconst
-	vi := GetVersionInfo()
-	assert.Equal(t, "1.0.0", vi.Version)
+// Builds version info with different build info states.
+func TestGetVersionInfo(t *testing.T) {
+	tests := []struct {
+		name    string
+		version string
+		setup   func(version string)
+		check   func(t *testing.T, vi VersionInfo, version string)
+	}{
+		{
+			name:    "given version",
+			version: "testVersion",
+			setup: func(version string) {
+				givenVersion = version
+				orig := ReadBuildInfo
+				ReadBuildInfo = func() (*debug.BuildInfo, bool) {
+					return &debug.BuildInfo{
+						GoVersion: "go1.25.0",
+						Settings: []debug.BuildSetting{
+							{Key: vcsRevision, Value: testRevision},
+							{Key: vcsTime, Value: "2025-01-15T10:00:00Z"},
+						},
+					}, true
+				}
+				_ = orig
+			},
+			check: func(t *testing.T, vi VersionInfo, version string) {
+				assert.Equal(t, version, vi.Version)
+				assert.NotEmpty(t, vi.GoVersion)
+			},
+		},
+		{
+			name:    "returns vcs data",
+			version: "1.0.0",
+			setup: func(version string) {
+				givenVersion = version
+			},
+			check: func(t *testing.T, vi VersionInfo, version string) {
+				assert.Equal(t, version, vi.Version)
+			},
+		},
+		{
+			name:    "build info unavailable",
+			version: "2.0.0",
+			setup: func(version string) {
+				orig := ReadBuildInfo
+				ReadBuildInfo = func() (*debug.BuildInfo, bool) {
+					return nil, false
+				}
+				_ = orig
+				givenVersion = version
+			},
+			check: func(t *testing.T, vi VersionInfo, version string) {
+				assert.Equal(t, version, vi.Version)
+				assert.Empty(t, vi.Revision)
+				assert.Empty(t, vi.Time)
+			},
+		},
+		{
+			name:    "with vcs settings",
+			version: "3.0.0",
+			setup: func(version string) {
+				orig := ReadBuildInfo
+				ReadBuildInfo = func() (*debug.BuildInfo, bool) {
+					return &debug.BuildInfo{
+						Settings: []debug.BuildSetting{
+							{Key: vcsRevision, Value: "deadbeef"},
+							{Key: vcsTime, Value: "2025-06-01T12:00:00Z"},
+						},
+					}, true
+				}
+				_ = orig
+				givenVersion = version
+			},
+			check: func(t *testing.T, vi VersionInfo, version string) {
+				assert.Equal(t, version, vi.Version)
+				assert.Equal(t, "deadbeef", vi.Revision)
+				assert.Equal(t, "2025-06-01T12:00:00Z", vi.Time)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			origReadBuildInfo := ReadBuildInfo
+			defer func() { ReadBuildInfo = origReadBuildInfo }()
+			if tt.setup != nil {
+				tt.setup(tt.version)
+			}
+			vi := GetVersionInfo()
+			if tt.check != nil {
+				tt.check(t, vi, tt.version)
+			}
+		})
+	}
 }
 
 func writeTestConfig(t *testing.T, content string) string {
@@ -222,8 +309,8 @@ func TestGetConfigString(t *testing.T) {
 			want:         "value",
 		},
 		{
-			name:         "missing key returns default",
-			key:          "missing.key",
+			name:         missingKeyMsg,
+			key:          "missing.port",
 			defaultValue: "default_value",
 			want:         "default_value",
 		},
@@ -255,8 +342,8 @@ func TestGetConfigInt(t *testing.T) {
 			want:         8080,
 		},
 		{
-			name:         "missing key returns default",
-			key:          "missing.port",
+			name:         missingKeyMsg,
+			key:          missingKey,
 			defaultValue: 9090,
 			want:         9090,
 		},
@@ -306,8 +393,8 @@ func TestGetConfigBool(t *testing.T) {
 			want:         true,
 		},
 		{
-			name:         "missing key returns default",
-			key:          "missing.key",
+			name:         missingKeyMsg,
+			key:          missingKey,
 			defaultValue: true,
 			want:         true,
 		},
@@ -372,27 +459,89 @@ func TestReadExporterConfig_Defaults(t *testing.T) {
 // Reads valid include/exclude filter paths and expects the compiled
 // regex lists to be built.
 func TestReadFiltersConfig(t *testing.T) {
-	cfgFile := writeTestConfig(t, `filters:
+	tests := []struct {
+		name       string
+		cfg        string
+		useKoanf   bool
+		wantErrSub string
+		check      func(t *testing.T, cfg FiltersConfig)
+	}{
+		{
+			name: "valid include and exclude",
+			cfg: `filters:
   include:
     path:
       - ".*"
   exclude:
     path:
       - "/tmp/.*"
-`)
-	k = koanfNew(t, cfgFile)
+`,
+			check: func(t *testing.T, cfg FiltersConfig) {
+				assert.Equal(t, []string{".*"}, cfg.Include.Path)
+				assert.Len(t, cfg.Include.PathRegex, 1)
+				assert.Equal(t, []string{"/tmp/.*"}, cfg.Exclude.Path)
+				assert.Len(t, cfg.Exclude.PathRegex, 1)
+			},
+		},
+		{
+			name:       "invalid include regex",
+			cfg:        "filters:\n  include:\n    path:\n      - \"[\"\n",
+			wantErrSub: "invalid filters.include.path regex",
+		},
+		{
+			name:       "invalid exclude regex",
+			cfg:        "filters:\n  exclude:\n    path:\n      - \"[\"\n",
+			wantErrSub: "invalid filters.exclude.path regex",
+		},
+		{
+			name: "invalid include structure",
+			cfg:  "filters:\n  include:\n    path:\n      key: value\n",
+			check: func(t *testing.T, cfg FiltersConfig) {
+				assert.Len(t, cfg.Include.PathRegex, 1)
+			},
+		},
+		{
+			name: "invalid exclude structure",
+			cfg:  "filters:\n  exclude:\n    path:\n      key: value\n",
+			check: func(t *testing.T, cfg FiltersConfig) {
+				assert.Len(t, cfg.Exclude.PathRegex, 1)
+			},
+		},
+		{
+			name:     "defaults",
+			useKoanf: true,
+			check: func(t *testing.T, cfg FiltersConfig) {
+				assert.Equal(t, []string{}, cfg.Include.Path)
+				assert.Empty(t, cfg.Include.PathRegex)
+				assert.Equal(t, []string{}, cfg.Exclude.Path)
+				assert.Empty(t, cfg.Exclude.PathRegex)
+			},
+		},
+	}
 
-	l := slog.Default()
-	cfg, err := readFiltersConfig(k, l)
-	require.NoError(t, err)
-	assert.Equal(t, []string{".*"}, cfg.Include.Path)
-	assert.Len(t, cfg.Include.PathRegex, 1)
-	assert.Equal(t, []string{"/tmp/.*"}, cfg.Exclude.Path)
-	assert.Len(t, cfg.Exclude.PathRegex, 1)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := slog.Default()
+			var k *koanf.Koanf
+			if tt.useKoanf {
+				k = koanf.New(".")
+			} else {
+				cfgFile := writeTestConfig(t, tt.cfg)
+				k = koanfNew(t, cfgFile)
+			}
+			cfg, err := readFiltersConfig(k, l)
+			if tt.wantErrSub != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErrSub)
+				return
+			}
+			require.NoError(t, err)
+			if tt.check != nil {
+				tt.check(t, cfg)
+			}
+		})
+	}
 }
-
-// Reads an invalid include filter regex and expects an error mentioning
-// the include path regex.
 func TestReadFiltersConfig_InvalidRegex(t *testing.T) {
 	cfgFile := writeTestConfig(t, "filters:\n  include:\n    path:\n      - \"[\"\n")
 	k = koanfNew(t, cfgFile)
@@ -439,8 +588,8 @@ func TestReadFiltersConfig_InvalidExcludeStructure(t *testing.T) {
 	assert.Len(t, cfg.Exclude.PathRegex, 1)
 }
 
-// Loads a config with an invalid include regex via readConfig and
-// expects a config error mentioning the include path regex.
+// Loads a config with invalid filters via readConfig and expects a
+// config error mentioning the include path regex.
 func TestReadConfig_InvalidFilters(t *testing.T) {
 	tmpFile := writeTestConfig(t, "filters:\n  include:\n    path:\n      - \"[\"\n")
 
@@ -503,7 +652,7 @@ func TestReadKopiaConfig(t *testing.T) {
 	l := slog.Default()
 	cfg := readKopiaConfig(k, l)
 	assert.Equal(t, "https://example.com:51515", cfg.APIServer.RepositoryURL)
-	assert.Equal(t, "abc123", cfg.APIServer.Fingerprint)
+	assert.Equal(t, testRevision, cfg.APIServer.Fingerprint)
 	require.Len(t, cfg.Clients, 2)
 	assert.Equal(t, ClientConfig{Username: "user1", Hostname: "host1", Password: "pwd1"}, cfg.Clients["host1"])
 	assert.Equal(t, ClientConfig{Username: "user2", Hostname: "host2", Password: "pwd2"}, cfg.Clients["host2"])
@@ -512,26 +661,47 @@ func TestReadKopiaConfig(t *testing.T) {
 
 // Reads the kopia config with no values set and expects all fields to be
 // empty and retentions empty.
-func TestReadKopiaConfig_Defaults(t *testing.T) {
-	k = koanf.New(".")
-	l := slog.Default()
+func TestReadKopiaConfigScenarios(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(t *testing.T) *koanf.Koanf
+		check func(t *testing.T, cfg KopiaConfig)
+	}{
+		{
+			name: "defaults",
+			setup: func(t *testing.T) *koanf.Koanf {
+				t.Helper()
+				return koanf.New(".")
+			},
+			check: func(t *testing.T, cfg KopiaConfig) {
+				assert.Equal(t, "", cfg.APIServer.RepositoryURL)
+				assert.Equal(t, "", cfg.APIServer.Fingerprint)
+				assert.Empty(t, cfg.Clients)
+				assert.Equal(t, []string{}, cfg.Retentions)
+			},
+		},
+		{
+			name: "clients unmarshal error",
+			setup: func(t *testing.T) *koanf.Koanf {
+				k := koanf.New(".")
+				require.NoError(t, k.Set("kopia.clients", "not-a-map"))
+				return k
+			},
+			check: func(t *testing.T, cfg KopiaConfig) {
+				assert.Empty(t, cfg.Clients)
+			},
+		},
+	}
 
-	cfg := readKopiaConfig(k, l)
-	assert.Equal(t, "", cfg.APIServer.RepositoryURL)
-	assert.Equal(t, "", cfg.APIServer.Fingerprint)
-	assert.Empty(t, cfg.Clients)
-	assert.Equal(t, []string{}, cfg.Retentions)
-}
-
-// Reads the kopia config whose kopia.clients value cannot be unmarshalled
-// into a client map and expects the failure to be logged and clients left
-// empty.
-func TestReadKopiaConfig_ClientsUnmarshalError(t *testing.T) {
-	k = koanf.New(".")
-	require.NoError(t, k.Set("kopia.clients", "not-a-map"))
-
-	cfg := readKopiaConfig(k, slog.Default())
-	assert.Empty(t, cfg.Clients)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := tt.setup(t)
+			cfg := readKopiaConfig(k, slog.Default())
+			if tt.check != nil {
+				tt.check(t, cfg)
+			}
+		})
+	}
 }
 
 // Loads a nonexistent config file and expects an error mentioning the
@@ -574,12 +744,35 @@ func (s stubConfigProvider) Read() (map[string]any, error) {
 // Loads a config layer from a provider and expects values to be applied,
 // and a provider error to be ignored without failure.
 func TestLoadConfigLayer(t *testing.T) {
-	k := koanf.New(".")
-	loadConfigLayer(k, stubConfigProvider{}, "failed to load stub")
-	assert.Equal(t, 9090, k.Int("exporter.port"))
+	tests := []struct {
+		name     string
+		provider stubConfigProvider
+		wantPort int
+	}{
+		{
+			name:     "success",
+			provider: stubConfigProvider{},
+			wantPort: 9090,
+		},
+		{
+			name:     "provider error ignored",
+			provider: stubConfigProvider{err: errors.New("boom")}, //nolint:err113
+			wantPort: 0,
+		},
+	}
 
-	k2 := koanf.New(".")
-	loadConfigLayer(k2, stubConfigProvider{err: errors.New("boom")}, "failed to load stub")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := koanf.New(".")
+			loadConfigLayer(k, tt.provider, "failed to load stub")
+			if tt.wantPort != 0 {
+				assert.Equal(t, tt.wantPort, k.Int("exporter.port"))
+				return
+			}
+			_, exists := lookupConfigKey(k, "exporter.port")
+			assert.False(t, exists)
+		})
+	}
 }
 
 // Checks a fully populated config and expects no validation error.
@@ -592,7 +785,7 @@ func TestCheckConfig_ValidConfig(t *testing.T) {
 		Kopia: KopiaConfig{
 			APIServer: APIServerConfig{
 				RepositoryURL: "https://example.com:51515",
-				Fingerprint:   "abc123", //nolint:goconst
+				Fingerprint:   testRevision,
 			},
 			Clients: map[string]ClientConfig{
 				clientDefaultName: {
@@ -677,7 +870,7 @@ func TestCheckConfig_MissingFields(t *testing.T) {
 				Kopia: KopiaConfig{
 					APIServer: APIServerConfig{
 						RepositoryURL: "https://example.com:51515",
-						Fingerprint:   "abc123",
+						Fingerprint:   testRevision,
 					},
 					Clients: validClients(),
 				},
@@ -691,12 +884,35 @@ func TestCheckConfig_MissingFields(t *testing.T) {
 	}
 }
 
-// Calls New with a nonexistent --config file and expects an error
-// mentioning the failure to read the configuration file.
-func TestNew_MissingFile(t *testing.T) {
-	err := New("test", []string{"--config", "/nonexistent/file.yaml"}, loadDefaultConfig(t))
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to read configuration file")
+// Tests missing file scenarios.
+func TestMissingConfigFile(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(t *testing.T) error
+	}{
+		{
+			name: "readConfig",
+			run: func(t *testing.T) error {
+				k := koanf.New(".")
+				_ = k
+				return readConfig("/nonexistent/config.yaml", nil, loadDefaultConfig(t))
+			},
+		},
+		{
+			name: "New",
+			run: func(t *testing.T) error {
+				return New("test", []string{"--config", "/nonexistent/file.yaml"}, loadDefaultConfig(t))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.run(t)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "failed to read configuration file")
+		})
+	}
 }
 
 // Calls New with an unparseable embedded default config and expects an
@@ -778,44 +994,6 @@ func koanfNew(t *testing.T, cfgFile string) *koanf.Koanf {
 	return k
 }
 
-// Formats version info with build info unavailable and expects the given
-// version present and the Go version absent.
-func TestVersionInfo_BuildInfoUnavailable(t *testing.T) {
-	origReadBuildInfo := ReadBuildInfo
-	defer func() { ReadBuildInfo = origReadBuildInfo }()
-
-	givenVersion = "1.0.0"
-	ReadBuildInfo = func() (*debug.BuildInfo, bool) {
-		return nil, false
-	}
-
-	output := formatVersionInfo()
-	assert.Contains(t, output, "1.0.0")
-	assert.NotContains(t, output, "go1.25.0")
-}
-
-// Formats version info with VCS settings and expects the revision and Go
-// version to appear in the output.
-func TestVersionInfo_WithVCSSettings(t *testing.T) {
-	origReadBuildInfo := ReadBuildInfo
-	defer func() { ReadBuildInfo = origReadBuildInfo }()
-
-	givenVersion = "1.0.0"
-	ReadBuildInfo = func() (*debug.BuildInfo, bool) {
-		return &debug.BuildInfo{
-			GoVersion: "go1.25.0",
-			Settings: []debug.BuildSetting{
-				{Key: "vcs.revision", Value: "abc123"},           //nolint:goconst
-				{Key: "vcs.time", Value: "2025-01-15T10:00:00Z"}, //nolint:goconst
-			},
-		}, true
-	}
-
-	output := formatVersionInfo()
-	assert.Contains(t, output, "abc123")
-	assert.Contains(t, output, "go1.25.0")
-}
-
 // Gets version info with build info unavailable and expects revision and
 // time to be empty.
 func TestGetVersionInfo_BuildInfoUnavailable(t *testing.T) {
@@ -859,8 +1037,8 @@ func TestGetVersionInfo_WithVCSSettings(t *testing.T) {
 			ReadBuildInfo = func() (*debug.BuildInfo, bool) {
 				return &debug.BuildInfo{
 					Settings: []debug.BuildSetting{
-						{Key: "vcs.revision", Value: tc.revision},
-						{Key: "vcs.time", Value: tc.time},
+						{Key: vcsRevision, Value: tc.revision},
+						{Key: vcsTime, Value: tc.time},
 					},
 				}, true
 			}

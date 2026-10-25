@@ -44,7 +44,7 @@ func getLogWriter(opts *LogOptions) (io.Writer, *lumberjack.Logger) {
 	}
 
 	switch filename {
-	case "stdout": //nolint:goconst
+	case "stdout":
 		return os.Stdout, nil
 	case "stderr":
 		return os.Stderr, nil

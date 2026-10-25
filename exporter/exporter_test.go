@@ -21,52 +21,60 @@ import (
 	"kopia-go-exporter/logger"
 )
 
-// Constructs a new exporter with build info available and expects a
-// non-nil exporter with the configured port and registry.
+// Constructs a new exporter with different build info states.
 func TestNewExporter(t *testing.T) {
-	origReadBuildInfo := config.ReadBuildInfo
-	defer func() { config.ReadBuildInfo = origReadBuildInfo }()
-
-	logger.Reset(nil)
-
-	config.ReadBuildInfo = func() (*debug.BuildInfo, bool) {
-		return &debug.BuildInfo{
-			GoVersion: "go1.25.0",
-			Settings: []debug.BuildSetting{
-				{Key: "vcs.revision", Value: "abc123"},
-				{Key: "vcs.time", Value: "2025-01-15T10:00:00Z"},
+	tests := []struct {
+		name      string
+		buildInfo func() (*debug.BuildInfo, bool)
+		port      int
+		checkPort bool
+	}{
+		{
+			name: "build info available",
+			buildInfo: func() (*debug.BuildInfo, bool) {
+				return &debug.BuildInfo{
+					GoVersion: "go1.25.0",
+					Settings: []debug.BuildSetting{
+						{Key: "vcs.revision", Value: "abc123"},
+						{Key: "vcs.time", Value: "2025-01-15T10:00:00Z"},
+					},
+				}, true
 			},
-		}, true
+			port:      12346,
+			checkPort: true,
+		},
+		{
+			name: "build info unavailable",
+			buildInfo: func() (*debug.BuildInfo, bool) {
+				return nil, false
+			},
+			port:      12347,
+			checkPort: false,
+		},
 	}
 
-	cfg := config.ExporterConfig{
-		Port:    12346,
-		Metrics: struct{ Prefix string }{Prefix: "test_prefix"}, //nolint:goconst
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			origReadBuildInfo := config.ReadBuildInfo
+			defer func() { config.ReadBuildInfo = origReadBuildInfo }()
+
+			logger.Reset(nil)
+			if tt.buildInfo != nil {
+				config.ReadBuildInfo = tt.buildInfo
+			}
+
+			cfg := config.ExporterConfig{
+				Port:    tt.port,
+				Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
+			}
+			ex := NewExporter(cfg)
+			require.NotNil(t, ex)
+			if tt.checkPort {
+				assert.Equal(t, cfg.Port, ex.cfg.Port)
+			}
+			assert.NotNil(t, ex.Reg)
+		})
 	}
-	ex := NewExporter(cfg)
-	require.NotNil(t, ex)
-	assert.Equal(t, cfg.Port, ex.cfg.Port)
-	assert.NotNil(t, ex.Reg)
-}
-
-// Constructs a new exporter when build info is unavailable and expects a
-// non-nil exporter to be returned.
-func TestNewExporter_BuildInfoUnavailable(t *testing.T) {
-	origReadBuildInfo := config.ReadBuildInfo
-	defer func() { config.ReadBuildInfo = origReadBuildInfo }()
-
-	logger.Reset(nil)
-
-	config.ReadBuildInfo = func() (*debug.BuildInfo, bool) {
-		return nil, false
-	}
-
-	cfg := config.ExporterConfig{
-		Port:    12347,
-		Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
-	}
-	ex := NewExporter(cfg)
-	require.NotNil(t, ex)
 }
 
 // Sets the build_info metric and expects it to be registered with the
@@ -97,9 +105,9 @@ func TestExporter_SetBuildInfo(t *testing.T) {
 				cfg: cfg,
 			}
 			labels := map[string]string{
-				"version": "test_version",  //nolint:goconst
-				"commit":  "test_revision", //nolint:goconst
-				"date":    "13:37",         //nolint:goconst
+				"version": "test_version",
+				"commit":  "test_revision",
+				"date":    "13:37",
 			}
 			ex.SetBuildInfo(labels["version"], labels["commit"], labels["date"])
 
