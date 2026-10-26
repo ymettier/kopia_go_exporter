@@ -15,6 +15,7 @@ import (
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/posflag"
+	"github.com/knadh/koanf/providers/rawbytes"
 	"github.com/knadh/koanf/v2"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
@@ -124,7 +125,7 @@ const (
 	vcsRevision   = "vcs.revision"
 	vcsTime       = "vcs.time"
 	missingKey    = "missing.key"
-	missingKeyMsg = "missing key returns default"
+	missingKeyMsg = "missing key returns zero value"
 )
 
 // Builds version info with different build info states.
@@ -291,26 +292,23 @@ func TestLookupConfigKey_UnderscoreFormat(t *testing.T) {
 	assert.Equal(t, "underscore_prefix", val)
 }
 
-// Reads a string config value and expects the existing value, or the
-// default when the key is missing.
+// Reads a string config value and expects the existing value, or an
+// empty string when the key is missing.
 func TestGetConfigString(t *testing.T) {
 	tests := []struct {
-		name         string
-		key          string
-		defaultValue string
-		want         string
+		name string
+		key  string
+		want string
 	}{
 		{
-			name:         "existing key",
-			key:          "existing.key",
-			defaultValue: "default",
-			want:         "value",
+			name: "existing key",
+			key:  "existing.key",
+			want: "value",
 		},
 		{
-			name:         missingKeyMsg,
-			key:          "missing.port",
-			defaultValue: "default_value",
-			want:         "default_value",
+			name: missingKeyMsg,
+			key:  "missing.port",
+			want: "",
 		},
 	}
 	cfgFile := writeTestConfig(t, "existing:\n  key: value\n")
@@ -318,38 +316,34 @@ func TestGetConfigString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			val := getConfigString(k, tt.key, tt.defaultValue)
+			val := getConfigString(k, tt.key)
 			assert.Equal(t, tt.want, val)
 		})
 	}
 }
 
-// Reads an int config value and expects the parsed value, or the default
-// for a missing key or a non-numeric value.
+// Reads an int config value and expects the parsed value, or zero for a
+// missing key or a non-numeric value.
 func TestGetConfigInt(t *testing.T) {
 	tests := []struct {
-		name         string
-		key          string
-		defaultValue int
-		want         int
+		name string
+		key  string
+		want int
 	}{
 		{
-			name:         "valid int",
-			key:          "port",
-			defaultValue: 9090,
-			want:         8080,
+			name: "valid int",
+			key:  "port",
+			want: 8080,
 		},
 		{
-			name:         missingKeyMsg,
-			key:          missingKey,
-			defaultValue: 9090,
-			want:         9090,
+			name: missingKeyMsg,
+			key:  missingKey,
+			want: 0,
 		},
 		{
-			name:         "invalid int returns default",
-			key:          "invalid",
-			defaultValue: 9090,
-			want:         9090,
+			name: "invalid int returns zero",
+			key:  "invalid",
+			want: 0,
 		},
 	}
 	cfgFile := writeTestConfig(t, "port: 8080\ninvalid: not_a_number\n")
@@ -357,50 +351,44 @@ func TestGetConfigInt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			val := getConfigInt(k, tt.key, tt.defaultValue)
+			val := getConfigInt(k, tt.key)
 			assert.Equal(t, tt.want, val)
 		})
 	}
 }
 
 // Reads a bool config value and expects true/false for
-// "true"/"false"/"1", and the default for missing or invalid values.
+// "true"/"false"/"1", and false for missing or invalid values.
 func TestGetConfigBool(t *testing.T) {
 	tests := []struct {
-		name         string
-		key          string
-		defaultValue bool
-		want         bool
+		name string
+		key  string
+		want bool
 	}{
 		{
-			name:         "true string",
-			key:          "enabled",
-			defaultValue: false,
-			want:         true,
+			name: "true string",
+			key:  "enabled",
+			want: true,
 		},
 		{
-			name:         "false string",
-			key:          "disabled",
-			defaultValue: true,
-			want:         false,
+			name: "false string",
+			key:  "disabled",
+			want: false,
 		},
 		{
-			name:         "1 string",
-			key:          "one",
-			defaultValue: false,
-			want:         true,
+			name: "1 string",
+			key:  "one",
+			want: true,
 		},
 		{
-			name:         missingKeyMsg,
-			key:          missingKey,
-			defaultValue: true,
-			want:         true,
+			name: missingKeyMsg,
+			key:  missingKey,
+			want: false,
 		},
 		{
-			name:         "invalid bool returns default",
-			key:          "invalid_bool",
-			defaultValue: false,
-			want:         false,
+			name: "invalid bool returns false",
+			key:  "invalid_bool",
+			want: false,
 		},
 	}
 	cfgFile := writeTestConfig(t, "enabled: true\ndisabled: \"false\"\none: \"1\"\ninvalid_bool: maybe\n")
@@ -408,7 +396,7 @@ func TestGetConfigBool(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			val := getConfigBool(k, tt.key, tt.defaultValue)
+			val := getConfigBool(k, tt.key)
 			assert.Equal(t, tt.want, val)
 		})
 	}
@@ -443,10 +431,11 @@ func TestReadExporterConfig_FlagOverride(t *testing.T) {
 	assert.Equal(t, 7777, cfg.Port)
 }
 
-// Reads the exporter config with no values set and expects the
-// documented default port, prefix, and interval.
+// Loads the embedded default config and expects the documented default
+// port, prefix, and interval.
 func TestReadExporterConfig_Defaults(t *testing.T) {
 	k = koanf.New(".")
+	require.NoError(t, k.Load(rawbytes.Provider(defaultConfig), yaml.Parser()))
 
 	cfg := readExporterConfig(k)
 	assert.Equal(t, 9090, cfg.Port)

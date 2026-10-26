@@ -187,40 +187,40 @@ func lookupConfigKey(koanfInstance *koanf.Koanf, camelKey string) (string, bool)
 	return "", false
 }
 
-func getConfigString(koanfInstance *koanf.Koanf, camelKey, defaultValue string) string {
+func getConfigString(koanfInstance *koanf.Koanf, camelKey string) string {
 	if val, ok := lookupConfigKey(koanfInstance, camelKey); ok {
 		return val
 	}
-	return defaultValue
+	return ""
 }
 
-func getConfigInt(koanfInstance *koanf.Koanf, camelKey string, defaultValue int) int {
+func getConfigInt(koanfInstance *koanf.Koanf, camelKey string) int {
 	if val, ok := lookupConfigKey(koanfInstance, camelKey); ok {
 		i, err := strconv.Atoi(val)
 		if err == nil {
 			return i
 		}
 		l := logger.Get()
-		l.Warn("Invalid integer value, using default", "key", camelKey, "value", val, "default", defaultValue)
+		l.Warn("Invalid integer value, using zero", "key", camelKey, "value", val)
 	}
-	return defaultValue
+	return 0
 }
 
-func getConfigBool(koanfInstance *koanf.Koanf, camelKey string, defaultValue bool) bool {
+func getConfigBool(koanfInstance *koanf.Koanf, camelKey string) bool {
 	if val, ok := lookupConfigKey(koanfInstance, camelKey); ok {
 		return strings.EqualFold(val, "true") || val == "1"
 	}
-	return defaultValue
+	return false
 }
 
 func readExporterConfig(koanfInstance *koanf.Koanf) ExporterConfig {
 	var cfg ExporterConfig
 
-	cfg.Port = getConfigInt(koanfInstance, "exporter.port", 9090) //nolint:mnd
+	cfg.Port = getConfigInt(koanfInstance, "exporter.port")
 
-	cfg.Metrics.Prefix = getConfigString(koanfInstance, "exporter.metrics.prefix", "kopia_go_exporter")
+	cfg.Metrics.Prefix = getConfigString(koanfInstance, "exporter.metrics.prefix")
 
-	cfg.Interval = getConfigInt(koanfInstance, "exporter.interval", 300) //nolint:mnd
+	cfg.Interval = getConfigInt(koanfInstance, "exporter.interval")
 
 	return cfg
 }
@@ -276,9 +276,9 @@ func compileRegexes(patterns []string) ([]*regexp.Regexp, error) {
 func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
 	var cfg KopiaConfig
 
-	cfg.APIServer.RepositoryURL = getConfigString(koanfInstance, "kopia.apiserver.repositoryURL", "")
+	cfg.APIServer.RepositoryURL = getConfigString(koanfInstance, "kopia.apiserver.repositoryURL")
 
-	cfg.APIServer.Fingerprint = getConfigString(koanfInstance, "kopia.apiserver.fingerprint", "")
+	cfg.APIServer.Fingerprint = getConfigString(koanfInstance, "kopia.apiserver.fingerprint")
 
 	cfg.Clients = make(map[string]ClientConfig)
 	if koanfInstance.Exists("kopia.clients") {
@@ -301,21 +301,21 @@ func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
 func readLoggerConfig(koanfInstance *koanf.Koanf) LoggerConfig {
 	var cfg LoggerConfig
 
-	cfg.Level = getConfigString(koanfInstance, "logger.log_level", "info")
+	cfg.Level = getConfigString(koanfInstance, "logger.log_level")
 
-	cfg.JSON = getConfigBool(koanfInstance, "logger.json", false)
+	cfg.JSON = getConfigBool(koanfInstance, "logger.json")
 
-	cfg.Filename = getConfigString(koanfInstance, "logger.filename", "")
+	cfg.Filename = getConfigString(koanfInstance, "logger.filename")
 
-	cfg.RedactSensitive = getConfigBool(koanfInstance, "logger.redact_sensitive", true)
+	cfg.RedactSensitive = getConfigBool(koanfInstance, "logger.redact_sensitive")
 
-	cfg.LogFile.MaxSize = getConfigInt(koanfInstance, "logger.log_file.maxsize", 100) //nolint:mnd
+	cfg.LogFile.MaxSize = getConfigInt(koanfInstance, "logger.log_file.maxsize")
 
-	cfg.LogFile.MaxBackups = getConfigInt(koanfInstance, "logger.log_file.maxbackups", 3)
+	cfg.LogFile.MaxBackups = getConfigInt(koanfInstance, "logger.log_file.maxbackups")
 
-	cfg.LogFile.MaxAge = getConfigInt(koanfInstance, "logger.log_file.maxage", 28) //nolint:mnd
+	cfg.LogFile.MaxAge = getConfigInt(koanfInstance, "logger.log_file.maxage")
 
-	cfg.LogFile.Compress = getConfigBool(koanfInstance, "logger.log_file.compress", false)
+	cfg.LogFile.Compress = getConfigBool(koanfInstance, "logger.log_file.compress")
 
 	return cfg
 }
@@ -495,7 +495,7 @@ func checkPlaceholders(defaultConfig []byte) error {
 		if !isPlaceholder(defaultVal) {
 			continue
 		}
-		currentVal := getConfigString(k, key, "")
+		currentVal := getConfigString(k, key)
 		if isPlaceholder(currentVal) {
 			return fmt.Errorf(
 				"configuration key %q still has placeholder value %q; override it in config file, env var, or CLI flag",
