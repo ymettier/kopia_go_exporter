@@ -57,12 +57,12 @@ jobs:
             exit 1
           fi
 
-      - name: Check appVersion matches version.txt
+      - name: Check appVersion matches cmd/kopia-go-exporter/version.txt
         run: |
           APP_VERSION=$(grep '^appVersion:' charts/kopia_go_exporter/Chart.yaml | awk '{print $2}' | tr -d '"' | tr -d "'")
-          FILE_VERSION=$(cat version.txt | tr -d '[:space:]')
+          FILE_VERSION=$(cat cmd/kopia-go-exporter/version.txt | tr -d '[:space:]')
           if [ "$APP_VERSION" != "$FILE_VERSION" ]; then
-            echo "ERROR: Chart.yaml appVersion ($APP_VERSION) does not match version.txt ($FILE_VERSION)"
+            echo "ERROR: Chart.yaml appVersion ($APP_VERSION) does not match cmd/kopia-go-exporter/version.txt ($FILE_VERSION)"
             exit 1
           fi
 

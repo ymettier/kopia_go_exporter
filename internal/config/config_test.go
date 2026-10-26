@@ -99,7 +99,7 @@ func TestParseFlags_CustomValues(t *testing.T) {
 // Calls New with no --config flag and expects an error because the
 // embedded default config still contains placeholder values.
 func TestNew_NoConfigFile(t *testing.T) {
-	err := New("test", []string{}, loadDefaultConfig(t))
+	err := New("test", []string{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "still has placeholder value")
 }
@@ -113,7 +113,7 @@ func TestNew_NoConfigFile_WithClientsEnv(t *testing.T) {
 	t.Setenv("KGE_KOPIA_CLIENTS_DEFAULT_HOSTNAME", "myhost")
 	t.Setenv("KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD", "secret")
 
-	err := New("test", []string{}, loadDefaultConfig(t))
+	err := New("test", []string{})
 	assert.NoError(t, err)
 	require.Len(t, Cfg.Kopia.Clients, 1)
 	assert.Equal(t, "secret", Cfg.Kopia.Clients[clientDefaultName].Password)
@@ -233,9 +233,7 @@ func writeTestConfig(t *testing.T, content string) string {
 
 func loadDefaultConfig(t *testing.T) []byte {
 	t.Helper()
-	data, err := os.ReadFile("../../config.default.yaml")
-	require.NoError(t, err, "failed to read config.default.yaml for test")
-	return data
+	return defaultConfig
 }
 
 // Looks up lowercase, camelCase, and nonexistent config keys and expects
@@ -900,8 +898,8 @@ func TestMissingConfigFile(t *testing.T) {
 		},
 		{
 			name: "New",
-			run: func(t *testing.T) error {
-				return New("test", []string{"--config", "/nonexistent/file.yaml"}, loadDefaultConfig(t))
+			run: func(_ *testing.T) error {
+				return New("test", []string{"--config", "/nonexistent/file.yaml"})
 			},
 		},
 	}
@@ -915,23 +913,24 @@ func TestMissingConfigFile(t *testing.T) {
 	}
 }
 
-// Calls New with an unparseable embedded default config and expects an
-// error from the placeholder check.
-func TestNew_BrokenDefaultConfig(t *testing.T) {
-	cfgFile := writeTestConfig(t, `kopia:
-  apiserver:
-    repositoryURL: "https://example.com:51515"
-    fingerprint: "abc123"
-  clients:
-    default:
-      username: "myuser"
-      hostname: "myhost"
-      password: "test"
-`)
+// Calls the placeholder check with an unparseable default config and
+// expects an error.
+func TestCheckPlaceholders_BrokenDefaultConfig(t *testing.T) {
 	broken := []byte("{{{{not valid yaml")
-	err := New("test", []string{"--config", cfgFile}, broken)
+	err := checkPlaceholders(broken)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse default config for placeholder check")
+}
+
+// Loads an unparseable default config and expects the warning path to be
+// taken while the user config file still loads.
+func TestReadConfig_BrokenDefaultConfig(t *testing.T) {
+	cfgFile := writeTestConfig(t, "exporter:\n  port: 8080\n")
+	broken := []byte("{{{{not valid yaml")
+
+	err := readConfig(cfgFile, nil, broken)
+	require.NoError(t, err)
+	assert.Equal(t, 8080, Cfg.Exporter.Port)
 }
 
 // Calls New with a valid config file and expects success and the default
@@ -947,7 +946,7 @@ func TestNew_ValidConfig(t *testing.T) {
       hostname: "myhost"
       password: "test"
 `)
-	err := New("test", []string{"--config", cfgFile}, loadDefaultConfig(t))
+	err := New("test", []string{"--config", cfgFile})
 	assert.NoError(t, err)
 	assert.Equal(t, 9090, Cfg.Exporter.Port)
 }
@@ -969,20 +968,20 @@ filters:
     path:
       - "<ok>"
 `)
-	err := New("test", []string{"--config", cfgFile}, loadDefaultConfig(t))
+	err := New("test", []string{"--config", cfgFile})
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"<ok>"}, Cfg.Filters.Include.Path)
 }
 
 // Calls New with --version and expects flag.ErrHelp to be returned.
 func TestNew_VersionFlag(t *testing.T) {
-	err := New("test", []string{"--version"}, loadDefaultConfig(t))
+	err := New("test", []string{"--version"})
 	assert.Equal(t, flag.ErrHelp, err)
 }
 
 // Calls New with --help and expects flag.ErrHelp to be returned.
 func TestNew_HelpFlag(t *testing.T) {
-	err := New("test", []string{"--help"}, loadDefaultConfig(t))
+	err := New("test", []string{"--help"})
 	assert.Equal(t, flag.ErrHelp, err)
 }
 

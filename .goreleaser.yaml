@@ -15,7 +15,7 @@ before:
     - go generate ./...
 
 builds:
-  - main: ./...
+  - main: ./cmd/kopia-go-exporter
     env:
       - CGO_ENABLED=0
     goos:
@@ -26,7 +26,7 @@ builds:
       - arm64
     hooks:
       pre:
-        - sh -c 'echo "{{ .Version }}" > version.txt'
+        - sh -c 'echo "{{ .Version }}" > cmd/kopia-go-exporter/version.txt'
 
 archives:
   - formats: [binary]

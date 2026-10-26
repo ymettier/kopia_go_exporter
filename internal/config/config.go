@@ -4,6 +4,7 @@
 package config
 
 import (
+	_ "embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -31,6 +32,9 @@ var k = koanf.New(".")
 var givenVersion string
 
 var ReadBuildInfo = debug.ReadBuildInfo
+
+//go:embed config.default.yaml
+var defaultConfig []byte
 
 type ExporterConfig struct {
 	Port    int
@@ -503,7 +507,7 @@ func checkPlaceholders(defaultConfig []byte) error {
 }
 
 // New parses flags, loads the config file, and validates all required fields.
-func New(version string, args []string, defaultConfig []byte) error {
+func New(version string, args []string) error {
 	configFile, fs, err := ParseFlags(version, args)
 	if err != nil {
 		return err

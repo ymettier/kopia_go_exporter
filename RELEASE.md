@@ -12,10 +12,10 @@
     git switch main && git pull
     git switch -c "prepare-release-${VERSION}"
     ```
-3. **Update `version.txt`** with the new version (without the `v` prefix):
+3. **Update `cmd/kopia-go-exporter/version.txt`** with the new version (without the `v` prefix):
     ```sh
-    echo "${VERSION#v}" > version.txt
-    cat version.txt
+    echo "${VERSION#v}" > cmd/kopia-go-exporter/version.txt
+    cat cmd/kopia-go-exporter/version.txt
     ```
 4. **Update the container image tag in `README.md`** to match the new version (without the `v` prefix):
 
@@ -25,15 +25,15 @@
     ```
 5. **Commit**:
     ```sh
-    git add version.txt README.md
+    git add cmd/kopia-go-exporter/version.txt README.md
     git commit -m "release: ${VERSION}"
     ```
 6. **Create a PR**:
     ```sh
     git push
-    gh pr create --title "Prepare release ${VERSION}" --body "Update version.txt and README.md for release ${VERSION}."
+    gh pr create --title "Prepare release ${VERSION}" --body "Update cmd/kopia-go-exporter/version.txt and README.md for release ${VERSION}."
     # Alternative without gh CLI:
-    xdg-open "https://github.com/ymettier/kopia_go_exporter/compare/prepare-release-${VERSION}?title=Prepare%20release%20${VERSION}&body=Update%20version.txt%20and%20README.md%20for%20release%20${VERSION}."
+    xdg-open "https://github.com/ymettier/kopia_go_exporter/compare/prepare-release-${VERSION}?title=Prepare%20release%20${VERSION}&body=Update%20cmd/kopia-go-exporter/version.txt%20and%20README.md%20for%20release%20${VERSION}."
     ```
 7. **Merge the PR**.
 8. **Create and push the tag**:
@@ -65,8 +65,8 @@
     ```
 4. **Set `appVersion` in Chart.yaml** from the application release:
     ```sh
-    # appVersion should match the latest kopia-go-exporter release (from version.txt)
-    APP_VERSION=$(cat version.txt)
+    # appVersion should match the latest kopia-go-exporter release (from cmd/kopia-go-exporter/version.txt)
+    APP_VERSION=$(cat cmd/kopia-go-exporter/version.txt)
     sed -i "s/^appVersion: .*/appVersion: \"${APP_VERSION}\"/" charts/kopia_go_exporter/Chart.yaml
     ```
 5. **Update `README.md`** helm install command with the new chart version:

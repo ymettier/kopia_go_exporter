@@ -8,8 +8,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN echo "${VERSION}" > version.txt \
-    && CGO_ENABLED=0 go build -o kopia-go-exporter .
+RUN echo "${VERSION}" > cmd/kopia-go-exporter/version.txt \
+    && CGO_ENABLED=0 go build -o kopia-go-exporter ./cmd/kopia-go-exporter
 
 FROM gcr.io/distroless/static-debian13:nonroot
 

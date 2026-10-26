@@ -26,7 +26,7 @@ jobs:
           cache: false
 
       - name: generate version.txt
-        run: echo github-build > version.txt
+        run: echo github-build > cmd/kopia-go-exporter/version.txt
 
       - name: Generate
         run: go generate -v ./...

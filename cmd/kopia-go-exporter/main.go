@@ -22,9 +22,6 @@ import (
 //go:embed version.txt
 var version string
 
-//go:embed config.default.yaml
-var defaultConfig []byte
-
 // testReady is an optional readiness signal, set by tests, that run closes
 // once the main loop has performed its first iteration. It is nil in production
 // and therefore has no effect on the normal code path.
@@ -32,7 +29,7 @@ var testReady chan struct{}
 
 func run(ctx context.Context, args []string) error {
 	logger.Reset(logger.OptionsFromEnv())
-	if err := config.New(strings.TrimSpace(version), args, defaultConfig); err != nil {
+	if err := config.New(strings.TrimSpace(version), args); err != nil {
 		return err
 	}
 	logger.Reset(&logger.LogOptions{
