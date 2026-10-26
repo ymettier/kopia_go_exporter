@@ -13,8 +13,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"kopia-go-exporter/config"
-	"kopia-go-exporter/logger"
+	"kopia-go-exporter/internal/config"
+	"kopia-go-exporter/internal/logger"
 )
 
 type Exporter struct {

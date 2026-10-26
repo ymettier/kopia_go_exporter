@@ -3,6 +3,6 @@ config.yaml
 .envrc
 coverage*.out
 coverage.html
-kopiametrics/test_assets/
+internal/kopiametrics/test_assets/
 release.sh
 TODO

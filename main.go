@@ -13,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"kopia-go-exporter/config"
-	"kopia-go-exporter/exporter"
-	"kopia-go-exporter/kopiametrics"
-	"kopia-go-exporter/logger"
+	"kopia-go-exporter/internal/config"
+	"kopia-go-exporter/internal/exporter"
+	"kopia-go-exporter/internal/kopiametrics"
+	"kopia-go-exporter/internal/logger"
 )
 
 //go:embed version.txt

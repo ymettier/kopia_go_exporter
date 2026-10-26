@@ -233,7 +233,7 @@ func writeTestConfig(t *testing.T, content string) string {
 
 func loadDefaultConfig(t *testing.T) []byte {
 	t.Helper()
-	data, err := os.ReadFile("../config.default.yaml")
+	data, err := os.ReadFile("../../config.default.yaml")
 	require.NoError(t, err, "failed to read config.default.yaml for test")
 	return data
 }

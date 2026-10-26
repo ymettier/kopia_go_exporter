@@ -21,8 +21,8 @@ import (
 	"github.com/kopia/kopia/snapshot/policy"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"kopia-go-exporter/config"
-	"kopia-go-exporter/logger"
+	"kopia-go-exporter/internal/config"
+	"kopia-go-exporter/internal/logger"
 )
 
 // openRepo is a test hook for repo.Open. In production it uses the real repo.Open.

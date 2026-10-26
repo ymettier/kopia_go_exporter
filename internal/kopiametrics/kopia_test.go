@@ -29,8 +29,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"kopia-go-exporter/config"
-	"kopia-go-exporter/logger"
+	"kopia-go-exporter/internal/config"
+	"kopia-go-exporter/internal/logger"
 )
 
 // defaultClientName is the name of the single client used by tests that do

@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"kopia-go-exporter/config"
-	"kopia-go-exporter/logger"
+	"kopia-go-exporter/internal/config"
+	"kopia-go-exporter/internal/logger"
 )
 
 // Constructs a new exporter with different build info states.

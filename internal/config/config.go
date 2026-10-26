@@ -23,7 +23,7 @@ import (
 	"github.com/knadh/koanf/v2"
 	"github.com/spf13/pflag"
 
-	"kopia-go-exporter/logger"
+	"kopia-go-exporter/internal/logger"
 )
 
 var k = koanf.New(".")
