@@ -27,11 +27,15 @@ import (
 	"kopia-go-exporter/internal/logger"
 )
 
+const maxTCPPort = 65535
+
 var k = koanf.New(".")
 
 var givenVersion string
 
 var ReadBuildInfo = debug.ReadBuildInfo
+
+var prometheusMetricName = regexp.MustCompile(`^[a-zA-Z_:][a-zA-Z0-9_:]*$`)
 
 //go:embed config.default.yaml
 var defaultConfig []byte
@@ -194,67 +198,76 @@ func getConfigString(koanfInstance *koanf.Koanf, camelKey string) string {
 	return ""
 }
 
-func getConfigInt(koanfInstance *koanf.Koanf, camelKey string) int {
-	if val, ok := lookupConfigKey(koanfInstance, camelKey); ok {
-		i, err := strconv.Atoi(val)
-		if err == nil {
-			return i
-		}
-		l := logger.Get()
-		l.Warn("Invalid integer value, using zero", "key", camelKey, "value", val)
+func getConfigInt(koanfInstance *koanf.Koanf, camelKey string) (int, error) {
+	val, ok := lookupConfigKey(koanfInstance, camelKey)
+	if !ok {
+		return 0, nil
 	}
-	return 0
+	i, err := strconv.Atoi(val)
+	if err != nil {
+		return 0, fmt.Errorf("invalid integer for %s: %q: %w", camelKey, val, err)
+	}
+	return i, nil
 }
 
-func getConfigBool(koanfInstance *koanf.Koanf, camelKey string) bool {
-	if val, ok := lookupConfigKey(koanfInstance, camelKey); ok {
-		return strings.EqualFold(val, "true") || val == "1"
+func getConfigBool(koanfInstance *koanf.Koanf, camelKey string) (bool, error) {
+	val, ok := lookupConfigKey(koanfInstance, camelKey)
+	if !ok {
+		return false, nil
 	}
-	return false
+	b, err := strconv.ParseBool(val)
+	if err != nil {
+		return false, fmt.Errorf("invalid boolean for %s: %q: %w", camelKey, val, err)
+	}
+	return b, nil
 }
 
-func readExporterConfig(koanfInstance *koanf.Koanf) ExporterConfig {
+func readExporterConfig(koanfInstance *koanf.Koanf) (ExporterConfig, error) {
 	var cfg ExporterConfig
+	var errs []error
+	var err error
 
-	cfg.Port = getConfigInt(koanfInstance, "exporter.port")
+	cfg.Port, err = getConfigInt(koanfInstance, "exporter.port")
+	errs = append(errs, err)
 
 	cfg.Metrics.Prefix = getConfigString(koanfInstance, "exporter.metrics.prefix")
 
-	cfg.Interval = getConfigInt(koanfInstance, "exporter.interval")
+	cfg.Interval, err = getConfigInt(koanfInstance, "exporter.interval")
+	errs = append(errs, err)
 
-	return cfg
+	return cfg, errors.Join(errs...)
 }
 
-func readFiltersConfig(koanfInstance *koanf.Koanf, l *slog.Logger) (FiltersConfig, error) {
+func readFiltersConfig(koanfInstance *koanf.Koanf) (FiltersConfig, error) {
 	var cfg FiltersConfig
 	var err error
 
-	cfg.Include, err = readFilterGroup(koanfInstance, "filters.include", l)
+	cfg.Include, err = readFilterGroup(koanfInstance, "filters.include")
 	if err != nil {
-		return cfg, fmt.Errorf("invalid filters.include.path regex: %w", err)
+		return cfg, err
 	}
 
-	cfg.Exclude, err = readFilterGroup(koanfInstance, "filters.exclude", l)
+	cfg.Exclude, err = readFilterGroup(koanfInstance, "filters.exclude")
 	if err != nil {
-		return cfg, fmt.Errorf("invalid filters.exclude.path regex: %w", err)
+		return cfg, err
 	}
 
 	return cfg, nil
 }
 
-func readFilterGroup(koanfInstance *koanf.Koanf, key string, l *slog.Logger) (FilterConfig, error) {
+func readFilterGroup(koanfInstance *koanf.Koanf, key string) (FilterConfig, error) {
 	var cfg FilterConfig
 
 	cfg.Path = make([]string, 0)
 	if koanfInstance.Exists(key + ".path") {
 		if err := koanfInstance.Unmarshal(key+".path", &cfg.Path); err != nil {
-			l.Warn("Failed to unmarshal "+key+".path", "err", err)
+			return cfg, fmt.Errorf("invalid %s.path: %w", key, err)
 		}
 	}
 
 	regexes, err := compileRegexes(cfg.Path)
 	if err != nil {
-		return cfg, err
+		return cfg, fmt.Errorf("invalid %s.path regex: %w", key, err)
 	}
 	cfg.PathRegex = regexes
 
@@ -273,7 +286,7 @@ func compileRegexes(patterns []string) ([]*regexp.Regexp, error) {
 	return regexes, nil
 }
 
-func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
+func readKopiaConfig(koanfInstance *koanf.Koanf) (KopiaConfig, error) {
 	var cfg KopiaConfig
 
 	cfg.APIServer.RepositoryURL = getConfigString(koanfInstance, "kopia.apiserver.repositoryURL")
@@ -283,7 +296,7 @@ func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
 	cfg.Clients = make(map[string]ClientConfig)
 	if koanfInstance.Exists("kopia.clients") {
 		if err := koanfInstance.Unmarshal("kopia.clients", &cfg.Clients); err != nil {
-			l.Warn("Failed to unmarshal kopia.clients", "err", err)
+			return cfg, fmt.Errorf("invalid kopia.clients: %w", err)
 		}
 	}
 
@@ -291,33 +304,41 @@ func readKopiaConfig(koanfInstance *koanf.Koanf, l *slog.Logger) KopiaConfig {
 	cfg.Retentions = make([]string, 0)
 	if koanfInstance.Exists("kopia.retentionstoextract") {
 		if err := koanfInstance.Unmarshal("kopia.retentionstoextract", &cfg.Retentions); err != nil {
-			l.Warn("Failed to unmarshal retentions", "err", err)
+			return cfg, fmt.Errorf("invalid kopia.retentionstoextract: %w", err)
 		}
 	}
 
-	return cfg
+	return cfg, nil
 }
 
-func readLoggerConfig(koanfInstance *koanf.Koanf) LoggerConfig {
+func readLoggerConfig(koanfInstance *koanf.Koanf) (LoggerConfig, error) {
 	var cfg LoggerConfig
+	var errs []error
+	var err error
 
 	cfg.Level = getConfigString(koanfInstance, "logger.log_level")
 
-	cfg.JSON = getConfigBool(koanfInstance, "logger.json")
+	cfg.JSON, err = getConfigBool(koanfInstance, "logger.json")
+	errs = append(errs, err)
 
 	cfg.Filename = getConfigString(koanfInstance, "logger.filename")
 
-	cfg.RedactSensitive = getConfigBool(koanfInstance, "logger.redact_sensitive")
+	cfg.RedactSensitive, err = getConfigBool(koanfInstance, "logger.redact_sensitive")
+	errs = append(errs, err)
 
-	cfg.LogFile.MaxSize = getConfigInt(koanfInstance, "logger.log_file.maxsize")
+	cfg.LogFile.MaxSize, err = getConfigInt(koanfInstance, "logger.log_file.maxsize")
+	errs = append(errs, err)
 
-	cfg.LogFile.MaxBackups = getConfigInt(koanfInstance, "logger.log_file.maxbackups")
+	cfg.LogFile.MaxBackups, err = getConfigInt(koanfInstance, "logger.log_file.maxbackups")
+	errs = append(errs, err)
 
-	cfg.LogFile.MaxAge = getConfigInt(koanfInstance, "logger.log_file.maxage")
+	cfg.LogFile.MaxAge, err = getConfigInt(koanfInstance, "logger.log_file.maxage")
+	errs = append(errs, err)
 
-	cfg.LogFile.Compress = getConfigBool(koanfInstance, "logger.log_file.compress")
+	cfg.LogFile.Compress, err = getConfigBool(koanfInstance, "logger.log_file.compress")
+	errs = append(errs, err)
 
-	return cfg
+	return cfg, errors.Join(errs...)
 }
 
 func readConfig(filename string, fs *pflag.FlagSet, defaultConfig []byte) error {
@@ -351,14 +372,23 @@ func readConfig(filename string, fs *pflag.FlagSet, defaultConfig []byte) error 
 		)
 	}
 
-	Cfg.Exporter = readExporterConfig(k)
 	var err error
-	Cfg.Filters, err = readFiltersConfig(k, l)
+	Cfg.Exporter, err = readExporterConfig(k)
 	if err != nil {
 		return err
 	}
-	Cfg.Kopia = readKopiaConfig(k, l)
-	Cfg.Logger = readLoggerConfig(k)
+	Cfg.Filters, err = readFiltersConfig(k)
+	if err != nil {
+		return err
+	}
+	Cfg.Kopia, err = readKopiaConfig(k)
+	if err != nil {
+		return err
+	}
+	Cfg.Logger, err = readLoggerConfig(k)
+	if err != nil {
+		return err
+	}
 
 	logConfig(l)
 
@@ -366,17 +396,17 @@ func readConfig(filename string, fs *pflag.FlagSet, defaultConfig []byte) error 
 }
 
 // kgeKeyMapper maps a KGE_-prefixed environment variable name to its
-// corresponding koanf config key by stripping the prefix, lowercasing, and
-// replacing underscores with dots. The logger.log_level and
-// logger.redact_sensitive keys keep their trailing underscores as part of
-// the name, so they are restored after flattening.
+// corresponding koanf config key. It first tries to match a known config key
+// so keys containing underscores (for example logger.log_file.maxsize) keep
+// their exact name. Unknown keys fall back to lowercased dots.
 func kgeKeyMapper(s string) string {
-	s = strings.TrimPrefix(s, "KGE_")
-	s = strings.ToLower(s)
-	s = strings.ReplaceAll(s, "_", ".")
-	s = strings.ReplaceAll(s, "logger.log.level", "logger.log_level")
-	s = strings.ReplaceAll(s, "logger.redact.sensitive", "logger.redact_sensitive")
-	return s
+	name := strings.TrimPrefix(s, "KGE_")
+	for _, key := range k.Keys() {
+		if strings.EqualFold(strings.ReplaceAll(key, ".", "_"), name) {
+			return key
+		}
+	}
+	return strings.ReplaceAll(strings.ToLower(name), "_", ".")
 }
 
 // loadConfigLayer loads a koanf provider, logging a warning instead of failing
@@ -430,8 +460,19 @@ func flagKeyMapper(key, value string) (mapped string, mappedValue any) {
 	return mapped, mappedValue
 }
 
+// CheckConfig validates required and critical configuration values.
 func CheckConfig(defaultConfig []byte) error {
 	var errs []error
+
+	if Cfg.Exporter.Port < 1 || Cfg.Exporter.Port > maxTCPPort {
+		errs = append(errs, fmt.Errorf("exporter.port must be between 1 and %d, got %d", maxTCPPort, Cfg.Exporter.Port))
+	}
+	if Cfg.Exporter.Interval <= 0 {
+		errs = append(errs, fmt.Errorf("exporter.interval must be positive, got %d", Cfg.Exporter.Interval))
+	}
+	if Cfg.Exporter.Metrics.Prefix != "" && !prometheusMetricName.MatchString(Cfg.Exporter.Metrics.Prefix) {
+		errs = append(errs, fmt.Errorf("exporter.metrics.prefix %q is not a valid Prometheus metric name", Cfg.Exporter.Metrics.Prefix))
+	}
 	if Cfg.Kopia.APIServer.RepositoryURL == "" {
 		errs = append(errs, errors.New("kopia.apiserver.repositoryURL is not set"))
 	}

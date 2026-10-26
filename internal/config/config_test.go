@@ -6,7 +6,6 @@ package config
 import (
 	"errors"
 	"flag"
-	"log/slog"
 	"os"
 	"runtime/debug"
 	"testing"
@@ -322,13 +321,14 @@ func TestGetConfigString(t *testing.T) {
 	}
 }
 
-// Reads an int config value and expects the parsed value, or zero for a
-// missing key or a non-numeric value.
+// Reads an int config value and expects the parsed value, zero for a
+// missing key, and an error for a non-numeric value.
 func TestGetConfigInt(t *testing.T) {
 	tests := []struct {
-		name string
-		key  string
-		want int
+		name    string
+		key     string
+		want    int
+		wantErr bool
 	}{
 		{
 			name: "valid int",
@@ -341,9 +341,9 @@ func TestGetConfigInt(t *testing.T) {
 			want: 0,
 		},
 		{
-			name: "invalid int returns zero",
-			key:  "invalid",
-			want: 0,
+			name:    "invalid int returns error",
+			key:     "invalid",
+			wantErr: true,
 		},
 	}
 	cfgFile := writeTestConfig(t, "port: 8080\ninvalid: not_a_number\n")
@@ -351,19 +351,27 @@ func TestGetConfigInt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			val := getConfigInt(k, tt.key)
+			val, err := getConfigInt(k, tt.key)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "invalid integer for invalid")
+				return
+			}
+			require.NoError(t, err)
 			assert.Equal(t, tt.want, val)
 		})
 	}
 }
 
 // Reads a bool config value and expects true/false for
-// "true"/"false"/"1", and false for missing or invalid values.
+// "true"/"false"/"1", false for a missing key, and an error for an
+// invalid value.
 func TestGetConfigBool(t *testing.T) {
 	tests := []struct {
-		name string
-		key  string
-		want bool
+		name    string
+		key     string
+		want    bool
+		wantErr bool
 	}{
 		{
 			name: "true string",
@@ -386,9 +394,9 @@ func TestGetConfigBool(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "invalid bool returns false",
-			key:  "invalid_bool",
-			want: false,
+			name:    "invalid bool returns error",
+			key:     "invalid_bool",
+			wantErr: true,
 		},
 	}
 	cfgFile := writeTestConfig(t, "enabled: true\ndisabled: \"false\"\none: \"1\"\ninvalid_bool: maybe\n")
@@ -396,7 +404,13 @@ func TestGetConfigBool(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			val := getConfigBool(k, tt.key)
+			val, err := getConfigBool(k, tt.key)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "invalid boolean for invalid_bool")
+				return
+			}
+			require.NoError(t, err)
 			assert.Equal(t, tt.want, val)
 		})
 	}
@@ -408,7 +422,8 @@ func TestReadExporterConfig(t *testing.T) {
 	cfgFile := writeTestConfig(t, "exporter:\n  port: 8080\n  metrics:\n    prefix: custom_prefix\n  interval: 60\n")
 	k = koanfNew(t, cfgFile)
 
-	cfg := readExporterConfig(k)
+	cfg, err := readExporterConfig(k)
+	require.NoError(t, err)
 	assert.Equal(t, 8080, cfg.Port)
 	assert.Equal(t, "custom_prefix", cfg.Metrics.Prefix)
 	assert.Equal(t, 60, cfg.Interval)
@@ -427,7 +442,8 @@ func TestReadExporterConfig_FlagOverride(t *testing.T) {
 	require.NoError(t, k.Load(
 		posflag.ProviderWithValue(fs, ".", k, flagKeyMapper), nil))
 
-	cfg := readExporterConfig(k)
+	cfg, err := readExporterConfig(k)
+	require.NoError(t, err)
 	assert.Equal(t, 7777, cfg.Port)
 }
 
@@ -437,7 +453,8 @@ func TestReadExporterConfig_Defaults(t *testing.T) {
 	k = koanf.New(".")
 	require.NoError(t, k.Load(rawbytes.Provider(defaultConfig), yaml.Parser()))
 
-	cfg := readExporterConfig(k)
+	cfg, err := readExporterConfig(k)
+	require.NoError(t, err)
 	assert.Equal(t, 9090, cfg.Port)
 	assert.Equal(t, "kopia_go_exporter", cfg.Metrics.Prefix)
 	assert.Equal(t, 300, cfg.Interval)
@@ -481,18 +498,14 @@ func TestReadFiltersConfig(t *testing.T) {
 			wantErrSub: "invalid filters.exclude.path regex",
 		},
 		{
-			name: "invalid include structure",
-			cfg:  "filters:\n  include:\n    path:\n      key: value\n",
-			check: func(t *testing.T, cfg FiltersConfig) {
-				assert.Len(t, cfg.Include.PathRegex, 1)
-			},
+			name:       "invalid include structure",
+			cfg:        "filters:\n  include:\n    path:\n      key: value\n",
+			wantErrSub: "invalid filters.include.path",
 		},
 		{
-			name: "invalid exclude structure",
-			cfg:  "filters:\n  exclude:\n    path:\n      key: value\n",
-			check: func(t *testing.T, cfg FiltersConfig) {
-				assert.Len(t, cfg.Exclude.PathRegex, 1)
-			},
+			name:       "invalid exclude structure",
+			cfg:        "filters:\n  exclude:\n    path:\n      key: value\n",
+			wantErrSub: "invalid filters.exclude.path",
 		},
 		{
 			name:     "defaults",
@@ -508,7 +521,6 @@ func TestReadFiltersConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := slog.Default()
 			var k *koanf.Koanf
 			if tt.useKoanf {
 				k = koanf.New(".")
@@ -516,7 +528,7 @@ func TestReadFiltersConfig(t *testing.T) {
 				cfgFile := writeTestConfig(t, tt.cfg)
 				k = koanfNew(t, cfgFile)
 			}
-			cfg, err := readFiltersConfig(k, l)
+			cfg, err := readFiltersConfig(k)
 			if tt.wantErrSub != "" {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErrSub)
@@ -533,8 +545,7 @@ func TestReadFiltersConfig_InvalidRegex(t *testing.T) {
 	cfgFile := writeTestConfig(t, "filters:\n  include:\n    path:\n      - \"[\"\n")
 	k = koanfNew(t, cfgFile)
 
-	l := slog.Default()
-	_, err := readFiltersConfig(k, l)
+	_, err := readFiltersConfig(k)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid filters.include.path regex")
 }
@@ -545,34 +556,9 @@ func TestReadFiltersConfig_InvalidExcludeRegex(t *testing.T) {
 	cfgFile := writeTestConfig(t, "filters:\n  exclude:\n    path:\n      - \"[\"\n")
 	k = koanfNew(t, cfgFile)
 
-	l := slog.Default()
-	_, err := readFiltersConfig(k, l)
+	_, err := readFiltersConfig(k)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid filters.exclude.path regex")
-}
-
-// Reads an include filter path given as a map instead of a list and
-// expects it to be handled (one regex, no error).
-func TestReadFiltersConfig_InvalidIncludeStructure(t *testing.T) {
-	cfgFile := writeTestConfig(t, "filters:\n  include:\n    path:\n      key: value\n")
-	k = koanfNew(t, cfgFile)
-
-	l := slog.Default()
-	cfg, err := readFiltersConfig(k, l)
-	require.NoError(t, err)
-	assert.Len(t, cfg.Include.PathRegex, 1)
-}
-
-// Reads an exclude filter path given as a map instead of a list and
-// expects it to be handled (one regex, no error).
-func TestReadFiltersConfig_InvalidExcludeStructure(t *testing.T) {
-	cfgFile := writeTestConfig(t, "filters:\n  exclude:\n    path:\n      key: value\n")
-	k = koanfNew(t, cfgFile)
-
-	l := slog.Default()
-	cfg, err := readFiltersConfig(k, l)
-	require.NoError(t, err)
-	assert.Len(t, cfg.Exclude.PathRegex, 1)
 }
 
 // Loads a config with invalid filters via readConfig and expects a
@@ -585,13 +571,60 @@ func TestReadConfig_InvalidFilters(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid filters.include.path regex")
 }
 
+// Loads configs with malformed values and expects readConfig to fail
+// instead of silently using zero values or partial nested configs.
+func TestReadConfig_InvalidValues(t *testing.T) {
+	tests := []struct {
+		name       string
+		cfg        string
+		wantErrSub []string
+	}{
+		{
+			name:       "invalid exporter int",
+			cfg:        "exporter:\n  port: not-a-number\n",
+			wantErrSub: []string{"invalid integer for exporter.port"},
+		},
+		{
+			name:       "multiple invalid exporter ints",
+			cfg:        "exporter:\n  port: not-a-number\n  interval: also-bad\n",
+			wantErrSub: []string{"invalid integer for exporter.port", "invalid integer for exporter.interval"},
+		},
+		{
+			name:       "invalid logger bool",
+			cfg:        "logger:\n  json: maybe\n",
+			wantErrSub: []string{"invalid boolean for logger.json"},
+		},
+		{
+			name:       "invalid kopia clients",
+			cfg:        "kopia:\n  clients: not-a-map\n",
+			wantErrSub: []string{"invalid kopia.clients"},
+		},
+		{
+			name:       "invalid kopia retentions",
+			cfg:        "kopia:\n  retentionstoextract:\n    a:\n      b: c\n",
+			wantErrSub: []string{"invalid kopia.retentionstoextract"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpFile := writeTestConfig(t, tt.cfg)
+
+			err := readConfig(tmpFile, nil, loadDefaultConfig(t))
+			require.Error(t, err)
+			for _, wantErrSub := range tt.wantErrSub {
+				assert.Contains(t, err.Error(), wantErrSub)
+			}
+		})
+	}
+}
+
 // Reads filters with no values set and expects empty path lists and no
 // compiled regexes.
 func TestReadFiltersConfig_Defaults(t *testing.T) {
 	k = koanf.New(".")
-	l := slog.Default()
 
-	cfg, err := readFiltersConfig(k, l)
+	cfg, err := readFiltersConfig(k)
 	require.NoError(t, err)
 	assert.Equal(t, []string{}, cfg.Include.Path)
 	assert.Empty(t, cfg.Include.PathRegex)
@@ -636,8 +669,8 @@ func TestReadKopiaConfig(t *testing.T) {
 `)
 	k = koanfNew(t, cfgFile)
 
-	l := slog.Default()
-	cfg := readKopiaConfig(k, l)
+	cfg, err := readKopiaConfig(k)
+	require.NoError(t, err)
 	assert.Equal(t, "https://example.com:51515", cfg.APIServer.RepositoryURL)
 	assert.Equal(t, testRevision, cfg.APIServer.Fingerprint)
 	require.Len(t, cfg.Clients, 2)
@@ -650,9 +683,10 @@ func TestReadKopiaConfig(t *testing.T) {
 // empty and retentions empty.
 func TestReadKopiaConfigScenarios(t *testing.T) {
 	tests := []struct {
-		name  string
-		setup func(t *testing.T) *koanf.Koanf
-		check func(t *testing.T, cfg KopiaConfig)
+		name       string
+		setup      func(t *testing.T) *koanf.Koanf
+		wantErrSub string
+		check      func(t *testing.T, cfg KopiaConfig)
 	}{
 		{
 			name: "defaults",
@@ -674,16 +708,20 @@ func TestReadKopiaConfigScenarios(t *testing.T) {
 				require.NoError(t, k.Set("kopia.clients", "not-a-map"))
 				return k
 			},
-			check: func(t *testing.T, cfg KopiaConfig) {
-				assert.Empty(t, cfg.Clients)
-			},
+			wantErrSub: "invalid kopia.clients",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			k := tt.setup(t)
-			cfg := readKopiaConfig(k, slog.Default())
+			cfg, err := readKopiaConfig(k)
+			if tt.wantErrSub != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErrSub)
+				return
+			}
+			require.NoError(t, err)
 			if tt.check != nil {
 				tt.check(t, cfg)
 			}
@@ -768,7 +806,17 @@ func TestCheckConfig_ValidConfig(t *testing.T) {
 	defer func() { Cfg = origCfg }()
 
 	k = koanf.New(".")
-	Cfg = Config{
+	Cfg = validCheckConfig()
+	assert.NoError(t, CheckConfig(nil))
+}
+
+// Builds a config that passes all CheckConfig validations.
+func validCheckConfig() Config {
+	cfg := Config{
+		Exporter: ExporterConfig{
+			Port:     9090,
+			Interval: 300,
+		},
 		Kopia: KopiaConfig{
 			APIServer: APIServerConfig{
 				RepositoryURL: "https://example.com:51515",
@@ -783,7 +831,57 @@ func TestCheckConfig_ValidConfig(t *testing.T) {
 			},
 		},
 	}
-	assert.NoError(t, CheckConfig(nil))
+	cfg.Exporter.Metrics.Prefix = "kopia_go_exporter"
+	return cfg
+}
+
+// Checks invalid exporter values and expects each to be rejected.
+func TestCheckConfig_ExporterValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		mutate      func(*Config)
+		expectedErr string
+	}{
+		{
+			name:        "port zero",
+			mutate:      func(c *Config) { c.Exporter.Port = 0 },
+			expectedErr: "exporter.port must be between 1 and 65535, got 0",
+		},
+		{
+			name:        "port too high",
+			mutate:      func(c *Config) { c.Exporter.Port = 65536 },
+			expectedErr: "exporter.port must be between 1 and 65535, got 65536",
+		},
+		{
+			name:        "interval zero",
+			mutate:      func(c *Config) { c.Exporter.Interval = 0 },
+			expectedErr: "exporter.interval must be positive, got 0",
+		},
+		{
+			name:        "negative interval",
+			mutate:      func(c *Config) { c.Exporter.Interval = -1 },
+			expectedErr: "exporter.interval must be positive, got -1",
+		},
+		{
+			name:        "invalid metrics prefix",
+			mutate:      func(c *Config) { c.Exporter.Metrics.Prefix = "bad-prefix" },
+			expectedErr: `exporter.metrics.prefix "bad-prefix" is not a valid Prometheus metric name`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			origCfg := Cfg
+			defer func() { Cfg = origCfg }()
+
+			Cfg = validCheckConfig()
+			tt.mutate(&Cfg)
+
+			err := CheckConfig(nil)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectedErr)
+		})
+	}
 }
 
 // TestCheckConfig_MissingFields verifies that CheckConfig reports an
@@ -853,15 +951,8 @@ func TestCheckConfig_MissingFields(t *testing.T) {
 			origCfg := Cfg
 			defer func() { Cfg = origCfg }()
 
-			Cfg = Config{
-				Kopia: KopiaConfig{
-					APIServer: APIServerConfig{
-						RepositoryURL: "https://example.com:51515",
-						Fingerprint:   testRevision,
-					},
-					Clients: validClients(),
-				},
-			}
+			Cfg = validCheckConfig()
+			Cfg.Kopia.Clients = validClients()
 			tt.mutate(&Cfg)
 
 			err := CheckConfig(nil)
@@ -1039,16 +1130,14 @@ func TestGetVersionInfo_WithVCSSettings(t *testing.T) {
 	}
 }
 
-// Reads a kopia retentions list given as a map and expects it to be
-// parsed as a single empty string entry.
+// Reads a kopia retentions list given as a map and expects an error.
 func TestReadKopiaConfig_InvalidRetentions(t *testing.T) {
 	cfgFile := writeTestConfig(t, "kopia:\n  retentionstoextract:\n    a:\n      b: c\n")
 	k = koanfNew(t, cfgFile)
 
-	l := slog.Default()
-	cfg := readKopiaConfig(k, l)
-	assert.Len(t, cfg.Retentions, 1)
-	assert.Empty(t, cfg.Retentions[0])
+	_, err := readKopiaConfig(k)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid kopia.retentionstoextract")
 }
 
 // Loads the logger config from environment variables.
@@ -1072,16 +1161,46 @@ func TestReadLoggerConfig_EnvVarOverrides(t *testing.T) {
 				assert.False(t, cfg.RedactSensitive)
 			},
 		},
+		{
+			name: "log file max size",
+			env:  map[string]string{"KGE_LOGGER_LOG_FILE_MAXSIZE": "500"},
+			check: func(t *testing.T, cfg LoggerConfig) {
+				assert.Equal(t, 500, cfg.LogFile.MaxSize)
+			},
+		},
+		{
+			name: "log file max backups",
+			env:  map[string]string{"KGE_LOGGER_LOG_FILE_MAXBACKUPS": "7"},
+			check: func(t *testing.T, cfg LoggerConfig) {
+				assert.Equal(t, 7, cfg.LogFile.MaxBackups)
+			},
+		},
+		{
+			name: "log file max age",
+			env:  map[string]string{"KGE_LOGGER_LOG_FILE_MAXAGE": "30"},
+			check: func(t *testing.T, cfg LoggerConfig) {
+				assert.Equal(t, 30, cfg.LogFile.MaxAge)
+			},
+		},
+		{
+			name: "log file compress",
+			env:  map[string]string{"KGE_LOGGER_LOG_FILE_COMPRESS": "true"},
+			check: func(t *testing.T, cfg LoggerConfig) {
+				assert.True(t, cfg.LogFile.Compress)
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			k = koanf.New(".")
+			require.NoError(t, k.Load(rawbytes.Provider(defaultConfig), yaml.Parser()))
 			for ek, ev := range tt.env {
 				t.Setenv(ek, ev)
 			}
 			loadConfigLayer(k, env.Provider("KGE_", ".", kgeKeyMapper), "Failed to load environment variable overrides")
-			cfg := readLoggerConfig(k)
+			cfg, err := readLoggerConfig(k)
+			require.NoError(t, err)
 			if tt.check != nil {
 				tt.check(t, cfg)
 			}
