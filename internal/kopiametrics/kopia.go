@@ -192,11 +192,6 @@ func newKopiaMetrics(reg *prometheus.Registry, prefix string) KopiaMetrics {
 	}
 }
 
-// RegisterKopiaMetrics registers all Prometheus gauge vectors with the given registry.
-func (k *KopiaClient) RegisterKopiaMetrics(reg *prometheus.Registry) {
-	*k.metrics = newKopiaMetrics(reg, k.cfg.Exporter.Metrics.Prefix)
-}
-
 // RegisterKopiaMetrics registers the shared Prometheus gauge vectors with the
 // given registry. Because all clients write to the same metrics, registering
 // is done once for the whole KopiaClients manager.

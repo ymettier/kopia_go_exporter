@@ -311,7 +311,7 @@ func TestKopiaClient_RegisterKopiaMetrics(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
-	k.RegisterKopiaMetrics(reg)
+	*k.metrics = newKopiaMetrics(reg, "")
 
 	for _, mn := range metricNames {
 		t.Run(mn, func(t *testing.T) {
@@ -530,7 +530,7 @@ func TestSetSnapshotMetrics(t *testing.T) {
 			require.NoError(t, err)
 			t.Cleanup(func() { k.Disconnect(context.Background()) })
 			reg := prometheus.NewRegistry()
-			k.RegisterKopiaMetrics(reg)
+			*k.metrics = newKopiaMetrics(reg, k.cfg.Exporter.Metrics.Prefix)
 
 			m := tt.manifest
 			if m == nil {
@@ -767,7 +767,7 @@ func TestSetSnapshotMetrics_PathFilters(t *testing.T) {
 			require.NoError(t, err)
 			t.Cleanup(func() { k.Disconnect(context.Background()) })
 			reg := prometheus.NewRegistry()
-			k.RegisterKopiaMetrics(reg)
+			*k.metrics = newKopiaMetrics(reg, k.cfg.Exporter.Metrics.Prefix)
 
 			now := fs.UTCTimestampFromTime(time.Now())
 			m := &snapshot.Manifest{
@@ -841,7 +841,7 @@ func TestRunOnce_ConnectFails(t *testing.T) {
 	k.configFile = filepath.Join(t.TempDir(), "nonexistent.config")
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
-	k.RegisterKopiaMetrics(reg)
+	*k.metrics = newKopiaMetrics(reg, k.cfg.Exporter.Metrics.Prefix)
 
 	err = k.RunOnce(context.Background())
 	assert.Error(t, err, "RunOnce should fail when Connect fails")
@@ -922,7 +922,7 @@ func TestRunOnce_EmptyRepo(t *testing.T) {
 	k.isConnected = true
 
 	reg := prometheus.NewRegistry()
-	k.RegisterKopiaMetrics(reg)
+	*k.metrics = newKopiaMetrics(reg, k.cfg.Exporter.Metrics.Prefix)
 
 	require.NoError(t, k.RunOnce(ctx), "RunOnce should succeed on empty repo")
 
@@ -1092,7 +1092,7 @@ func TestRunOnce_ConnectsAutomatically(t *testing.T) {
 	k.configFile = configFile
 	t.Cleanup(func() { k.Disconnect(context.Background()) })
 	reg := prometheus.NewRegistry()
-	k.RegisterKopiaMetrics(reg)
+	*k.metrics = newKopiaMetrics(reg, k.cfg.Exporter.Metrics.Prefix)
 
 	require.False(t, k.isConnected, "IsConnected should start false")
 	require.NoError(t, k.RunOnce(context.Background()), "RunOnce should succeed with auto-connect")
@@ -1208,7 +1208,7 @@ func TestRunOnceMetrics(t *testing.T) {
 	k.isConnected = true
 
 	reg := prometheus.NewRegistry()
-	k.RegisterKopiaMetrics(reg)
+	*k.metrics = newKopiaMetrics(reg, k.cfg.Exporter.Metrics.Prefix)
 
 	require.NoError(t, k.RunOnce(ctx), "RunOnce failed")
 
@@ -1580,7 +1580,7 @@ func TestRunOnce_LoadSnapshotsFails(t *testing.T) {
 
 	// Register metrics (required for RunOnce).
 	reg := prometheus.NewPedanticRegistry()
-	k.RegisterKopiaMetrics(reg)
+	*k.metrics = newKopiaMetrics(reg, k.cfg.Exporter.Metrics.Prefix)
 
 	// Stub loadSnapshotsFunc to return an error
 	originalLoadSnapshots := loadSnapshotsFunc
@@ -1648,7 +1648,7 @@ func TestRunOnce_PolicyError(t *testing.T) {
 
 	// Register metrics (required for RunOnce).
 	reg := prometheus.NewPedanticRegistry()
-	k.RegisterKopiaMetrics(reg)
+	*k.metrics = newKopiaMetrics(reg, k.cfg.Exporter.Metrics.Prefix)
 
 	// Stub loadSnapshotsFunc to return a dummy manifest so the loop runs,
 	// AND stub getEffectivePolicyFunc to return an error.
@@ -1715,7 +1715,7 @@ func TestRunOnce_ListSnapshotManifestsFails(t *testing.T) {
 
 	// Register metrics (required for RunOnce).
 	reg := prometheus.NewPedanticRegistry()
-	k.RegisterKopiaMetrics(reg)
+	*k.metrics = newKopiaMetrics(reg, k.cfg.Exporter.Metrics.Prefix)
 
 	// Now stop the server to make subsequent operations fail
 	cleanup()
