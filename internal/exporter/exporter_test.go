@@ -209,6 +209,7 @@ type fakeShutdowner struct {
 	called          bool
 	captured        error
 	capturedContext context.Context
+	closeCalled     bool
 }
 
 func (f *fakeShutdowner) Shutdown(ctx context.Context) error {
@@ -218,13 +219,20 @@ func (f *fakeShutdowner) Shutdown(ctx context.Context) error {
 	return f.err
 }
 
+func (f *fakeShutdowner) Close() error {
+	f.closeCalled = true
+	return nil
+}
+
 // Shuts down a fake server and expects Shutdown to be called, errors to
-// be observed, and a 5s timeout context to be passed.
+// be observed, and a 5s timeout context to be passed. A failed graceful
+// shutdown also forces the server closed.
 func TestShutdownServer(t *testing.T) {
 	tests := []struct {
 		name          string
 		shutdownErr   error
 		wantCalled    bool
+		wantClose     bool
 		wantErr       bool
 		wantDeadline  bool
 		deadlineDelta time.Duration
@@ -232,6 +240,7 @@ func TestShutdownServer(t *testing.T) {
 		{
 			name:          "success",
 			wantCalled:    true,
+			wantClose:     false,
 			wantErr:       false,
 			wantDeadline:  true,
 			deadlineDelta: 6 * time.Second,
@@ -240,6 +249,7 @@ func TestShutdownServer(t *testing.T) {
 			name:          "error is logged",
 			shutdownErr:   errors.New("boom"), //nolint:err113
 			wantCalled:    true,
+			wantClose:     true,
 			wantErr:       true,
 			wantDeadline:  true,
 			deadlineDelta: 6 * time.Second,
@@ -247,6 +257,7 @@ func TestShutdownServer(t *testing.T) {
 		{
 			name:          "context has timeout",
 			wantCalled:    true,
+			wantClose:     false,
 			wantErr:       false,
 			wantDeadline:  true,
 			deadlineDelta: 6 * time.Second,
@@ -258,6 +269,7 @@ func TestShutdownServer(t *testing.T) {
 			f := &fakeShutdowner{err: tt.shutdownErr}
 			shutdownServer(f, 9090)
 			assert.Equal(t, tt.wantCalled, f.called, "Shutdown call state")
+			assert.Equal(t, tt.wantClose, f.closeCalled, "Close call state")
 			if tt.wantErr {
 				assert.Error(t, f.captured)
 			} else {
@@ -274,7 +286,63 @@ func TestShutdownServer(t *testing.T) {
 	}
 }
 
-// Starts the exporter HTTP server and verifies that the server is configured
+// Runs the exporter with an already-canceled context and expects the
+// listener to be closed before Run returns.
+func TestExporter_Run_AlreadyCanceled(t *testing.T) {
+	logger.Reset(nil)
+	port := freePort(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ex := Exporter{
+		Reg: prometheus.NewRegistry(),
+		cfg: config.ExporterConfig{Port: port},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		ex.Run(ctx)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "Run() did not return after context cancellation")
+	}
+
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:"+strconv.Itoa(port))
+	require.NoError(t, err, "listener should be closed when Run returns")
+	require.NoError(t, listener.Close())
+}
+
+// Starts the exporter HTTP server, cancels the context, and expects
+// Run to return within a reasonable time after graceful shutdown.
+func TestExporter_Run_Shutdown(t *testing.T) {
+	logger.Reset(nil)
+	port := freePort(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	ex := Exporter{
+		Reg: prometheus.NewRegistry(),
+		cfg: config.ExporterConfig{Port: port},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		ex.Run(ctx)
+		close(done)
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "Run() did not return after context cancellation")
+	}
+}
+
+// Starts the exporter HTTP server on a free port and verifies that the server is configured
 // with Read, Write, and Idle timeouts in addition to ReadHeaderTimeout.
 func TestExporter_ServerTimeouts(t *testing.T) {
 	logger.Reset(nil)

@@ -6,7 +6,9 @@ package exporter
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -66,16 +68,48 @@ func (ex *Exporter) Run(ctx context.Context) {
 	mux.Handle("/metrics", promhttp.HandlerFor(ex.Reg, promhttp.HandlerOpts{}))
 	srv := ex.newHTTPServer(mux)
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	listener, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		l.Error("HTTP server error", "port", ex.cfg.Port, "err", err)
+		return
+	}
 
+	serveErr := make(chan error, 1)
+	ready := make(chan struct{})
 	go func() {
-		<-ctx.Done()
-		shutdownServer(srv, ex.cfg.Port)
+		serveErr <- srv.Serve(&readyListener{Listener: listener, ready: ready})
 	}()
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	select {
+	case <-ready:
+	case err = <-serveErr:
+		if err != nil && err != http.ErrServerClosed {
+			l.Error("HTTP server error", "port", ex.cfg.Port, "err", err)
+		}
+		return
+	}
+
+	select {
+	case <-ctx.Done():
+		shutdownServer(srv, ex.cfg.Port)
+		err = <-serveErr
+	case err = <-serveErr:
+	}
+	if err != nil && err != http.ErrServerClosed {
 		l.Error("HTTP server error", "port", ex.cfg.Port, "err", err)
 	}
+}
+
+type readyListener struct {
+	net.Listener
+	ready chan struct{}
+	once  sync.Once
+}
+
+func (l *readyListener) Accept() (net.Conn, error) {
+	l.once.Do(func() {
+		close(l.ready)
+	})
+	return l.Listener.Accept()
 }
 
 // newHTTPServer creates an HTTP server for serving metrics with sensible timeouts.
@@ -102,5 +136,10 @@ func shutdownServer(s Shutdowner, port int) {
 	defer cancel()
 	if err := s.Shutdown(ctx); err != nil {
 		l.Error("HTTP server shutdown error", "port", port, "err", err)
+		if closer, ok := s.(interface{ Close() error }); ok {
+			if closeErr := closer.Close(); closeErr != nil {
+				l.Error("HTTP server close error", "port", port, "err", closeErr)
+			}
+		}
 	}
 }
