@@ -986,6 +986,11 @@ func TestConnect(t *testing.T) {
 	require.NoError(t, err, "Connect should succeed")
 	assert.True(t, k.isConnected)
 	assert.NotNil(t, k.repo)
+
+	info, err := os.Stat(configFile)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(),
+		"config file should have 0600 permissions")
 }
 
 // Connects, stops the server, then connects again and expects the second

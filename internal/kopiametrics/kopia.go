@@ -219,6 +219,9 @@ func (k *KopiaClient) GenerateConfigFile(ctx context.Context) error {
 		l.Error("Failed to generate configFile", "err", err, "ConfigFile", k.configFile)
 		return err
 	}
+	if err := os.Chmod(k.configFile, 0o600); err != nil {
+		l.Debug("Failed to set restrictive permissions on config file", "ConfigFile", k.configFile, "err", err)
+	}
 	l.Debug("Successfully generated configFile", "ConfigFile", k.configFile)
 	return nil
 }
