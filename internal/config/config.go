@@ -455,9 +455,9 @@ func loadConfigLayer(k *koanf.Koanf, loader koanf.Provider, msg string) {
 	}
 }
 
-// redactURL removes credentials from rawURL when redact is true. Invalid URLs
+// RedactURL removes credentials from rawURL when redact is true. Invalid URLs
 // are replaced entirely to avoid leaking malformed credentials.
-func redactURL(rawURL string, redact bool) string {
+func RedactURL(rawURL string, redact bool) string {
 	if !redact {
 		return rawURL
 	}
@@ -487,7 +487,7 @@ func logConfig(l *slog.Logger, cfg *Config) {
 	l.Info("Config: exporter.interval", "interval", cfg.Exporter.Interval)
 	l.Info("Config: filters.include.path", "path", cfg.Filters.Include.Path)
 	l.Info("Config: filters.exclude.path", "path", cfg.Filters.Exclude.Path)
-	l.Info("Config: kopia.apiserver.repositoryURL", "repositoryURL", redactURL(cfg.Kopia.APIServer.RepositoryURL, cfg.Logger.RedactSensitive))
+	l.Info("Config: kopia.apiserver.repositoryURL", "repositoryURL", RedactURL(cfg.Kopia.APIServer.RepositoryURL, cfg.Logger.RedactSensitive))
 	l.Info("Config: kopia.apiserver.fingerprint", "fingerprint", redact(cfg.Kopia.APIServer.Fingerprint))
 	for _, name := range sortedClientNames(cfg) {
 		client := cfg.Kopia.Clients[name]

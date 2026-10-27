@@ -214,7 +214,7 @@ func (k *KopiaClient) GenerateConfigFile(ctx context.Context) error {
 		TrustedServerCertificateFingerprint: k.cfg.Kopia.APIServer.Fingerprint,
 	}
 
-	l.Debug("Generate ConfigFile and try to connect to server", "ConfigFile", k.configFile, "URL", k.cfg.Kopia.APIServer.RepositoryURL)
+	l.Debug("Generate ConfigFile and try to connect to server", "ConfigFile", k.configFile, "URL", config.RedactURL(k.cfg.Kopia.APIServer.RepositoryURL, true))
 	if err := repo.ConnectAPIServer(ctx, k.configFile, &serverInfo, k.client.Password, &opts); err != nil {
 		l.Error("Failed to generate configFile", "err", err, "ConfigFile", k.configFile)
 		return err

@@ -1373,7 +1373,7 @@ func TestRedactURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, redactURL(tt.rawURL, tt.redact))
+			assert.Equal(t, tt.want, RedactURL(tt.rawURL, tt.redact))
 		})
 	}
 }
