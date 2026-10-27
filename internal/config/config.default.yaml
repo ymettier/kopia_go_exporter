@@ -37,7 +37,7 @@ kopia:
 logger:
   log_level: "debug"      # Log level: debug, info, warn, error
   json: false             # use JSON format instead of text
-  redact_sensitive: true  # redact password and fingerprint in config log
+  redact_sensitive: true  # redact sensitive values in config log
   filename: ""            # log file path (empty = stderr)
   # Log file management settings (used when filename is set).
   log_file:

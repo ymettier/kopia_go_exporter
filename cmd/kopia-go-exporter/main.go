@@ -29,22 +29,24 @@ var testReady chan struct{}
 
 func run(ctx context.Context, args []string) error {
 	logger.Reset(logger.OptionsFromEnv())
-	if err := config.New(strings.TrimSpace(version), args); err != nil {
+	ver := strings.TrimSpace(version)
+	cfg, err := config.New(ver, args)
+	if err != nil {
 		return err
 	}
 	logger.Reset(&logger.LogOptions{
-		Level:      config.Cfg.Logger.Level,
-		JSON:       config.Cfg.Logger.JSON,
-		Filename:   config.Cfg.Logger.Filename,
-		MaxSize:    config.Cfg.Logger.LogFile.MaxSize,
-		MaxBackups: config.Cfg.Logger.LogFile.MaxBackups,
-		MaxAge:     config.Cfg.Logger.LogFile.MaxAge,
-		Compress:   config.Cfg.Logger.LogFile.Compress,
+		Level:      cfg.Logger.Level,
+		JSON:       cfg.Logger.JSON,
+		Filename:   cfg.Logger.Filename,
+		MaxSize:    cfg.Logger.LogFile.MaxSize,
+		MaxBackups: cfg.Logger.LogFile.MaxBackups,
+		MaxAge:     cfg.Logger.LogFile.MaxAge,
+		Compress:   cfg.Logger.LogFile.Compress,
 	})
 	l := logger.Get()
 	l.Debug("Debug logging enabled")
-	ex := exporter.NewExporter(config.Cfg.Exporter)
-	k, err := kopiametrics.NewKopiaClients(&config.Cfg)
+	ex := exporter.NewExporter(cfg.Exporter, ver)
+	k, err := kopiametrics.NewKopiaClients(cfg)
 	if err != nil {
 		return err
 	}
@@ -64,8 +66,8 @@ func run(ctx context.Context, args []string) error {
 				if err := k.RunOnce(ctx); err != nil {
 					l.Error("RunOnce failed", "err", err)
 				}
-				sleepInterval = config.Cfg.Exporter.Interval
-				l.Debug("Now sleeping", "Duration (sec)", config.Cfg.Exporter.Interval)
+				sleepInterval = cfg.Exporter.Interval
+				l.Debug("Now sleeping", "Duration (sec)", cfg.Exporter.Interval)
 				if testReady != nil {
 					close(testReady)
 					testReady = nil

@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"regexp"
 	"runtime/debug"
@@ -28,10 +29,6 @@ import (
 )
 
 const maxTCPPort = 65535
-
-var k = koanf.New(".")
-
-var givenVersion string
 
 var ReadBuildInfo = debug.ReadBuildInfo
 
@@ -100,8 +97,6 @@ type Config struct {
 	Logger   LoggerConfig
 }
 
-var Cfg Config
-
 // VersionInfo holds build version information extracted from Go's debug info.
 type VersionInfo struct {
 	Version   string
@@ -111,8 +106,8 @@ type VersionInfo struct {
 }
 
 // GetVersionInfo returns build version, revision, and time from Go's debug info.
-func GetVersionInfo() VersionInfo {
-	info := VersionInfo{Version: givenVersion}
+func GetVersionInfo(version string) VersionInfo {
+	info := VersionInfo{Version: version}
 
 	buildInfo, ok := ReadBuildInfo()
 	if !ok {
@@ -135,8 +130,8 @@ func GetVersionInfo() VersionInfo {
 }
 
 // formatVersionInfo returns the formatted build version information.
-func formatVersionInfo() string {
-	vi := GetVersionInfo()
+func formatVersionInfo(version string) string {
+	vi := GetVersionInfo(version)
 
 	output := fmt.Sprintf("%-15s: %s\n", "Version", vi.Version)
 	output += fmt.Sprintf("%-15s: %s\n", "Revision", vi.Revision)
@@ -145,15 +140,33 @@ func formatVersionInfo() string {
 	return output
 }
 
+// readFlagDefaults reads flag defaults from the embedded config so the
+// command-line help always matches the effective YAML defaults.
+func readFlagDefaults() (port int, logLevel string, err error) {
+	defaultK := koanf.New(".")
+	if err := defaultK.Load(rawbytes.Provider(defaultConfig), yaml.Parser()); err != nil {
+		return 0, "", fmt.Errorf("failed to load embedded default configuration: %w", err)
+	}
+
+	port, err = getConfigInt(defaultK, "exporter.port")
+	if err != nil {
+		return 0, "", err
+	}
+	return port, getConfigString(defaultK, "logger.log_level"), nil
+}
+
 // ParseFlags parses command-line flags and returns the config file path and parsed flagset.
 func ParseFlags(version string, args []string) (string, *pflag.FlagSet, error) {
-	givenVersion = version
+	portDefault, logLevelDefault, err := readFlagDefaults()
+	if err != nil {
+		return "", nil, err
+	}
 
 	fs := pflag.NewFlagSet("kopia-go-exporter", pflag.ContinueOnError)
 
 	configFile := fs.StringP("config", "c", "", "Path to YAML config file")
-	fs.Int("exporter-port", 9090, "Exporter HTTP server port") //nolint:mnd
-	fs.StringP("log_level", "l", "info", "Log level (debug, info, warn, error)")
+	fs.Int("exporter-port", portDefault, "Exporter HTTP server port")
+	fs.StringP("log_level", "l", logLevelDefault, "Log level (debug, info, warn, error)")
 	showVersion := fs.BoolP("version", "V", false, "Print version information and exit")
 	showHelp := fs.BoolP("help", "h", false, "Print help")
 
@@ -169,7 +182,7 @@ func ParseFlags(version string, args []string) (string, *pflag.FlagSet, error) {
 	}
 
 	if *showVersion {
-		fmt.Print(formatVersionInfo())
+		fmt.Print(formatVersionInfo(version))
 		return "", nil, flag.ErrHelp
 	}
 
@@ -341,67 +354,74 @@ func readLoggerConfig(koanfInstance *koanf.Koanf) (LoggerConfig, error) {
 	return cfg, errors.Join(errs...)
 }
 
-func readConfig(filename string, fs *pflag.FlagSet, defaultConfig []byte) error {
+func readConfig(filename string, fs *pflag.FlagSet) (Config, error) {
 	l := logger.Get()
+	var cfg Config
 
-	k = koanf.New(".")
+	koanfInstance := koanf.New(".")
 
 	// Load embedded default configuration first
 	if len(defaultConfig) > 0 {
-		if err := k.Load(rawbytes.Provider(defaultConfig), yaml.Parser()); err != nil {
+		if err := koanfInstance.Load(rawbytes.Provider(defaultConfig), yaml.Parser()); err != nil {
 			l.Warn("Failed to load embedded default configuration", "err", err)
 		}
 	}
 
 	// Load user configuration file (overrides defaults)
 	if filename != "" {
-		if err := k.Load(file.Provider(filename), yaml.Parser()); err != nil {
-			return fmt.Errorf("failed to read configuration file %s: %w", filename, err)
+		if err := koanfInstance.Load(file.Provider(filename), yaml.Parser()); err != nil {
+			return cfg, fmt.Errorf("failed to read configuration file %s: %w", filename, err)
 		}
 	}
 
 	// Load environment variables with KGE_ prefix (overrides YAML values)
-	loadConfigLayer(k, env.Provider("KGE_", ".", kgeKeyMapper), "Failed to load environment variable overrides")
+	loadConfigLayer(koanfInstance, env.Provider("KGE_", ".", func(name string) string {
+		return kgeKeyMapper(koanfInstance, name)
+	}), "Failed to load environment variable overrides")
 
 	// Load pflag values, converting dashes to dots for koanf key matching.
 	// Only flags explicitly set by the user override YAML/env values.
 	if fs != nil {
-		loadConfigLayer(k,
-			posflag.ProviderWithValue(fs, ".", k, flagKeyMapper),
+		loadConfigLayer(koanfInstance,
+			posflag.ProviderWithValue(fs, ".", koanfInstance, flagKeyMapper),
 			"Failed to load flag overrides",
 		)
 	}
 
 	var err error
-	Cfg.Exporter, err = readExporterConfig(k)
+	cfg.Exporter, err = readExporterConfig(koanfInstance)
 	if err != nil {
-		return err
+		return cfg, err
 	}
-	Cfg.Filters, err = readFiltersConfig(k)
+	cfg.Filters, err = readFiltersConfig(koanfInstance)
 	if err != nil {
-		return err
+		return cfg, err
 	}
-	Cfg.Kopia, err = readKopiaConfig(k)
+	cfg.Kopia, err = readKopiaConfig(koanfInstance)
 	if err != nil {
-		return err
+		return cfg, err
 	}
-	Cfg.Logger, err = readLoggerConfig(k)
+	cfg.Logger, err = readLoggerConfig(koanfInstance)
 	if err != nil {
-		return err
+		return cfg, err
 	}
 
-	logConfig(l)
+	if err := checkPlaceholders(koanfInstance); err != nil {
+		return cfg, err
+	}
 
-	return nil
+	logConfig(l, &cfg)
+
+	return cfg, nil
 }
 
 // kgeKeyMapper maps a KGE_-prefixed environment variable name to its
 // corresponding koanf config key. It first tries to match a known config key
 // so keys containing underscores (for example logger.log_file.maxsize) keep
 // their exact name. Unknown keys fall back to lowercased dots.
-func kgeKeyMapper(s string) string {
+func kgeKeyMapper(koanfInstance *koanf.Koanf, s string) string {
 	name := strings.TrimPrefix(s, "KGE_")
-	for _, key := range k.Keys() {
+	for _, key := range koanfInstance.Keys() {
 		if strings.EqualFold(strings.ReplaceAll(key, ".", "_"), name) {
 			return key
 		}
@@ -418,38 +438,55 @@ func loadConfigLayer(k *koanf.Koanf, loader koanf.Provider, msg string) {
 	}
 }
 
+// redactURL removes credentials from rawURL when redact is true. Invalid URLs
+// are replaced entirely to avoid leaking malformed credentials.
+func redactURL(rawURL string, redact bool) string {
+	if !redact {
+		return rawURL
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "****"
+	}
+	if parsed.User == nil {
+		return rawURL
+	}
+	parsed.User = url.UserPassword("redacted", "redacted")
+	return parsed.String()
+}
+
 // logConfig logs every configuration key at INFO level, one message per key.
-// When logger.redact_sensitive is true (the default), password and fingerprint
-// values are replaced with "****".
-func logConfig(l *slog.Logger) {
+// When logger.redact_sensitive is true (the default), passwords and
+// fingerprints are replaced with "****", and URL credentials are redacted.
+func logConfig(l *slog.Logger, cfg *Config) {
 	redact := func(val string) string {
-		if Cfg.Logger.RedactSensitive {
+		if cfg.Logger.RedactSensitive {
 			return "****"
 		}
 		return val
 	}
-	l.Info("Config: exporter.port", "port", Cfg.Exporter.Port)
-	l.Info("Config: exporter.metrics.prefix", "prefix", Cfg.Exporter.Metrics.Prefix)
-	l.Info("Config: exporter.interval", "interval", Cfg.Exporter.Interval)
-	l.Info("Config: filters.include.path", "path", Cfg.Filters.Include.Path)
-	l.Info("Config: filters.exclude.path", "path", Cfg.Filters.Exclude.Path)
-	l.Info("Config: kopia.apiserver.repositoryURL", "repositoryURL", Cfg.Kopia.APIServer.RepositoryURL)
-	l.Info("Config: kopia.apiserver.fingerprint", "fingerprint", redact(Cfg.Kopia.APIServer.Fingerprint))
-	for _, name := range sortedClientNames() {
-		client := Cfg.Kopia.Clients[name]
+	l.Info("Config: exporter.port", "port", cfg.Exporter.Port)
+	l.Info("Config: exporter.metrics.prefix", "prefix", cfg.Exporter.Metrics.Prefix)
+	l.Info("Config: exporter.interval", "interval", cfg.Exporter.Interval)
+	l.Info("Config: filters.include.path", "path", cfg.Filters.Include.Path)
+	l.Info("Config: filters.exclude.path", "path", cfg.Filters.Exclude.Path)
+	l.Info("Config: kopia.apiserver.repositoryURL", "repositoryURL", redactURL(cfg.Kopia.APIServer.RepositoryURL, cfg.Logger.RedactSensitive))
+	l.Info("Config: kopia.apiserver.fingerprint", "fingerprint", redact(cfg.Kopia.APIServer.Fingerprint))
+	for _, name := range sortedClientNames(cfg) {
+		client := cfg.Kopia.Clients[name]
 		l.Info("Config: kopia.clients."+name+".username", "username", client.Username)
 		l.Info("Config: kopia.clients."+name+".hostname", "hostname", client.Hostname)
 		l.Info("Config: kopia.clients."+name+".password", "password", redact(client.Password))
 	}
-	l.Info("Config: kopia.retentionstoextract", "retentions", Cfg.Kopia.Retentions)
-	l.Info("Config: logger.log_level", "log_level", Cfg.Logger.Level)
-	l.Info("Config: logger.json", "json", Cfg.Logger.JSON)
-	l.Info("Config: logger.filename", "filename", Cfg.Logger.Filename)
-	l.Info("Config: logger.redact_sensitive", "redact_sensitive", Cfg.Logger.RedactSensitive)
-	l.Info("Config: logger.log_file.maxsize", "maxsize", Cfg.Logger.LogFile.MaxSize)
-	l.Info("Config: logger.log_file.maxbackups", "maxbackups", Cfg.Logger.LogFile.MaxBackups)
-	l.Info("Config: logger.log_file.maxage", "maxage", Cfg.Logger.LogFile.MaxAge)
-	l.Info("Config: logger.log_file.compress", "compress", Cfg.Logger.LogFile.Compress)
+	l.Info("Config: kopia.retentionstoextract", "retentions", cfg.Kopia.Retentions)
+	l.Info("Config: logger.log_level", "log_level", cfg.Logger.Level)
+	l.Info("Config: logger.json", "json", cfg.Logger.JSON)
+	l.Info("Config: logger.filename", "filename", cfg.Logger.Filename)
+	l.Info("Config: logger.redact_sensitive", "redact_sensitive", cfg.Logger.RedactSensitive)
+	l.Info("Config: logger.log_file.maxsize", "maxsize", cfg.Logger.LogFile.MaxSize)
+	l.Info("Config: logger.log_file.maxbackups", "maxbackups", cfg.Logger.LogFile.MaxBackups)
+	l.Info("Config: logger.log_file.maxage", "maxage", cfg.Logger.LogFile.MaxAge)
+	l.Info("Config: logger.log_file.compress", "compress", cfg.Logger.LogFile.Compress)
 }
 
 // flagKeyMapper converts a pflag key (using dashes) into the dotted koanf key
@@ -461,29 +498,29 @@ func flagKeyMapper(key, value string) (mapped string, mappedValue any) {
 }
 
 // CheckConfig validates required and critical configuration values.
-func CheckConfig(defaultConfig []byte) error {
+func CheckConfig(cfg *Config) error {
 	var errs []error
 
-	if Cfg.Exporter.Port < 1 || Cfg.Exporter.Port > maxTCPPort {
-		errs = append(errs, fmt.Errorf("exporter.port must be between 1 and %d, got %d", maxTCPPort, Cfg.Exporter.Port))
+	if cfg.Exporter.Port < 1 || cfg.Exporter.Port > maxTCPPort {
+		errs = append(errs, fmt.Errorf("exporter.port must be between 1 and %d, got %d", maxTCPPort, cfg.Exporter.Port))
 	}
-	if Cfg.Exporter.Interval <= 0 {
-		errs = append(errs, fmt.Errorf("exporter.interval must be positive, got %d", Cfg.Exporter.Interval))
+	if cfg.Exporter.Interval <= 0 {
+		errs = append(errs, fmt.Errorf("exporter.interval must be positive, got %d", cfg.Exporter.Interval))
 	}
-	if Cfg.Exporter.Metrics.Prefix != "" && !prometheusMetricName.MatchString(Cfg.Exporter.Metrics.Prefix) {
-		errs = append(errs, fmt.Errorf("exporter.metrics.prefix %q is not a valid Prometheus metric name", Cfg.Exporter.Metrics.Prefix))
+	if cfg.Exporter.Metrics.Prefix != "" && !prometheusMetricName.MatchString(cfg.Exporter.Metrics.Prefix) {
+		errs = append(errs, fmt.Errorf("exporter.metrics.prefix %q is not a valid Prometheus metric name", cfg.Exporter.Metrics.Prefix))
 	}
-	if Cfg.Kopia.APIServer.RepositoryURL == "" {
+	if cfg.Kopia.APIServer.RepositoryURL == "" {
 		errs = append(errs, errors.New("kopia.apiserver.repositoryURL is not set"))
 	}
-	if Cfg.Kopia.APIServer.Fingerprint == "" {
+	if cfg.Kopia.APIServer.Fingerprint == "" {
 		errs = append(errs, errors.New("kopia.apiserver.fingerprint is not set"))
 	}
-	if len(Cfg.Kopia.Clients) == 0 {
+	if len(cfg.Kopia.Clients) == 0 {
 		errs = append(errs, errors.New("kopia.clients is empty; configure at least one client under kopia.clients"))
 	}
-	for _, name := range sortedClientNames() {
-		client := Cfg.Kopia.Clients[name]
+	for _, name := range sortedClientNames(cfg) {
+		client := cfg.Kopia.Clients[name]
 		if client.Username == "" {
 			errs = append(errs, fmt.Errorf("kopia.clients.%s.username is not set", name))
 		}
@@ -494,17 +531,14 @@ func CheckConfig(defaultConfig []byte) error {
 			errs = append(errs, fmt.Errorf("kopia.clients.%s.password is not set", name))
 		}
 	}
-	if err := checkPlaceholders(defaultConfig); err != nil {
-		errs = append(errs, err)
-	}
 	return errors.Join(errs...)
 }
 
 // sortedClientNames returns the names of all configured Kopia clients in
 // lexicographic order, so validation errors and config logs are stable.
-func sortedClientNames() []string {
-	names := make([]string, 0, len(Cfg.Kopia.Clients))
-	for name := range Cfg.Kopia.Clients {
+func sortedClientNames(cfg *Config) []string {
+	names := make([]string, 0, len(cfg.Kopia.Clients))
+	for name := range cfg.Kopia.Clients {
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -521,7 +555,7 @@ func isPlaceholder(val string) bool {
 // values match the ^<.*>$ placeholder pattern, then verifies that those
 // same keys have been overridden (no longer matching ^<.*>$) in the final
 // configuration. Values like "xx<xx>xx" are intentionally allowed.
-func checkPlaceholders(defaultConfig []byte) error {
+func checkPlaceholders(koanfInstance *koanf.Koanf) error {
 	if len(defaultConfig) == 0 {
 		return nil
 	}
@@ -536,7 +570,7 @@ func checkPlaceholders(defaultConfig []byte) error {
 		if !isPlaceholder(defaultVal) {
 			continue
 		}
-		currentVal := getConfigString(k, key)
+		currentVal := getConfigString(koanfInstance, key)
 		if isPlaceholder(currentVal) {
 			return fmt.Errorf(
 				"configuration key %q still has placeholder value %q; override it in config file, env var, or CLI flag",
@@ -548,13 +582,17 @@ func checkPlaceholders(defaultConfig []byte) error {
 }
 
 // New parses flags, loads the config file, and validates all required fields.
-func New(version string, args []string) error {
+func New(version string, args []string) (*Config, error) {
 	configFile, fs, err := ParseFlags(version, args)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := readConfig(configFile, fs, defaultConfig); err != nil {
-		return err
+	cfg, err := readConfig(configFile, fs)
+	if err != nil {
+		return nil, err
 	}
-	return CheckConfig(defaultConfig)
+	if err := CheckConfig(&cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
 }

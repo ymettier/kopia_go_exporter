@@ -83,22 +83,23 @@ The project is licensed under the [MIT License](LICENSE).
 ### Configuration (internal/config/config.go)
 - The configuration file (read with `--config`/`-c`) is optional.
 - CLI flag parsing via `ParseFlags()`: `--config`/`-c`, `--exporter-port`, `--log_level`/`-l`, `--version`/`-V`, `--help`/`-h`
-- `New()` constructor: parses flags, loads YAML via Koanf, overlays env vars, validates, returns error
+- `New()` constructor: parses flags, loads YAML via Koanf, overlays env vars, validates, and returns a `*Config`
 - `config.default.yaml` is embedded in the binary via `//go:embed` in `internal/config/config.go` and provides all configuration defaults. It is loaded first as the base layer. The `--config` file, environment variables, and CLI flags overlay it.
 - Koanf layered loading: embedded defaults (`config.default.yaml`) → YAML file → environment variables (KGE_ prefix) → pflag values
+- CLI flag defaults are read from the embedded `config.default.yaml`, so `--help` cannot drift from YAML defaults
 - Environment variable mapping: `KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD` → `kopia.clients.default.password` (uppercase, underscores → dots)
-- Config validation in `CheckConfig()`: returns error on missing required fields
-- Config struct: `config.Cfg` (global, populated at startup) with `Exporter`, `Filters`, `Kopia`, and `Logger` sub-structs
+- Config validation in `CheckConfig(cfg *Config)`: returns error on missing required fields
+- Config struct is returned by `New()` with `Exporter`, `Filters`, `Kopia`, and `Logger` sub-structs; consumers receive it through constructors
 - `KopiaConfig` holds `APIServer` (`RepositoryURL`, `Fingerprint`), `Clients` (a map of client name → `ClientConfig{Username, Hostname, Password}`), and `Retentions`. One Kopia API server is queried under each configured identity (the server only returns each client its own snapshots).
-- `sortedClientNames()` supports deterministic iteration of the clients map.
+- `sortedClientNames(cfg)` supports deterministic iteration of the clients map.
 - `Filters` holds `Include`/`Exclude` `FilterConfig` entries, each with a `Path []string` list and the compiled `PathRegex []*regexp.Regexp`. Patterns are compiled to regexes at load time (see `readFiltersConfig`) so invalid patterns fail fast.
-- `GetVersionInfo()` returns `VersionInfo` struct with version, revision, time, dirty, goVersion from build info
+- `GetVersionInfo(version)` returns `VersionInfo` struct with version, revision, time, dirty, goVersion from build info
 - `ReadBuildInfo` is an exported variable holding `debug.ReadBuildInfo`, mockable for testing
 - Helper functions: `lookupConfigKey`, `getConfigString`, `getConfigInt`, `getConfigBool`
-- After config is fully parsed, `logConfig()` logs every key at INFO level, one message per key. When `logger.redact_sensitive` is true (default), password and fingerprint values are replaced with `****`.
+- After config is fully parsed, `logConfig(l, cfg)` logs every key at INFO level, one message per key. When `logger.redact_sensitive` is true (default), passwords and fingerprints are replaced with `****`, and URL credentials are redacted via `redactURL`.
 
 ### Exporter (internal/exporter/exporter.go)
-- Constructor `NewExporter(cfg config.ExporterConfig)` receives the exporter config directly
+- Constructor `NewExporter(cfg config.ExporterConfig, version string)` receives the exporter config and version directly
 - Creates a `prometheus.Registry` with Go and process collectors
 - Registers `build_info` gauge with version/commit/date labels
 - Starts HTTP server on configured port serving `/metrics`
@@ -159,7 +160,7 @@ The project is licensed under the [MIT License](LICENSE).
 - Constructors: `New()` returns a pointer for larger structs (e.g., `*KopiaClient`, `*Exporter`).
 - Logger: each package calls `logger.Get()` locally instead of exposing a package-level variable.
 - Context: pass `context.Context` to operations that may need cancellation.
-- Global config: `config.Cfg` is the global populated at startup. Exporter and KopiaClient receive their config via constructors, not by reading the global.
+- Config flow: `config.New()` returns the populated config. Pass it to Exporter, KopiaClient, logger setup, and the main loop instead of using a package-level global.
 
 ### Environment Variables
 - Use optional environment variables for configuration (e.g., `KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD`...)

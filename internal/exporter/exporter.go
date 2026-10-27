@@ -23,7 +23,7 @@ type Exporter struct {
 }
 
 // NewExporter creates a new Exporter with a Prometheus registry and build info metric.
-func NewExporter(cfg config.ExporterConfig) *Exporter {
+func NewExporter(cfg config.ExporterConfig, version string) *Exporter {
 	l := logger.Get()
 	ex := new(Exporter)
 	ex.cfg = cfg
@@ -32,7 +32,7 @@ func NewExporter(cfg config.ExporterConfig) *Exporter {
 	ex.Reg.MustRegister(collectors.NewGoCollector())
 	ex.Reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
-	vi := config.GetVersionInfo()
+	vi := config.GetVersionInfo(version)
 	if vi.Revision == "" {
 		l.Error("Failed to retrieve full version info; metric build_info will not be available", "version", vi.Version)
 	} else {

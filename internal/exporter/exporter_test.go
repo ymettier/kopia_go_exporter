@@ -67,7 +67,7 @@ func TestNewExporter(t *testing.T) {
 				Port:    tt.port,
 				Metrics: struct{ Prefix string }{Prefix: "test_prefix"},
 			}
-			ex := NewExporter(cfg)
+			ex := NewExporter(cfg, "test")
 			require.NotNil(t, ex)
 			if tt.checkPort {
 				assert.Equal(t, cfg.Port, ex.cfg.Port)
