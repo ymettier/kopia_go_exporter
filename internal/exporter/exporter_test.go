@@ -273,3 +273,28 @@ func TestShutdownServer(t *testing.T) {
 		})
 	}
 }
+
+// Starts the exporter HTTP server and verifies that the server is configured
+// with Read, Write, and Idle timeouts in addition to ReadHeaderTimeout.
+func TestExporter_ServerTimeouts(t *testing.T) {
+	logger.Reset(nil)
+	port := freePort(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	ex := Exporter{
+		Reg: prometheus.NewRegistry(),
+		cfg: config.ExporterConfig{Port: port},
+	}
+
+	go ex.Run(ctx)
+
+	mux := http.NewServeMux()
+	srv := ex.newHTTPServer(mux)
+
+	require.NotNil(t, srv)
+	assert.Greater(t, srv.ReadTimeout, 10*time.Second)
+	assert.Greater(t, srv.WriteTimeout, 10*time.Second)
+	assert.Greater(t, srv.IdleTimeout, 10*time.Second)
+	assert.Greater(t, srv.ReadHeaderTimeout, time.Second)
+
+	cancel()
+}

@@ -64,11 +64,7 @@ func (ex *Exporter) Run(ctx context.Context) {
 	l := logger.Get()
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(ex.Reg, promhttp.HandlerOpts{}))
-	srv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", ex.cfg.Port),
-		Handler:           mux,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
+	srv := ex.newHTTPServer(mux)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -79,6 +75,18 @@ func (ex *Exporter) Run(ctx context.Context) {
 	}()
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		l.Error("HTTP server error", "port", ex.cfg.Port, "err", err)
+	}
+}
+
+// newHTTPServer creates an HTTP server for serving metrics with sensible timeouts.
+func (ex *Exporter) newHTTPServer(mux *http.ServeMux) *http.Server {
+	return &http.Server{
+		Addr:              fmt.Sprintf(":%d", ex.cfg.Port),
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 }
 
