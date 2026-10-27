@@ -9,6 +9,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -50,6 +51,11 @@ func getLogWriter(opts *LogOptions) (io.Writer, *lumberjack.Logger) {
 		return os.Stderr, nil
 	}
 
+	if err := validateLogPath(filename); err != nil {
+		log.Println(fmt.Errorf("invalid log path %q: %w; falling back to stderr", filename, err))
+		return os.Stderr, nil
+	}
+
 	l := &lumberjack.Logger{
 		Filename:   filename,
 		MaxSize:    opts.MaxSize,
@@ -58,6 +64,26 @@ func getLogWriter(opts *LogOptions) (io.Writer, *lumberjack.Logger) {
 		Compress:   opts.Compress,
 	}
 	return l, l
+}
+
+// validateLogPath checks that the directory for the given log file path
+// exists and is writable.
+func validateLogPath(filename string) error {
+	dir := filepath.Dir(filename)
+	if dir == "" || dir == "." {
+		return nil
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		return fmt.Errorf("directory %q: %w", dir, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("parent %q is not a directory", dir)
+	}
+	if perm := info.Mode().Perm(); perm&0o200 == 0 {
+		return fmt.Errorf("directory %q is not writable", dir)
+	}
+	return nil
 }
 
 func parseLogLevel(opts *LogOptions) slog.Level {

@@ -224,6 +224,7 @@ func (k *KopiaClient) GenerateConfigFile(ctx context.Context) error {
 }
 
 // Connect generates a config file and opens the Kopia repository.
+// On any error, the temp directory is cleaned up to avoid leaking files.
 func (k *KopiaClient) Connect(ctx context.Context) error {
 	l := logger.Get()
 	var err error
@@ -231,6 +232,7 @@ func (k *KopiaClient) Connect(ctx context.Context) error {
 	if err := k.GenerateConfigFile(ctx); err != nil {
 		l.Error("Failed to launch repository server", "err", err, "ConfigFile", k.configFile)
 		k.isConnected = false
+		k.cleanupTemp()
 		return err
 	}
 	l.Debug("Try to connect to server", "ConfigFile", k.configFile)
@@ -238,10 +240,22 @@ func (k *KopiaClient) Connect(ctx context.Context) error {
 	if err != nil {
 		l.Error("Failed to open repository", "err", err, "ConfigFile", k.configFile)
 		k.isConnected = false
+		k.cleanupTemp()
 		return err
 	}
 	k.isConnected = true
 	return nil
+}
+
+// cleanupTemp removes the temp directory if one was created.
+func (k *KopiaClient) cleanupTemp() {
+	if k.tempDir != "" {
+		if err := os.RemoveAll(k.tempDir); err != nil {
+			logger.Get().Debug("Failed to remove temporary directory", "tempDir", k.tempDir, "err", err)
+		}
+		k.tempDir = ""
+		k.configFile = ""
+	}
 }
 
 // matchPathFilters decides whether a snapshot source path should produce
@@ -346,12 +360,7 @@ func (k *KopiaClient) Disconnect(ctx context.Context) {
 	}
 	l.Debug("Disconnected from server", "ConfigFile", k.configFile)
 	k.isConnected = false
-	if k.tempDir != "" {
-		if err := os.RemoveAll(k.tempDir); err != nil {
-			l.Debug("Failed to remove temporary directory", "tempDir", k.tempDir, "err", err)
-		}
-		k.tempDir = ""
-	}
+	k.cleanupTemp()
 }
 
 // RunOnce performs a single metrics collection cycle for every configured

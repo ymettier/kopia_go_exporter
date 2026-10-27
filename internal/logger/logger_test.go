@@ -344,3 +344,60 @@ func TestOptionsFromEnv(t *testing.T) {
 		})
 	}
 }
+
+// Validates log file paths and expects errors for nonexistent
+// directories and success for valid or relative paths.
+func TestValidateLogPath(t *testing.T) {
+	tests := []struct {
+		name      string
+		filename  string
+		wantError bool
+	}{
+		{
+			name:     "valid temp directory file",
+			filename: t.TempDir() + "/app.log",
+		},
+		{
+			name:      "nonexistent directory",
+			filename:  "/nonexistent/dir/app.log",
+			wantError: true,
+		},
+		{
+			name:     "parent is file not directory",
+			filename: t.TempDir() + "/notadir/app.log",
+			// This may or may not error depending on whether /notadir exists;
+			// it should error because the directory doesn't exist.
+			wantError: true,
+		},
+		{
+			name:     "just filename (relative)",
+			filename: "app.log",
+		},
+		{
+			name:     "current directory path",
+			filename: "./app.log",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateLogPath(tt.filename)
+			if tt.wantError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// Gets the log writer for an unwritable directory and expects a fallback
+// to stderr with a nil lumberjack logger.
+func TestGetLogWriter_InvalidPath(t *testing.T) {
+	opts := &LogOptions{
+		Filename: "/nonexistent/dir/app.log",
+	}
+	w, lj := getLogWriter(opts)
+	assert.Equal(t, os.Stderr, w)
+	assert.Nil(t, lj)
+}

@@ -1490,6 +1490,7 @@ func TestKopiaClients_RunOnce_ClientFailure(t *testing.T) {
 }
 
 // Connects and expects repo.Open to fail via the openRepo test hook.
+// Verifies the temp directory is cleaned up on the error path.
 func TestConnect_RepoOpenFails(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -1528,12 +1529,16 @@ func TestConnect_RepoOpenFails(t *testing.T) {
 	k, err := newTestKopiaClient(cfg)
 	require.NoError(t, err)
 	k.configFile = configFile
-	t.Cleanup(func() { k.Disconnect(context.Background()) })
+	tempDir := k.tempDir
+	assert.DirExists(t, tempDir, "temp dir should exist before Connect")
 
 	err = k.Connect(context.Background())
 	assert.Error(t, err, "Connect should fail when repo.Open returns error")
 	assert.Contains(t, err.Error(), "simulated")
 	assert.False(t, k.isConnected, "isConnected should remain false on Connect error")
+	assert.Empty(t, k.tempDir, "tempDir should be cleaned up on Connect error")
+	assert.Empty(t, k.configFile, "configFile should be cleaned up on Connect error")
+	assert.NoDirExists(t, tempDir, "temp dir should be removed after Connect error")
 }
 
 // Connects to a running test API server, then stubs loadSnapshotsFunc to fail
