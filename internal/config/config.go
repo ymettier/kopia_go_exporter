@@ -148,11 +148,11 @@ func readFlagDefaults() (port int, logLevel string, err error) {
 		return 0, "", fmt.Errorf("failed to load embedded default configuration: %w", err)
 	}
 
-	port, err = getConfigInt(defaultK, "exporter.port")
+	port, err = configInt(defaultK, "exporter.port")
 	if err != nil {
 		return 0, "", err
 	}
-	return port, getConfigString(defaultK, "logger.log_level"), nil
+	return port, configString(defaultK, "logger.log_level"), nil
 }
 
 // ParseFlags parses command-line flags and returns the config file path and parsed flagset.
@@ -189,48 +189,65 @@ func ParseFlags(version string, args []string) (string, *pflag.FlagSet, error) {
 	return *configFile, fs, nil
 }
 
-func lookupConfigKey(koanfInstance *koanf.Koanf, camelKey string) (string, bool) {
-	envKey := strings.ToLower(camelKey)
-	if koanfInstance.Exists(envKey) {
-		return koanfInstance.String(envKey), true
+func configString(k *koanf.Koanf, key string) string {
+	if k.Exists(key) {
+		return k.String(key)
 	}
-	if koanfInstance.Exists(camelKey) {
-		return koanfInstance.String(camelKey), true
+	lk := strings.ToLower(key)
+	if k.Exists(lk) {
+		return k.String(lk)
 	}
-	underscoreKey := strings.ReplaceAll(strings.ToLower(camelKey), ".", "_")
-	if koanfInstance.Exists(underscoreKey) {
-		return koanfInstance.String(underscoreKey), true
-	}
-	return "", false
-}
-
-func getConfigString(koanfInstance *koanf.Koanf, camelKey string) string {
-	if val, ok := lookupConfigKey(koanfInstance, camelKey); ok {
-		return val
+	uk := strings.ReplaceAll(lk, ".", "_")
+	if k.Exists(uk) {
+		return k.String(uk)
 	}
 	return ""
 }
 
-func getConfigInt(koanfInstance *koanf.Koanf, camelKey string) (int, error) {
-	val, ok := lookupConfigKey(koanfInstance, camelKey)
-	if !ok {
-		return 0, nil
+func configInt(k *koanf.Koanf, key string) (int, error) {
+	var v string
+	if k.Exists(key) {
+		v = k.String(key)
+	} else {
+		lk := strings.ToLower(key)
+		if k.Exists(lk) {
+			v = k.String(lk)
+		} else {
+			uk := strings.ReplaceAll(lk, ".", "_")
+			if k.Exists(uk) {
+				v = k.String(uk)
+			} else {
+				return 0, nil
+			}
+		}
 	}
-	i, err := strconv.Atoi(val)
+	i, err := strconv.Atoi(v)
 	if err != nil {
-		return 0, fmt.Errorf("invalid integer for %s: %q: %w", camelKey, val, err)
+		return 0, fmt.Errorf("invalid integer for %s: %q: %w", key, v, err)
 	}
 	return i, nil
 }
 
-func getConfigBool(koanfInstance *koanf.Koanf, camelKey string) (bool, error) {
-	val, ok := lookupConfigKey(koanfInstance, camelKey)
-	if !ok {
-		return false, nil
+func configBool(k *koanf.Koanf, key string) (bool, error) {
+	var v string
+	if k.Exists(key) {
+		v = k.String(key)
+	} else {
+		lk := strings.ToLower(key)
+		if k.Exists(lk) {
+			v = k.String(lk)
+		} else {
+			uk := strings.ReplaceAll(lk, ".", "_")
+			if k.Exists(uk) {
+				v = k.String(uk)
+			} else {
+				return false, nil
+			}
+		}
 	}
-	b, err := strconv.ParseBool(val)
+	b, err := strconv.ParseBool(v)
 	if err != nil {
-		return false, fmt.Errorf("invalid boolean for %s: %q: %w", camelKey, val, err)
+		return false, fmt.Errorf("invalid boolean for %s: %q: %w", key, v, err)
 	}
 	return b, nil
 }
@@ -240,12 +257,12 @@ func readExporterConfig(koanfInstance *koanf.Koanf) (ExporterConfig, error) {
 	var errs []error
 	var err error
 
-	cfg.Port, err = getConfigInt(koanfInstance, "exporter.port")
+	cfg.Port, err = configInt(koanfInstance, "exporter.port")
 	errs = append(errs, err)
 
-	cfg.Metrics.Prefix = getConfigString(koanfInstance, "exporter.metrics.prefix")
+	cfg.Metrics.Prefix = configString(koanfInstance, "exporter.metrics.prefix")
 
-	cfg.Interval, err = getConfigInt(koanfInstance, "exporter.interval")
+	cfg.Interval, err = configInt(koanfInstance, "exporter.interval")
 	errs = append(errs, err)
 
 	return cfg, errors.Join(errs...)
@@ -289,10 +306,10 @@ func readFilterGroup(koanfInstance *koanf.Koanf, key string) (FilterConfig, erro
 
 func compileRegexes(patterns []string) ([]*regexp.Regexp, error) {
 	regexes := make([]*regexp.Regexp, 0, len(patterns))
-	for _, p := range patterns {
+	for i, p := range patterns {
 		re, err := regexp.Compile(p)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("pattern[%d] %q: %w", i, p, err)
 		}
 		regexes = append(regexes, re)
 	}
@@ -302,9 +319,9 @@ func compileRegexes(patterns []string) ([]*regexp.Regexp, error) {
 func readKopiaConfig(koanfInstance *koanf.Koanf) (KopiaConfig, error) {
 	var cfg KopiaConfig
 
-	cfg.APIServer.RepositoryURL = getConfigString(koanfInstance, "kopia.apiserver.repositoryURL")
+	cfg.APIServer.RepositoryURL = configString(koanfInstance, "kopia.apiserver.repositoryURL")
 
-	cfg.APIServer.Fingerprint = getConfigString(koanfInstance, "kopia.apiserver.fingerprint")
+	cfg.APIServer.Fingerprint = configString(koanfInstance, "kopia.apiserver.fingerprint")
 
 	cfg.Clients = make(map[string]ClientConfig)
 	if koanfInstance.Exists("kopia.clients") {
@@ -329,26 +346,26 @@ func readLoggerConfig(koanfInstance *koanf.Koanf) (LoggerConfig, error) {
 	var errs []error
 	var err error
 
-	cfg.Level = getConfigString(koanfInstance, "logger.log_level")
+	cfg.Level = configString(koanfInstance, "logger.log_level")
 
-	cfg.JSON, err = getConfigBool(koanfInstance, "logger.json")
+	cfg.JSON, err = configBool(koanfInstance, "logger.json")
 	errs = append(errs, err)
 
-	cfg.Filename = getConfigString(koanfInstance, "logger.filename")
+	cfg.Filename = configString(koanfInstance, "logger.filename")
 
-	cfg.RedactSensitive, err = getConfigBool(koanfInstance, "logger.redact_sensitive")
+	cfg.RedactSensitive, err = configBool(koanfInstance, "logger.redact_sensitive")
 	errs = append(errs, err)
 
-	cfg.LogFile.MaxSize, err = getConfigInt(koanfInstance, "logger.log_file.maxsize")
+	cfg.LogFile.MaxSize, err = configInt(koanfInstance, "logger.log_file.maxsize")
 	errs = append(errs, err)
 
-	cfg.LogFile.MaxBackups, err = getConfigInt(koanfInstance, "logger.log_file.maxbackups")
+	cfg.LogFile.MaxBackups, err = configInt(koanfInstance, "logger.log_file.maxbackups")
 	errs = append(errs, err)
 
-	cfg.LogFile.MaxAge, err = getConfigInt(koanfInstance, "logger.log_file.maxage")
+	cfg.LogFile.MaxAge, err = configInt(koanfInstance, "logger.log_file.maxage")
 	errs = append(errs, err)
 
-	cfg.LogFile.Compress, err = getConfigBool(koanfInstance, "logger.log_file.compress")
+	cfg.LogFile.Compress, err = configBool(koanfInstance, "logger.log_file.compress")
 	errs = append(errs, err)
 
 	return cfg, errors.Join(errs...)
@@ -570,7 +587,7 @@ func checkPlaceholders(koanfInstance *koanf.Koanf) error {
 		if !isPlaceholder(defaultVal) {
 			continue
 		}
-		currentVal := getConfigString(koanfInstance, key)
+		currentVal := configString(koanfInstance, key)
 		if isPlaceholder(currentVal) {
 			return fmt.Errorf(
 				"configuration key %q still has placeholder value %q; override it in config file, env var, or CLI flag",

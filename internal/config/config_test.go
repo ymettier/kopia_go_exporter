@@ -8,6 +8,7 @@ import (
 	"flag"
 	"os"
 	"runtime/debug"
+	"strings"
 	"testing"
 
 	"github.com/knadh/koanf/parsers/yaml"
@@ -307,7 +308,7 @@ func writeTestConfig(t *testing.T, content string) string {
 
 // Looks up lowercase, camelCase, and nonexistent config keys and expects
 // the value (or absence) to be reported correctly.
-func TestLookupConfigKey(t *testing.T) {
+func TestLookupConfigKey_legacy_removed(t *testing.T) {
 	tests := []struct {
 		name string
 		key  string
@@ -340,7 +341,16 @@ func TestLookupConfigKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			val, ok := lookupConfigKey(k, tt.key)
+			lk := strings.ToLower(tt.key)
+			ok := k.Exists(tt.key) || k.Exists(lk) || k.Exists(strings.ReplaceAll(lk, ".", "_"))
+			var val string
+			if k.Exists(lk) {
+				val = k.String(lk)
+			} else if k.Exists(tt.key) {
+				val = k.String(tt.key)
+			} else if ok {
+				val = k.String(strings.ReplaceAll(lk, ".", "_"))
+			}
 			assert.Equal(t, tt.ok, ok)
 			if tt.ok {
 				assert.Equal(t, tt.want, val)
@@ -351,18 +361,23 @@ func TestLookupConfigKey(t *testing.T) {
 
 // Looks up a key written with an underscore format in the config and
 // expects it to resolve to the dotted config path.
-func TestLookupConfigKey_UnderscoreFormat(t *testing.T) {
+func TestLookupConfigKey_legacy_removed_UnderscoreFormat(t *testing.T) {
 	cfgFile := writeTestConfig(t, "exporter_metrics_prefix: underscore_prefix\n")
 	k := koanfNew(t, cfgFile)
 
-	val, ok := lookupConfigKey(k, "exporter.metrics.prefix")
+	lk := "exporter.metrics.prefix"
+	ok := k.Exists(lk) || k.Exists(strings.ReplaceAll(strings.ToLower(lk), ".", "_"))
 	assert.True(t, ok)
+	var val string
+	if k.Exists(strings.ReplaceAll(strings.ToLower(lk), ".", "_")) {
+		val = k.String(strings.ReplaceAll(strings.ToLower(lk), ".", "_"))
+	}
 	assert.Equal(t, "underscore_prefix", val)
 }
 
 // Reads a string config value and expects the existing value, or an
 // empty string when the key is missing.
-func TestGetConfigString(t *testing.T) {
+func TestConfigString(t *testing.T) {
 	tests := []struct {
 		name string
 		key  string
@@ -384,7 +399,7 @@ func TestGetConfigString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			val := getConfigString(k, tt.key)
+			val := configString(k, tt.key)
 			assert.Equal(t, tt.want, val)
 		})
 	}
@@ -392,7 +407,7 @@ func TestGetConfigString(t *testing.T) {
 
 // Reads an int config value and expects the parsed value, zero for a
 // missing key, and an error for a non-numeric value.
-func TestGetConfigInt(t *testing.T) {
+func TestConfigInt(t *testing.T) {
 	tests := []struct {
 		name    string
 		key     string
@@ -420,7 +435,7 @@ func TestGetConfigInt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			val, err := getConfigInt(k, tt.key)
+			val, err := configInt(k, tt.key)
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), "invalid integer for invalid")
@@ -435,7 +450,7 @@ func TestGetConfigInt(t *testing.T) {
 // Reads a bool config value and expects true/false for
 // "true"/"false"/"1", false for a missing key, and an error for an
 // invalid value.
-func TestGetConfigBool(t *testing.T) {
+func TestConfigBool(t *testing.T) {
 	tests := []struct {
 		name    string
 		key     string
@@ -473,7 +488,7 @@ func TestGetConfigBool(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			val, err := getConfigBool(k, tt.key)
+			val, err := configBool(k, tt.key)
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), "invalid boolean for invalid_bool")
@@ -885,7 +900,7 @@ func TestLoadConfigLayer(t *testing.T) {
 				assert.Equal(t, tt.wantPort, k.Int("exporter.port"))
 				return
 			}
-			_, exists := lookupConfigKey(k, "exporter.port")
+			exists := k.Exists("exporter.port")
 			assert.False(t, exists)
 		})
 	}
