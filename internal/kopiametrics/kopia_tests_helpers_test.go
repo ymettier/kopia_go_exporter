@@ -27,6 +27,10 @@ import (
 // Keep this in sync with the documented version in AGENTS.md.
 const kopiaTestVersion = "v0.23.1"
 
+// kopiaChecksumsSHA256 pins checksums.txt for kopiaTestVersion.
+// Update it whenever kopiaTestVersion changes.
+const kopiaChecksumsSHA256 = "ec1089c8309867fb729b981ee77f6ebf57adb154a8094f841c2848ec8e41fb01"
+
 // kopiaTestBinaryPath is the location of the kopia executable relative to the
 // kopiametrics/ package directory (the working directory while the tests run).
 // The binary is kept in the test_assets/ subdirectory and is intentionally NOT
@@ -118,19 +122,51 @@ func expectedKopiaChecksum(t *testing.T, asset string) (string, error) {
 		return "", fmt.Errorf("failed to download checksums.txt: unexpected status %s", resp.Status)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return "", fmt.Errorf("failed to read checksums.txt: %w", err)
 	}
 
+	if err := verifyChecksumManifest(body, kopiaChecksumsSHA256); err != nil {
+		return "", err
+	}
+
+	return parseKopiaChecksum(body, asset)
+}
+
+func verifyChecksumManifest(body []byte, expected string) error {
+	sum := sha256.Sum256(body)
+	got := hex.EncodeToString(sum[:])
+	if got != expected {
+		return fmt.Errorf("checksums.txt SHA256 mismatch: got %s, expected %s", got, expected)
+	}
+
+	return nil
+}
+
+func parseKopiaChecksum(body []byte, asset string) (string, error) {
+	var checksum string
 	for _, line := range strings.Split(string(body), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 2 && fields[1] == asset {
-			return fields[0], nil
+			if len(fields[0]) != sha256.Size*2 {
+				return "", fmt.Errorf("invalid SHA256 checksum for asset %q", asset)
+			}
+			if _, err := hex.DecodeString(fields[0]); err != nil {
+				return "", fmt.Errorf("invalid SHA256 checksum for asset %q: %w", asset, err)
+			}
+			if checksum != "" {
+				return "", fmt.Errorf("multiple checksum entries found for asset %q", asset)
+			}
+			checksum = strings.ToLower(fields[0])
 		}
 	}
 
-	return "", fmt.Errorf("no checksum entry found for asset %q in checksums.txt", asset)
+	if checksum == "" {
+		return "", fmt.Errorf("no checksum entry found for asset %q in checksums.txt", asset)
+	}
+
+	return checksum, nil
 }
 
 // sha256File computes the SHA256 hex digest of the file at path.
@@ -169,7 +205,7 @@ func verifyKopiaChecksum(t *testing.T, archiveFile string) error {
 		return err
 	}
 
-	if got != want {
+	if !strings.EqualFold(got, want) {
 		return fmt.Errorf("checksum mismatch for %s: got %s, expected %s", asset, got, want)
 	}
 
@@ -228,7 +264,7 @@ func downloadKopiaBinary(t *testing.T) error {
 
 	defer func() { _ = os.Remove(archiveFile) }()
 
-	if strings.HasSuffix(archiveFile, ".zip") {
+	if strings.HasSuffix(url, ".zip") {
 		err = extractKopiaFromZip(archiveFile, kopiaTestBinaryPath)
 	} else {
 		err = extractKopiaFromTarGz(archiveFile, kopiaTestBinaryPath)
