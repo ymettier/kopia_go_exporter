@@ -103,6 +103,7 @@ The project is licensed under the [MIT License](LICENSE).
 - Creates a `prometheus.Registry` with Go and process collectors
 - Registers `build_info` gauge with version/commit/date labels
 - Starts HTTP server on configured port serving `/metrics`
+- Serving metrics over HTTPS (HTTP over TLS) is not a goal of this exporter and will not be implemented. Deployments that need encrypted transport should terminate TLS in an ingress, reverse proxy, or service mesh.
 
 ### Kopia Metrics (internal/kopiametrics/kopia.go)
 - Constructor `NewKopiaClients(cfg *config.Config)` (one client per configured identity, sorted by name) receives the full config directly
