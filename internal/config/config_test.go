@@ -8,7 +8,6 @@ import (
 	"flag"
 	"os"
 	"runtime/debug"
-	"strings"
 	"testing"
 
 	"github.com/knadh/koanf/parsers/yaml"
@@ -306,9 +305,9 @@ func writeTestConfig(t *testing.T, content string) string {
 	return tmpFile
 }
 
-// Looks up lowercase, camelCase, and nonexistent config keys and expects
-// the value (or absence) to be reported correctly.
-func TestLookupConfigKey_legacy_removed(t *testing.T) {
+// Looks up dotted and underscored keys, preserving camelCase names, and
+// expects missing keys to be reported correctly.
+func TestLookupConfigKey(t *testing.T) {
 	tests := []struct {
 		name string
 		key  string
@@ -323,8 +322,14 @@ func TestLookupConfigKey_legacy_removed(t *testing.T) {
 		},
 		{
 			name: "camelCase key",
-			key:  "exporter.metrics.prefix",
-			want: "test_prefix",
+			key:  "kopia.apiserver.repositoryURL",
+			want: "https://example.com",
+			ok:   true,
+		},
+		{
+			name: "underscored key",
+			key:  "legacy.key",
+			want: "legacy_value",
 			ok:   true,
 		},
 		{
@@ -334,45 +339,22 @@ func TestLookupConfigKey_legacy_removed(t *testing.T) {
 			ok:   false,
 		},
 	}
-	cfgFile := writeTestConfig(t, "exporter:\n  port: 9090\n  metrics:\n    prefix: test_prefix\n")
-	k := koanf.New(".")
-	err := k.Load(file.Provider(cfgFile), yaml.Parser())
-	require.NoError(t, err)
+	cfgFile := writeTestConfig(t, `exporter:
+  port: 9090
+kopia:
+  apiserver:
+    repositoryURL: https://example.com
+legacy_key: legacy_value
+`)
+	k := koanfNew(t, cfgFile)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			lk := strings.ToLower(tt.key)
-			ok := k.Exists(tt.key) || k.Exists(lk) || k.Exists(strings.ReplaceAll(lk, ".", "_"))
-			var val string
-			if k.Exists(lk) {
-				val = k.String(lk)
-			} else if k.Exists(tt.key) {
-				val = k.String(tt.key)
-			} else if ok {
-				val = k.String(strings.ReplaceAll(lk, ".", "_"))
-			}
+			got, ok := lookupConfigKey(k, tt.key)
 			assert.Equal(t, tt.ok, ok)
-			if tt.ok {
-				assert.Equal(t, tt.want, val)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
-}
-
-// Looks up a key written with an underscore format in the config and
-// expects it to resolve to the dotted config path.
-func TestLookupConfigKey_legacy_removed_UnderscoreFormat(t *testing.T) {
-	cfgFile := writeTestConfig(t, "exporter_metrics_prefix: underscore_prefix\n")
-	k := koanfNew(t, cfgFile)
-
-	lk := "exporter.metrics.prefix"
-	ok := k.Exists(lk) || k.Exists(strings.ReplaceAll(strings.ToLower(lk), ".", "_"))
-	assert.True(t, ok)
-	var val string
-	if k.Exists(strings.ReplaceAll(strings.ToLower(lk), ".", "_")) {
-		val = k.String(strings.ReplaceAll(strings.ToLower(lk), ".", "_"))
-	}
-	assert.Equal(t, "underscore_prefix", val)
 }
 
 // Reads a string config value and expects the existing value, or an

@@ -189,38 +189,32 @@ func ParseFlags(version string, args []string) (string, *pflag.FlagSet, error) {
 	return *configFile, fs, nil
 }
 
+func lookupConfigKey(k *koanf.Koanf, key string) (string, bool) {
+	lowerKey := strings.ToLower(key)
+	for _, candidate := range []string{
+		key,
+		lowerKey,
+		strings.ReplaceAll(lowerKey, ".", "_"),
+	} {
+		if k.Exists(candidate) {
+			return k.String(candidate), true
+		}
+	}
+
+	return "", false
+}
+
 func configString(k *koanf.Koanf, key string) string {
-	if k.Exists(key) {
-		return k.String(key)
-	}
-	lk := strings.ToLower(key)
-	if k.Exists(lk) {
-		return k.String(lk)
-	}
-	uk := strings.ReplaceAll(lk, ".", "_")
-	if k.Exists(uk) {
-		return k.String(uk)
-	}
-	return ""
+	value, _ := lookupConfigKey(k, key)
+	return value
 }
 
 func configInt(k *koanf.Koanf, key string) (int, error) {
-	var v string
-	if k.Exists(key) {
-		v = k.String(key)
-	} else {
-		lk := strings.ToLower(key)
-		if k.Exists(lk) {
-			v = k.String(lk)
-		} else {
-			uk := strings.ReplaceAll(lk, ".", "_")
-			if k.Exists(uk) {
-				v = k.String(uk)
-			} else {
-				return 0, nil
-			}
-		}
+	v, ok := lookupConfigKey(k, key)
+	if !ok {
+		return 0, nil
 	}
+
 	i, err := strconv.Atoi(v)
 	if err != nil {
 		return 0, fmt.Errorf("invalid integer for %s: %q: %w", key, v, err)
@@ -229,22 +223,11 @@ func configInt(k *koanf.Koanf, key string) (int, error) {
 }
 
 func configBool(k *koanf.Koanf, key string) (bool, error) {
-	var v string
-	if k.Exists(key) {
-		v = k.String(key)
-	} else {
-		lk := strings.ToLower(key)
-		if k.Exists(lk) {
-			v = k.String(lk)
-		} else {
-			uk := strings.ReplaceAll(lk, ".", "_")
-			if k.Exists(uk) {
-				v = k.String(uk)
-			} else {
-				return false, nil
-			}
-		}
+	v, ok := lookupConfigKey(k, key)
+	if !ok {
+		return false, nil
 	}
+
 	b, err := strconv.ParseBool(v)
 	if err != nil {
 		return false, fmt.Errorf("invalid boolean for %s: %q: %w", key, v, err)

@@ -108,11 +108,21 @@ Note: Helm 3 users need `--atomic` instead of `--rollback-on-failure`.
 
 ## Configuration
 
-The file `internal/config/config.default.yaml` contains all the configuration.
+The embedded `internal/config/config.default.yaml` provides the defaults.
+Configuration sources are applied in this order, with later sources taking
+precedence:
 
-Kopia-go-exporter can use such a configuration file: run it with `--config /path/to/config.yaml` or `-c /path/to/config.yaml` where the `config.yaml` file is based on `internal/config/config.default.yaml` and modified as you wish.
+1. Embedded defaults
+2. The optional YAML file supplied with `--config` or `-c`
+3. Environment variables prefixed with `KGE_`
+4. Explicitly supplied CLI flags
 
-You can also override this configuration with environment variables. They are forged on the configuration items in `internal/config/config.default.yaml`, with `KGE_` prefix, the path of the item, flattened, uppercase, with underscores as a separator. Example:
+Create a YAML file based on `internal/config/config.default.yaml` and pass it
+with `--config /path/to/config.yaml` (or `-c /path/to/config.yaml`). You can
+override individual YAML values with environment variables by prefixing the
+flattened, uppercase config path with `KGE_` and replacing separators with
+underscores. For example:
+
 ```
 kopia:
   apiserver:
@@ -122,7 +132,10 @@ can be overridden with
 ```
 KGE_KOPIA_APISERVER_REPOSITORYURL=https://some.url:port
 ```
-The client password follows the same rule, e.g. `KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD` overrides `kopia.clients.default.password`.
+The client password follows the same rule: `KGE_KOPIA_CLIENTS_DEFAULT_PASSWORD`
+overrides `kopia.clients.default.password`. CLI flags override both YAML and
+environment values only when explicitly supplied; flag defaults come from the
+embedded configuration.
 
 ## Building
 
