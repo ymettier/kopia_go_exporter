@@ -134,19 +134,19 @@ func newKopiaClient(cfg *config.Config, client config.ClientConfig, metrics *Kop
 	return k, nil
 }
 
-// KopiaClients manages one KopiaClient per configured identity, all writing
+// KopiaClientManager manages one KopiaClient per configured identity, all writing
 // into a single shared set of metrics so that metrics from different hosts
 // are aggregated with their host/path/user labels.
-type KopiaClients struct {
+type KopiaClientManager struct {
 	cfg     *config.Config
 	metrics KopiaMetrics
 	clients []*KopiaClient
 }
 
-// NewKopiaClients creates a KopiaClients manager with one KopiaClient per
+// NewKopiaClientManager creates a KopiaClientManager with one KopiaClient per
 // configured identity. Client order is deterministic (sorted by name).
-func NewKopiaClients(cfg *config.Config) (*KopiaClients, error) {
-	kc := &KopiaClients{cfg: cfg}
+func NewKopiaClientManager(cfg *config.Config) (*KopiaClientManager, error) {
+	kc := &KopiaClientManager{cfg: cfg}
 
 	for _, name := range sortedClientNames(cfg) {
 		k, err := newKopiaClient(cfg, cfg.Kopia.Clients[name], &kc.metrics)
@@ -194,8 +194,8 @@ func newKopiaMetrics(reg *prometheus.Registry, prefix string) KopiaMetrics {
 
 // RegisterKopiaMetrics registers the shared Prometheus gauge vectors with the
 // given registry. Because all clients write to the same metrics, registering
-// is done once for the whole KopiaClients manager.
-func (kc *KopiaClients) RegisterKopiaMetrics(reg *prometheus.Registry) {
+// is done once for the whole KopiaClientManager.
+func (kc *KopiaClientManager) RegisterKopiaMetrics(reg *prometheus.Registry) {
 	kc.metrics = newKopiaMetrics(reg, kc.cfg.Exporter.Metrics.Prefix)
 }
 
@@ -369,7 +369,7 @@ func (k *KopiaClient) Disconnect(ctx context.Context) {
 // RunOnce performs a single metrics collection cycle for every configured
 // client. The shared up metric is set to 1 only when all clients succeed;
 // a failure in any client returns an error but does not stop the others.
-func (kc *KopiaClients) RunOnce(ctx context.Context) error {
+func (kc *KopiaClientManager) RunOnce(ctx context.Context) error {
 	if len(kc.clients) == 0 {
 		return fmt.Errorf("no kopia clients configured")
 	}
@@ -388,7 +388,7 @@ func (kc *KopiaClients) RunOnce(ctx context.Context) error {
 }
 
 // Disconnect disconnects every client and removes their temp directories.
-func (kc *KopiaClients) Disconnect(ctx context.Context) {
+func (kc *KopiaClientManager) Disconnect(ctx context.Context) {
 	for _, k := range kc.clients {
 		k.Disconnect(ctx)
 	}

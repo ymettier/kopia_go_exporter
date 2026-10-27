@@ -106,9 +106,9 @@ The project is licensed under the [MIT License](LICENSE).
 - Serving metrics over HTTPS (HTTP over TLS) is not a goal of this exporter and will not be implemented. Deployments that need encrypted transport should terminate TLS in an ingress, reverse proxy, or service mesh.
 
 ### Kopia Metrics (internal/kopiametrics/kopia.go)
-- Constructor `NewKopiaClients(cfg *config.Config)` (one client per configured identity, sorted by name) receives the full config directly
+- Constructor `NewKopiaClientManager(cfg *config.Config)` creates one client per configured identity in sorted order
 - `KopiaClient` manages connection lifecycle: `GenerateConfigFile` → `Connect` → `RunOnce` → `Disconnect`
-- `KopiaClients` shares a single `KopiaMetrics` across all clients; its `RunOnce()` runs every client, sets the shared `up` gauge to 1 only when all succeed, and joins per-client errors (prefixed with `user@host`)
+- `KopiaClientManager` shares a single `KopiaMetrics` across all clients; its `RunOnce()` runs every client, sets the shared `up` gauge to 1 only when all succeed, and joins per-client errors (prefixed with `user@host`)
 - `RunOnce()` lists all snapshot manifests, groups by source, computes retention reasons, and sets gauge metrics
 - Seven Prometheus gauge vectors: `total_size`, `file_count`, `dir_count`, `error_count`, `backup_duration`, `backup_start_time`, `backup_end_time`
 - All metrics use labels: `host`, `path`, `user`, `retention`

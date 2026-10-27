@@ -1289,7 +1289,7 @@ func assertMetricLabels(t *testing.T, name, sourceDir string, familyMap map[stri
 // Runs RunOnce with two client identities against a single test API
 // server and expects metrics to be emitted for both hosts (the server
 // only returns each client its own snapshots).
-func TestKopiaClients_RunOnce_MultiClient(t *testing.T) {
+func TestKopiaClientManager_RunOnce_MultiClient(t *testing.T) {
 	prefix := testPrefix
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -1323,7 +1323,7 @@ func TestKopiaClients_RunOnce_MultiClient(t *testing.T) {
 	}
 	cfg.Exporter.Metrics.Prefix = prefix
 
-	kc, err := NewKopiaClients(cfg)
+	kc, err := NewKopiaClientManager(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { kc.Disconnect(context.Background()) })
 	require.Len(t, kc.clients, 2)
@@ -1362,11 +1362,11 @@ func TestKopiaClients_RunOnce_MultiClient(t *testing.T) {
 }
 
 // Runs RunOnce with no clients and expects an error and up metric 0.
-func TestKopiaClients_RunOnce_NoClients(t *testing.T) {
+func TestKopiaClientManager_RunOnce_NoClients(t *testing.T) {
 	prefix := testPrefix
 	logger.Reset(nil)
 
-	kc, err := NewKopiaClients(&config.Config{})
+	kc, err := NewKopiaClientManager(&config.Config{})
 	require.NoError(t, err)
 	kc.cfg.Exporter.Metrics.Prefix = prefix
 	t.Cleanup(func() { kc.Disconnect(context.Background()) })
@@ -1388,12 +1388,12 @@ func TestKopiaClients_RunOnce_NoClients(t *testing.T) {
 	assert.Equal(t, float64(0), up.GetMetric()[0].GetGauge().GetValue(), "up should stay 0 with no clients")
 }
 
-// Disconnects a KopiaClients manager with multiple clients and expects no
+// Disconnects a KopiaClientManager with multiple clients and expects no
 // panic and isConnected to become false on all of them.
-func TestKopiaClients_Disconnect(t *testing.T) {
+func TestKopiaClientManager_Disconnect(t *testing.T) {
 	logger.Reset(nil)
 
-	kc, err := NewKopiaClients(&config.Config{
+	kc, err := NewKopiaClientManager(&config.Config{
 		Kopia: config.KopiaConfig{
 			Clients: map[string]config.ClientConfig{
 				"a": {Username: "u1", Hostname: "h1", Password: "p1"},
@@ -1414,11 +1414,11 @@ func TestKopiaClients_Disconnect(t *testing.T) {
 	}
 }
 
-// Creates a KopiaClients manager when TMPDIR points to a nonexistent
+// Creates a KopiaClientManager when TMPDIR points to a nonexistent
 // directory and expects an error creating the temp directory.
-func TestNewKopiaClients_TempDirFailure(t *testing.T) {
+func TestNewKopiaClientManager_TempDirFailure(t *testing.T) {
 	t.Setenv("TMPDIR", "/nonexistent-kopia-tmp-dir")
-	_, err := NewKopiaClients(&config.Config{
+	_, err := NewKopiaClientManager(&config.Config{
 		Kopia: config.KopiaConfig{
 			Clients: map[string]config.ClientConfig{
 				defaultClientName: {Username: "u", Hostname: "h", Password: "p"},
@@ -1431,7 +1431,7 @@ func TestNewKopiaClients_TempDirFailure(t *testing.T) {
 // Runs RunOnce with two client identities against a running test API server
 // while loadSnapshotsFunc is stubbed to fail, and expects the returned error
 // to mention both clients and the shared up metric to be 0.
-func TestKopiaClients_RunOnce_ClientFailure(t *testing.T) {
+func TestKopiaClientManager_RunOnce_ClientFailure(t *testing.T) {
 	prefix := testPrefix
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -1465,7 +1465,7 @@ func TestKopiaClients_RunOnce_ClientFailure(t *testing.T) {
 	}
 	cfg.Exporter.Metrics.Prefix = prefix
 
-	kc, err := NewKopiaClients(cfg)
+	kc, err := NewKopiaClientManager(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { kc.Disconnect(context.Background()) })
 
